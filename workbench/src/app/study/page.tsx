@@ -470,7 +470,6 @@ function CardsTab({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("notesPerDeck", "10");
 
       const res = await fetch("/api/import/anki", {
         method: "POST",

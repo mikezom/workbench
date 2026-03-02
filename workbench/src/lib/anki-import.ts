@@ -15,11 +15,6 @@ interface AnkiModel {
   }>;
 }
 
-interface AnkiDeck {
-  id: string;
-  name: string;
-}
-
 interface AnkiNote {
   id: number;
   mid: string;
@@ -77,19 +72,9 @@ function renderTemplate(
   return result.trim();
 }
 
-function getFullGroupName(
-  groupId: string,
-  groupMap: Map<string, { id: string; name: string; parent_id: string | null }>
-): string {
-  const group = groupMap.get(groupId);
-  if (!group) return "";
-  if (!group.parent_id) return group.name;
-  return getFullGroupName(group.parent_id, groupMap) + "::" + group.name;
-}
-
 export async function parseApkg(
   fileBuffer: Buffer,
-  notesPerDeck: number = 10
+  maxNotes: number = 0
 ): Promise<ImportResult> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "anki-"));
   const zip = new AdmZip(fileBuffer);
@@ -123,45 +108,26 @@ export async function parseApkg(
       });
     }
 
+    // Parse decks to find a good group name (use root deck name)
     const decksRaw = JSON.parse(col.decks) as Record<string, { name: string }>;
-    const decks: Map<string, AnkiDeck> = new Map();
+    const deckNames: string[] = [];
     for (const [did, d] of Object.entries(decksRaw)) {
       if (did === "1" && d.name === "Default") continue;
-      decks.set(did, { id: did, name: d.name });
+      deckNames.push(d.name);
     }
 
-    const groupMap = new Map<string, { id: string; name: string; parent_id: string | null }>();
-    const deckIdToGroupId = new Map<string, string>();
-
-    const sortedDecks = Array.from(decks.values()).sort(
-      (a, b) => a.name.length - b.name.length
-    );
-
-    for (const deck of sortedDecks) {
-      const parts = deck.name.split("::");
-      const leafName = parts[parts.length - 1];
-      let parentGroupId: string | null = null;
-
-      if (parts.length > 1) {
-        const parentName = parts.slice(0, -1).join("::");
-        const groups = Array.from(groupMap.values());
-        for (const g of groups) {
-          if (getFullGroupName(g.id, groupMap) === parentName) {
-            parentGroupId = g.id;
-            break;
-          }
-        }
-      }
-
-      const groupId = crypto.randomUUID();
-      groupMap.set(groupId, {
-        id: groupId,
-        name: leafName,
-        parent_id: parentGroupId,
-      });
-      deckIdToGroupId.set(deck.id, groupId);
+    // Find root name: common prefix before "::" or shortest deck name
+    let groupName = "Imported Deck";
+    if (deckNames.length > 0) {
+      const roots = deckNames.map((n) => n.split("::")[0]);
+      const uniqueRoots = Array.from(new Set(roots));
+      groupName = uniqueRoots.length === 1 ? uniqueRoots[0] : deckNames.sort((a, b) => a.length - b.length)[0];
     }
 
+    // Create a single group for the entire package
+    const groupId = crypto.randomUUID();
+
+    // Get all notes and cards from the database
     const notesRows = db.prepare("SELECT id, mid, flds FROM notes").all() as AnkiNote[];
     const notesMap = new Map<number, AnkiNote>();
     for (const n of notesRows) {
@@ -170,20 +136,16 @@ export async function parseApkg(
 
     const cardsRows = db.prepare("SELECT nid, did, ord FROM cards").all() as AnkiCard[];
 
-    const deckNotes = new Map<string, Set<number>>();
+    // Limit by unique notes across the entire package
+    const seenNotes = new Set<number>();
     const limitedCards: AnkiCard[] = [];
 
     for (const card of cardsRows) {
-      const deckId = String(card.did);
-      if (!deckIdToGroupId.has(deckId)) continue;
-
-      if (!deckNotes.has(deckId)) deckNotes.set(deckId, new Set());
-      const noteSet = deckNotes.get(deckId)!;
-
-      if (noteSet.size < notesPerDeck || noteSet.has(card.nid)) {
-        noteSet.add(card.nid);
-        limitedCards.push(card);
+      if (maxNotes > 0 && seenNotes.size >= maxNotes && !seenNotes.has(card.nid)) {
+        continue;
       }
+      seenNotes.add(card.nid);
+      limitedCards.push(card);
     }
 
     const resultCards: ImportResult["cards"] = [];
@@ -197,9 +159,6 @@ export async function parseApkg(
 
       const template = model.templates[card.ord];
       if (!template) continue;
-
-      const groupId = deckIdToGroupId.get(String(card.did));
-      if (!groupId) continue;
 
       const fieldValues = note.flds.split("\x1f");
       const fields: Record<string, string> = {};
@@ -216,7 +175,7 @@ export async function parseApkg(
     }
 
     return {
-      groups: Array.from(groupMap.values()),
+      groups: [{ id: groupId, name: groupName, parent_id: null }],
       cards: resultCards,
     };
   } finally {

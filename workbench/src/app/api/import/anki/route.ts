@@ -11,14 +11,14 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-    const notesPerDeck = parseInt(formData.get("notesPerDeck") as string) || 10;
+    const maxNotes = parseInt(formData.get("maxNotes") as string) || 0;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await parseApkg(buffer, notesPerDeck);
+    const result = await parseApkg(buffer, maxNotes);
 
     // Save groups (append to existing, add default settings)
     const existingGroups = await getAllGroups();
