@@ -344,7 +344,7 @@ function ReviewTab({
           <div>
             <button
               onClick={startSession}
-              className="px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90"
+              className="px-8 py-4 text-lg bg-black text-white border-2 border-white rounded-lg hover:bg-neutral-800"
             >
               Start Review
             </button>
@@ -381,11 +381,17 @@ function ReviewTab({
         ) : card ? (
           <div className="w-full max-w-xl">
             {/* Card */}
-            <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-6">
+            <div
+              onClick={() => !revealed && setRevealed(true)}
+              className={`border border-neutral-200 dark:border-neutral-700 rounded-lg p-6 ${!revealed ? 'cursor-pointer hover:border-neutral-400 dark:hover:border-neutral-500' : ''}`}
+            >
               {card.title ? (
                 /* Structured card: title / definition / example */
                 <>
                   <h3 className="text-xl font-semibold mb-2">{card.title}</h3>
+                  {!revealed && (
+                    <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-4">Click to reveal answer</p>
+                  )}
                   {revealed ? (
                     <>
                       <hr className="my-4 border-neutral-200 dark:border-neutral-700" />
@@ -404,7 +410,7 @@ function ReviewTab({
                           <button
                             key={r.value}
                             disabled={submitting}
-                            onClick={() => handleRate(r.value)}
+                            onClick={(e) => { e.stopPropagation(); handleRate(r.value); }}
                             className={`px-4 py-2 text-sm text-white rounded ${r.color} disabled:opacity-50`}
                           >
                             {r.label}
@@ -412,14 +418,7 @@ function ReviewTab({
                         ))}
                       </div>
                     </>
-                  ) : (
-                    <button
-                      onClick={() => setRevealed(true)}
-                      className="mt-4 px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90"
-                    >
-                      Show Answer
-                    </button>
-                  )}
+                  ) : null}
                 </>
               ) : (
                 /* Legacy card: front / back (Anki imports) */
@@ -428,6 +427,9 @@ function ReviewTab({
                     className="text-lg mb-4 [&_img]:max-w-full [&_img]:h-auto"
                     dangerouslySetInnerHTML={{ __html: card.front }}
                   />
+                  {!revealed && (
+                    <p className="text-sm text-neutral-400 dark:text-neutral-500">Click to reveal answer</p>
+                  )}
                   {revealed ? (
                     <>
                       <hr className="my-4 border-neutral-200 dark:border-neutral-700" />
@@ -440,7 +442,7 @@ function ReviewTab({
                           <button
                             key={r.value}
                             disabled={submitting}
-                            onClick={() => handleRate(r.value)}
+                            onClick={(e) => { e.stopPropagation(); handleRate(r.value); }}
                             className={`px-4 py-2 text-sm text-white rounded ${r.color} disabled:opacity-50`}
                           >
                             {r.label}
@@ -448,14 +450,7 @@ function ReviewTab({
                         ))}
                       </div>
                     </>
-                  ) : (
-                    <button
-                      onClick={() => setRevealed(true)}
-                      className="px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90"
-                    >
-                      Show Answer
-                    </button>
-                  )}
+                  ) : null}
                 </>
               )}
             </div>
