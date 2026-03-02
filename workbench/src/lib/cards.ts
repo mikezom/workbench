@@ -9,6 +9,7 @@ export interface StudyCard {
   front: string;
   back: string;
   source: string | null;
+  group_id: string | null;
   fsrs: FSRSCard;
   created_at: string;
   updated_at: string;
@@ -42,7 +43,7 @@ export async function getDueCards(): Promise<StudyCard[]> {
   return cards.filter((c) => new Date(c.fsrs.due) <= now);
 }
 
-export async function createCard(front: string, back: string): Promise<StudyCard> {
+export async function createCard(front: string, back: string, groupId: string | null = null): Promise<StudyCard> {
   const cards = await readCards();
   const now = new Date().toISOString();
   const card: StudyCard = {
@@ -50,6 +51,7 @@ export async function createCard(front: string, back: string): Promise<StudyCard
     front,
     back,
     source: null,
+    group_id: groupId,
     fsrs: createEmptyCard(new Date()),
     created_at: now,
     updated_at: now,
@@ -93,4 +95,44 @@ export async function deleteCard(id: string): Promise<boolean> {
   cards.splice(idx, 1);
   await writeCards(cards);
   return true;
+}
+
+export async function getCardsByGroup(groupIds: string[]): Promise<StudyCard[]> {
+  const cards = await readCards();
+  return cards.filter((c) => c.group_id !== null && groupIds.includes(c.group_id));
+}
+
+export async function getDueCardsByGroup(groupIds: string[]): Promise<StudyCard[]> {
+  const cards = await readCards();
+  const now = new Date();
+  return cards.filter(
+    (c) =>
+      c.group_id !== null &&
+      groupIds.includes(c.group_id) &&
+      new Date(c.fsrs.due) <= now
+  );
+}
+
+export async function createCardsBulk(
+  newCards: Array<{ front: string; back: string; group_id: string | null }>
+): Promise<StudyCard[]> {
+  const cards = await readCards();
+  const created: StudyCard[] = [];
+  const now = new Date().toISOString();
+  for (const nc of newCards) {
+    const card: StudyCard = {
+      id: crypto.randomUUID(),
+      front: nc.front,
+      back: nc.back,
+      source: null,
+      group_id: nc.group_id,
+      fsrs: createEmptyCard(new Date()),
+      created_at: now,
+      updated_at: now,
+    };
+    cards.push(card);
+    created.push(card);
+  }
+  await writeCards(cards);
+  return created;
 }
