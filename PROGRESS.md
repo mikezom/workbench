@@ -43,6 +43,15 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [x] Center review cards in the main panel
 - [x] Fix Anki import to create one group per .apkg (no subgroups per deck)
 
+### Phase 3c: Study UI Improvements & Card Model
+- [x] Move group selector to sidebar (below nav tabs, shared across all tabs)
+- [x] Move progress info (remaining, new/review) to bottom-right of main panel
+- [x] Center study card vertically and horizontally in main panel
+- [x] Complete CRUD for cards (add group_id update support) and groups
+- [x] Add title/definition/example card model (backward-compatible with front/back)
+- [x] Structured review display: title only -> reveal definition + example
+- [x] Create 10 category theory sample cards for style tuning
+
 ### Phase 4: Crawl Section
 - [ ] Define hardcoded sources config (HN, ArXiv, Lobste.rs, nLab, Planet Haskell)
 - [ ] Build backend API for fetching and parsing web content
@@ -64,5 +73,6 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 | 3 - Study | Complete | Commit `7eb1f33` |
 | 3a - Study Enhancements | Complete | Groups, settings, Anki import |
 | 3b - Study UI & Fixes | Complete | Sidebar layout, cascading delete, import fix |
+| 3c - Study UI & Card Model | Complete | Sidebar groups, centered cards, title/def/example model; UI tuning `1ae7b2e` |
 | 4 - Crawl | Not started | |
 | 5 - Agent | Not started | Placeholder only |
