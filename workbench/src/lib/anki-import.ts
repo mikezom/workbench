@@ -49,8 +49,9 @@ function renderTemplate(
   }
 
   // Handle conditional blocks: {{#field}}...{{/field}}
+  // Use [^}]+ to match Unicode field names (e.g., Chinese characters)
   result = result.replace(
-    /\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g,
+    /\{\{#([^}]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g,
     (_match, fieldName, content) => {
       const value = fields[fieldName] ?? "";
       return value.trim() ? content : "";
@@ -58,12 +59,12 @@ function renderTemplate(
   );
 
   // Handle {{hint:field}}
-  result = result.replace(/\{\{hint:(\w+)\}\}/g, (_match, fieldName) => {
+  result = result.replace(/\{\{hint:([^}]+)\}\}/g, (_match, fieldName) => {
     return fields[fieldName] ?? "";
   });
 
   // Handle simple {{field}}
-  result = result.replace(/\{\{(\w+)\}\}/g, (_match, fieldName) => {
+  result = result.replace(/\{\{([^}#/]+)\}\}/g, (_match, fieldName) => {
     return fields[fieldName] ?? "";
   });
 
@@ -103,14 +104,18 @@ export async function parseApkg(
       decks: string;
     };
 
-    const modelsRaw = JSON.parse(col.models) as Record<string, any>;
+    const modelsRaw = JSON.parse(col.models) as Record<string, {
+      name: string;
+      flds: Array<{ name: string }>;
+      tmpls: Array<{ name: string; qfmt: string; afmt: string }>;
+    }>;
     const models: Map<string, AnkiModel> = new Map();
     for (const [mid, m] of Object.entries(modelsRaw)) {
       models.set(mid, {
         id: mid,
         name: m.name,
-        fields: m.flds.map((f: any) => f.name),
-        templates: m.tmpls.map((t: any) => ({
+        fields: m.flds.map((f) => f.name),
+        templates: m.tmpls.map((t) => ({
           name: t.name,
           qfmt: t.qfmt,
           afmt: t.afmt,
@@ -118,7 +123,7 @@ export async function parseApkg(
       });
     }
 
-    const decksRaw = JSON.parse(col.decks) as Record<string, any>;
+    const decksRaw = JSON.parse(col.decks) as Record<string, { name: string }>;
     const decks: Map<string, AnkiDeck> = new Map();
     for (const [did, d] of Object.entries(decksRaw)) {
       if (did === "1" && d.name === "Default") continue;
@@ -128,7 +133,7 @@ export async function parseApkg(
     const groupMap = new Map<string, { id: string; name: string; parent_id: string | null }>();
     const deckIdToGroupId = new Map<string, string>();
 
-    const sortedDecks = [...decks.values()].sort(
+    const sortedDecks = Array.from(decks.values()).sort(
       (a, b) => a.name.length - b.name.length
     );
 
@@ -139,7 +144,8 @@ export async function parseApkg(
 
       if (parts.length > 1) {
         const parentName = parts.slice(0, -1).join("::");
-        for (const [, g] of groupMap) {
+        const groups = Array.from(groupMap.values());
+        for (const g of groups) {
           if (getFullGroupName(g.id, groupMap) === parentName) {
             parentGroupId = g.id;
             break;
@@ -210,7 +216,7 @@ export async function parseApkg(
     }
 
     return {
-      groups: [...groupMap.values()],
+      groups: Array.from(groupMap.values()),
       cards: resultCards,
     };
   } finally {

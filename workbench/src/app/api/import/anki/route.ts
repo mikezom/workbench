@@ -20,9 +20,15 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await parseApkg(buffer, notesPerDeck);
 
-    // Save groups (append to existing)
+    // Save groups (append to existing, add default settings)
     const existingGroups = await getAllGroups();
-    const allGroups = [...existingGroups, ...result.groups];
+    const now = new Date().toISOString();
+    const groupsWithSettings = result.groups.map((g) => ({
+      ...g,
+      settings: { dailyNewLimit: 20, dailyReviewLimit: 100 },
+      created_at: now,
+    }));
+    const allGroups = [...existingGroups, ...groupsWithSettings];
     await fs.writeFile(GROUPS_PATH, JSON.stringify(allGroups, null, 2));
 
     // Save cards
@@ -39,9 +45,10 @@ export async function POST(req: NextRequest) {
       cardsCreated: created.length,
       groups: result.groups.map((g) => ({ id: g.id, name: g.name })),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Import failed";
     return NextResponse.json(
-      { error: error.message || "Import failed" },
+      { error: message },
       { status: 500 }
     );
   }

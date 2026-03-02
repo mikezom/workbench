@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fsrs, Rating } from "ts-fsrs";
+import { fsrs, Rating, type Grade } from "ts-fsrs";
 import { getCard, updateCardFSRS } from "@/lib/cards";
 import { recordStudy } from "@/lib/study-log";
 
@@ -29,7 +29,7 @@ export async function POST(
       : undefined,
   };
 
-  const result = f.next(fsrsCard, new Date(), rating);
+  const result = f.next(fsrsCard, new Date(), rating as Grade);
   const updated = await updateCardFSRS(params.id, result.card);
 
   if (studyCard.group_id) {
