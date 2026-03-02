@@ -1,0 +1,31 @@
+# Dependencies
+workbench/node_modules/
+workbench/.next/
+
+# OS files
+.DS_Store
+__MACOSX/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# forest source (large, derived from forest.zip)
+/forest/
+
+# forest static output (derived from forest.zip, regeneratable)
+/workbench/public/forest/
+
+# forest.zip (binary)
+forest.zip
+
+# Next.js debug
+npm-debug.log*
+
+# Backups from MCP tools
+*.backup
