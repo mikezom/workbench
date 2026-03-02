@@ -30,6 +30,13 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [x] Implement FSRS scheduling on review
 - [ ] Add "import from Forest" feature (deferred to Phase 3b)
 
+### Phase 3a: Study Enhancements
+- [x] Add hierarchical card groups with parent/child relationships
+- [x] Add per-group study settings (daily new card limit, daily review limit)
+- [x] Add Anki .apkg import with full template rendering
+- [x] Add study log tracking for daily limit enforcement
+- [x] Rewrite Study page UI with group selector, settings tab, and import
+
 ### Phase 4: Crawl Section
 - [ ] Define hardcoded sources config (HN, ArXiv, Lobste.rs, nLab, Planet Haskell)
 - [ ] Build backend API for fetching and parsing web content
@@ -49,5 +56,6 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 | 1 - Layout | Complete | Commit `450adeb` |
 | 2 - Forest | Complete | Commit `450adeb` |
 | 3 - Study | Complete | Commit `7eb1f33` |
+| 3a - Study Enhancements | Complete | Groups, settings, Anki import |
 | 4 - Crawl | Not started | |
 | 5 - Agent | Not started | Placeholder only |
