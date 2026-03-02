@@ -37,6 +37,12 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [x] Add study log tracking for daily limit enforcement
 - [x] Rewrite Study page UI with group selector, settings tab, and import
 
+### Phase 3b: Study UI & Bug Fixes
+- [x] Add cascading group delete (removes child groups and all associated cards)
+- [x] Convert tab bar to sidebar layout for Review/Cards/Settings navigation
+- [x] Center review cards in the main panel
+- [x] Fix Anki import to create one group per .apkg (no subgroups per deck)
+
 ### Phase 4: Crawl Section
 - [ ] Define hardcoded sources config (HN, ArXiv, Lobste.rs, nLab, Planet Haskell)
 - [ ] Build backend API for fetching and parsing web content
@@ -57,5 +63,6 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 | 2 - Forest | Complete | Commit `450adeb` |
 | 3 - Study | Complete | Commit `7eb1f33` |
 | 3a - Study Enhancements | Complete | Groups, settings, Anki import |
+| 3b - Study UI & Fixes | Complete | Sidebar layout, cascading delete, import fix |
 | 4 - Crawl | Not started | |
 | 5 - Agent | Not started | Placeholder only |
