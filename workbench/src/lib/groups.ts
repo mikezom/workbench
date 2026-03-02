@@ -74,11 +74,27 @@ export async function updateGroup(
 
 export async function deleteGroup(id: string): Promise<boolean> {
   const groups = await readGroups();
-  const idx = groups.findIndex((g) => g.id === id);
-  if (idx === -1) return false;
-  groups.splice(idx, 1);
-  await writeGroups(groups);
+  const idsToDelete = getDescendantIdsSync(id, groups);
+  const filtered = groups.filter((g) => !idsToDelete.includes(g.id));
+  if (filtered.length === groups.length) return false;
+  await writeGroups(filtered);
   return true;
+}
+
+/** Synchronous version for use when groups are already loaded. */
+function getDescendantIdsSync(id: string, groups: Group[]): string[] {
+  const result: string[] = [id];
+  const queue = [id];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const g of groups) {
+      if (g.parent_id === current) {
+        result.push(g.id);
+        queue.push(g.id);
+      }
+    }
+  }
+  return result;
 }
 
 export async function getDescendantIds(id: string): Promise<string[]> {

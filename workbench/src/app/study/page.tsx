@@ -869,7 +869,12 @@ function SettingsTab({
                 </button>
                 <button
                   onClick={async () => {
-                    if (!confirm(`Delete group "${g.name}"?`)) return;
+                    const descendantIds = getDescendantIds(g.id, groups);
+                    const childCount = descendantIds.length - 1;
+                    const msg = childCount > 0
+                      ? `Delete group "${g.name}", its ${childCount} subgroup(s), and all their cards?`
+                      : `Delete group "${g.name}" and all its cards?`;
+                    if (!confirm(msg)) return;
                     await fetch(`/api/groups/${g.id}`, { method: "DELETE" });
                     await onUpdate();
                   }}

@@ -113,6 +113,16 @@ export async function getDueCardsByGroup(groupIds: string[]): Promise<StudyCard[
   );
 }
 
+export async function deleteCardsByGroupIds(groupIds: string[]): Promise<number> {
+  const cards = await readCards();
+  const before = cards.length;
+  const filtered = cards.filter(
+    (c) => c.group_id === null || !groupIds.includes(c.group_id)
+  );
+  await writeCards(filtered);
+  return before - filtered.length;
+}
+
 export async function createCardsBulk(
   newCards: Array<{ front: string; back: string; group_id: string | null }>
 ): Promise<StudyCard[]> {
