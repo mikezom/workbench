@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import PageContainer from "@/components/page-container";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -332,13 +331,15 @@ function ReviewTab({
   }
 
   return (
-    <div>
-      <GroupTree
-        groups={groups}
-        cards={cards}
-        selectedId={selectedGroupId}
-        onSelect={setSelectedGroupId}
-      />
+    <div className="flex flex-col items-center">
+      <div className="w-full max-w-xl">
+        <GroupTree
+          groups={groups}
+          cards={cards}
+          selectedId={selectedGroupId}
+          onSelect={setSelectedGroupId}
+        />
+      </div>
 
       {!sessionStarted ? (
         <div>
@@ -379,7 +380,7 @@ function ReviewTab({
           )}
         </div>
       ) : card ? (
-        <div>
+        <div className="w-full max-w-xl">
           {/* Progress info */}
           <div className="mb-4 text-sm text-neutral-500 space-y-1">
             <p>
@@ -394,7 +395,7 @@ function ReviewTab({
           </div>
 
           {/* Card */}
-          <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-6 max-w-xl">
+          <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-6">
             <div
               className="text-lg mb-4 [&_img]:max-w-full [&_img]:h-auto"
               dangerouslySetInnerHTML={{ __html: card.front }}
@@ -1017,36 +1018,46 @@ export default function StudyPage() {
     fetchData();
   }, [fetchData]);
 
-  const tabs: Tab[] = ["review", "cards", "settings"];
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "review", label: "Review" },
+    { key: "cards", label: "Cards" },
+    { key: "settings", label: "Settings" },
+  ];
 
   return (
-    <PageContainer title="Study">
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-neutral-200 dark:border-neutral-700">
-        {tabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium capitalize ${
-              tab === t
-                ? "border-b-2 border-neutral-900 dark:border-neutral-100 text-neutral-900 dark:text-neutral-100"
-                : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
+    <div className="flex h-full">
+      {/* Sidebar */}
+      <div className="w-44 shrink-0 border-r border-neutral-200 dark:border-neutral-700 p-4">
+        <h1 className="text-lg font-bold mb-4">Study</h1>
+        <nav className="space-y-1">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`w-full text-left px-3 py-2 text-sm rounded transition-colors ${
+                tab === t.key
+                  ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 font-medium"
+                  : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {loading ? (
-        <p className="text-neutral-500">Loading...</p>
-      ) : tab === "review" ? (
-        <ReviewTab cards={cards} groups={groups} onUpdate={fetchData} />
-      ) : tab === "cards" ? (
-        <CardsTab cards={cards} groups={groups} onUpdate={fetchData} />
-      ) : (
-        <SettingsTab groups={groups} onUpdate={fetchData} />
-      )}
-    </PageContainer>
+      {/* Main panel */}
+      <div className="flex-1 overflow-auto p-6">
+        {loading ? (
+          <p className="text-neutral-500">Loading...</p>
+        ) : tab === "review" ? (
+          <ReviewTab cards={cards} groups={groups} onUpdate={fetchData} />
+        ) : tab === "cards" ? (
+          <CardsTab cards={cards} groups={groups} onUpdate={fetchData} />
+        ) : (
+          <SettingsTab groups={groups} onUpdate={fetchData} />
+        )}
+      </div>
+    </div>
   );
 }
