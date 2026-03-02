@@ -8,6 +8,9 @@ export interface StudyCard {
   id: string;
   front: string;
   back: string;
+  title?: string;
+  definition?: string;
+  example?: string;
   source: string | null;
   group_id: string | null;
   fsrs: FSRSCard;
@@ -43,13 +46,21 @@ export async function getDueCards(): Promise<StudyCard[]> {
   return cards.filter((c) => new Date(c.fsrs.due) <= now);
 }
 
-export async function createCard(front: string, back: string, groupId: string | null = null): Promise<StudyCard> {
+export async function createCard(
+  front: string,
+  back: string,
+  groupId: string | null = null,
+  extra?: { title?: string; definition?: string; example?: string }
+): Promise<StudyCard> {
   const cards = await readCards();
   const now = new Date().toISOString();
   const card: StudyCard = {
     id: crypto.randomUUID(),
     front,
     back,
+    ...(extra?.title !== undefined && { title: extra.title }),
+    ...(extra?.definition !== undefined && { definition: extra.definition }),
+    ...(extra?.example !== undefined && { example: extra.example }),
     source: null,
     group_id: groupId,
     fsrs: createEmptyCard(new Date()),
@@ -63,13 +74,17 @@ export async function createCard(front: string, back: string, groupId: string | 
 
 export async function updateCard(
   id: string,
-  updates: { front?: string; back?: string }
+  updates: { front?: string; back?: string; group_id?: string | null; title?: string; definition?: string; example?: string }
 ): Promise<StudyCard | null> {
   const cards = await readCards();
   const idx = cards.findIndex((c) => c.id === id);
   if (idx === -1) return null;
   if (updates.front !== undefined) cards[idx].front = updates.front;
   if (updates.back !== undefined) cards[idx].back = updates.back;
+  if (updates.group_id !== undefined) cards[idx].group_id = updates.group_id;
+  if (updates.title !== undefined) cards[idx].title = updates.title;
+  if (updates.definition !== undefined) cards[idx].definition = updates.definition;
+  if (updates.example !== undefined) cards[idx].example = updates.example;
   cards[idx].updated_at = new Date().toISOString();
   await writeCards(cards);
   return cards[idx];
@@ -124,7 +139,7 @@ export async function deleteCardsByGroupIds(groupIds: string[]): Promise<number>
 }
 
 export async function createCardsBulk(
-  newCards: Array<{ front: string; back: string; group_id: string | null }>
+  newCards: Array<{ front: string; back: string; group_id: string | null; title?: string; definition?: string; example?: string }>
 ): Promise<StudyCard[]> {
   const cards = await readCards();
   const created: StudyCard[] = [];
@@ -134,6 +149,9 @@ export async function createCardsBulk(
       id: crypto.randomUUID(),
       front: nc.front,
       back: nc.back,
+      ...(nc.title !== undefined && { title: nc.title }),
+      ...(nc.definition !== undefined && { definition: nc.definition }),
+      ...(nc.example !== undefined && { example: nc.example }),
       source: null,
       group_id: nc.group_id,
       fsrs: createEmptyCard(new Date()),

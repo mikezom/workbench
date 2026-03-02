@@ -6,8 +6,8 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   const body = await req.json();
-  const { front, back } = body;
-  const card = await updateCard(params.id, { front, back });
+  const { front, back, group_id, title, definition, example } = body;
+  const card = await updateCard(params.id, { front, back, group_id, title, definition, example });
   if (!card) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }

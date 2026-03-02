@@ -22,6 +22,9 @@ interface StudyCard {
   id: string;
   front: string;
   back: string;
+  title?: string;
+  definition?: string;
+  example?: string;
   source: string | null;
   group_id: string | null;
   fsrs: FSRSData;
@@ -138,8 +141,8 @@ function GroupTree({
     "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800";
 
   return (
-    <div className="mb-4 border border-neutral-200 dark:border-neutral-700 rounded-lg p-2 max-w-xs">
-      <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide px-3 py-1">
+    <div className="border-t border-neutral-200 dark:border-neutral-700 pt-3">
+      <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide px-1 py-1 mb-1">
         Groups
       </p>
       <button
@@ -184,13 +187,14 @@ function GroupTree({
 function ReviewTab({
   cards,
   groups,
+  selectedGroupId,
   onUpdate,
 }: {
   cards: StudyCard[];
   groups: Group[];
+  selectedGroupId: string | null;
   onUpdate: () => Promise<void>;
 }) {
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [sessionCards, setSessionCards] = useState<StudyCard[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -324,113 +328,156 @@ function ReviewTab({
 
   if (cards.length === 0) {
     return (
-      <p className="text-neutral-500">
-        No cards yet. Add some in the Cards tab.
-      </p>
+      <div className="flex items-center justify-center h-full">
+        <p className="text-neutral-500">
+          No cards yet. Add some in the Cards tab.
+        </p>
+      </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="w-full max-w-xl">
-        <GroupTree
-          groups={groups}
-          cards={cards}
-          selectedId={selectedGroupId}
-          onSelect={setSelectedGroupId}
-        />
+    <div className="flex flex-col h-full">
+      {/* Centered content area */}
+      <div className="flex-1 flex items-center justify-center">
+        {!sessionStarted ? (
+          <div>
+            <button
+              onClick={startSession}
+              className="px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90"
+            >
+              Start Review
+            </button>
+          </div>
+        ) : sessionCards.length === 0 ? (
+          <div className="text-neutral-500 text-center">
+            <p className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
+              All caught up!
+            </p>
+            {budgetInfo && (
+              <div className="text-sm space-y-1">
+                <p>
+                  New today: {budgetInfo.newUsed} / {budgetInfo.newLimit}
+                </p>
+                <p>
+                  Reviews today: {budgetInfo.reviewUsed} / {budgetInfo.reviewLimit}
+                </p>
+              </div>
+            )}
+            {selectedGroupId === null && cards.length > 0 && (
+              <p className="mt-2 text-sm">
+                Next review:{" "}
+                {(() => {
+                  const sorted = [...cards].sort(
+                    (a, b) =>
+                      new Date(a.fsrs.due).getTime() -
+                      new Date(b.fsrs.due).getTime()
+                  );
+                  return new Date(sorted[0].fsrs.due).toLocaleString();
+                })()}
+              </p>
+            )}
+          </div>
+        ) : card ? (
+          <div className="w-full max-w-xl">
+            {/* Card */}
+            <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-6">
+              {card.title ? (
+                /* Structured card: title / definition / example */
+                <>
+                  <h3 className="text-xl font-semibold mb-2">{card.title}</h3>
+                  {revealed ? (
+                    <>
+                      <hr className="my-4 border-neutral-200 dark:border-neutral-700" />
+                      <div className="mb-2">
+                        <span className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Definition</span>
+                        <p className="mt-1 text-base leading-relaxed">{card.definition}</p>
+                      </div>
+                      {card.example && (
+                        <div className="mt-4 bg-neutral-50 dark:bg-neutral-800/50 rounded p-3">
+                          <span className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Example</span>
+                          <p className="mt-1 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{card.example}</p>
+                        </div>
+                      )}
+                      <div className="flex gap-2 mt-6">
+                        {ratings.map((r) => (
+                          <button
+                            key={r.value}
+                            disabled={submitting}
+                            onClick={() => handleRate(r.value)}
+                            className={`px-4 py-2 text-sm text-white rounded ${r.color} disabled:opacity-50`}
+                          >
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setRevealed(true)}
+                      className="mt-4 px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90"
+                    >
+                      Show Answer
+                    </button>
+                  )}
+                </>
+              ) : (
+                /* Legacy card: front / back (Anki imports) */
+                <>
+                  <div
+                    className="text-lg mb-4 [&_img]:max-w-full [&_img]:h-auto"
+                    dangerouslySetInnerHTML={{ __html: card.front }}
+                  />
+                  {revealed ? (
+                    <>
+                      <hr className="my-4 border-neutral-200 dark:border-neutral-700" />
+                      <div
+                        className="text-lg mb-6 [&_img]:max-w-full [&_img]:h-auto"
+                        dangerouslySetInnerHTML={{ __html: card.back }}
+                      />
+                      <div className="flex gap-2">
+                        {ratings.map((r) => (
+                          <button
+                            key={r.value}
+                            disabled={submitting}
+                            onClick={() => handleRate(r.value)}
+                            className={`px-4 py-2 text-sm text-white rounded ${r.color} disabled:opacity-50`}
+                          >
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setRevealed(true)}
+                      className="px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90"
+                    >
+                      Show Answer
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {!sessionStarted ? (
-        <div>
-          <button
-            onClick={startSession}
-            className="px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90"
-          >
-            Start Review
-          </button>
-        </div>
-      ) : sessionCards.length === 0 ? (
-        <div className="text-neutral-500">
-          <p className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
-            All caught up!
-          </p>
-          {budgetInfo && (
-            <div className="text-sm space-y-1">
-              <p>
-                New today: {budgetInfo.newUsed} / {budgetInfo.newLimit}
-              </p>
-              <p>
-                Reviews today: {budgetInfo.reviewUsed} / {budgetInfo.reviewLimit}
-              </p>
-            </div>
-          )}
-          {selectedGroupId === null && (
-            <p className="mt-2 text-sm">
-              Next review:{" "}
-              {(() => {
-                const sorted = [...cards].sort(
-                  (a, b) =>
-                    new Date(a.fsrs.due).getTime() -
-                    new Date(b.fsrs.due).getTime()
-                );
-                return new Date(sorted[0].fsrs.due).toLocaleString();
-              })()}
-            </p>
-          )}
-        </div>
-      ) : card ? (
-        <div className="w-full max-w-xl">
-          {/* Progress info */}
-          <div className="mb-4 text-sm text-neutral-500 space-y-1">
+      {/* Progress info - bottom right */}
+      {sessionStarted && sessionCards.length > 0 && card && (
+        <div className="flex justify-end pt-2">
+          <div className="text-xs text-neutral-400 dark:text-neutral-500 text-right space-y-0.5">
             <p>
               {currentIdx + 1} / {sessionCards.length} remaining
             </p>
             {budgetInfo && (
               <p>
-                New: {budgetInfo.newUsed}/{budgetInfo.newLimit} | Review:{" "}
-                {budgetInfo.reviewUsed}/{budgetInfo.reviewLimit}
+                new {budgetInfo.newAvailable} | review {budgetInfo.reviewAvailable}
               </p>
             )}
           </div>
-
-          {/* Card */}
-          <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-6">
-            <div
-              className="text-lg mb-4 [&_img]:max-w-full [&_img]:h-auto"
-              dangerouslySetInnerHTML={{ __html: card.front }}
-            />
-            {revealed ? (
-              <>
-                <hr className="my-4 border-neutral-200 dark:border-neutral-700" />
-                <div
-                  className="text-lg mb-6 [&_img]:max-w-full [&_img]:h-auto"
-                  dangerouslySetInnerHTML={{ __html: card.back }}
-                />
-                <div className="flex gap-2">
-                  {ratings.map((r) => (
-                    <button
-                      key={r.value}
-                      disabled={submitting}
-                      onClick={() => handleRate(r.value)}
-                      className={`px-4 py-2 text-sm text-white rounded ${r.color} disabled:opacity-50`}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <button
-                onClick={() => setRevealed(true)}
-                className="px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90"
-              >
-                Show Answer
-              </button>
-            )}
-          </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -442,13 +489,14 @@ function ReviewTab({
 function CardsTab({
   cards,
   groups,
+  selectedGroupId,
   onUpdate,
 }: {
   cards: StudyCard[];
   groups: Group[];
+  selectedGroupId: string | null;
   onUpdate: () => Promise<void>;
 }) {
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -498,13 +546,6 @@ function CardsTab({
 
   return (
     <div>
-      <GroupTree
-        groups={groups}
-        cards={cards}
-        selectedId={selectedGroupId}
-        onSelect={setSelectedGroupId}
-      />
-
       <div className="flex gap-2 mb-4 flex-wrap">
         <button
           onClick={() => {
@@ -553,11 +594,11 @@ function CardsTab({
       {adding && (
         <CardForm
           groups={groups}
-          onSave={async (front, back, groupId) => {
+          onSave={async ({ title, definition, example, groupId }) => {
             await fetch("/api/cards", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ front, back, group_id: groupId }),
+              body: JSON.stringify({ title, definition, example, front: title, back: definition, group_id: groupId }),
             });
             setAdding(false);
             await onUpdate();
@@ -577,15 +618,16 @@ function CardsTab({
           editingId === card.id ? (
             <CardForm
               key={card.id}
-              initialFront={card.front}
-              initialBack={card.back}
+              initialTitle={card.title || card.front}
+              initialDefinition={card.definition || card.back}
+              initialExample={card.example || ""}
               initialGroupId={card.group_id}
               groups={groups}
-              onSave={async (front, back) => {
+              onSave={async ({ title, definition, example, groupId }) => {
                 await fetch(`/api/cards/${card.id}`, {
                   method: "PUT",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ front, back }),
+                  body: JSON.stringify({ title, definition, example, front: title, back: definition, group_id: groupId }),
                 });
                 setEditingId(null);
                 await onUpdate();
@@ -599,8 +641,7 @@ function CardsTab({
             >
               <div className="truncate mr-4 flex-1 min-w-0">
                 <span className="truncate block">
-                  {stripHtml(card.front).slice(0, 80) ||
-                    "(empty)"}
+                  {(card.title || stripHtml(card.front)).slice(0, 80) || "(empty)"}
                 </span>
                 {card.group_id && (
                   <span className="text-xs text-neutral-400 dark:text-neutral-500">
@@ -642,52 +683,65 @@ function CardsTab({
 /* ------------------------------------------------------------------ */
 
 function CardForm({
-  initialFront = "",
-  initialBack = "",
+  initialTitle = "",
+  initialDefinition = "",
+  initialExample = "",
   initialGroupId = null,
   groups,
   onSave,
   onCancel,
 }: {
-  initialFront?: string;
-  initialBack?: string;
+  initialTitle?: string;
+  initialDefinition?: string;
+  initialExample?: string;
   initialGroupId?: string | null;
   groups: Group[];
-  onSave: (front: string, back: string, groupId: string | null) => Promise<void>;
+  onSave: (data: { title: string; definition: string; example: string; groupId: string | null }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [front, setFront] = useState(initialFront);
-  const [back, setBack] = useState(initialBack);
+  const [title, setTitle] = useState(initialTitle);
+  const [definition, setDefinition] = useState(initialDefinition);
+  const [example, setExample] = useState(initialExample);
   const [groupId, setGroupId] = useState<string | null>(initialGroupId);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
-    if (!front.trim() || !back.trim()) return;
+    if (!title.trim() || !definition.trim()) return;
     setSaving(true);
-    await onSave(front, back, groupId);
+    await onSave({ title, definition, example, groupId });
     setSaving(false);
   };
 
   return (
     <div className="border border-neutral-300 dark:border-neutral-600 rounded p-4 mb-2 max-w-xl">
       <div className="mb-3">
-        <label className="block text-sm font-medium mb-1">Front</label>
-        <textarea
-          value={front}
-          onChange={(e) => setFront(e.target.value)}
-          rows={2}
+        <label className="block text-sm font-medium mb-1">Title</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
-          placeholder="Question..."
+          placeholder="Term or concept..."
         />
       </div>
       <div className="mb-3">
-        <label className="block text-sm font-medium mb-1">Back</label>
+        <label className="block text-sm font-medium mb-1">Definition</label>
         <textarea
-          value={back}
-          onChange={(e) => setBack(e.target.value)}
+          value={definition}
+          onChange={(e) => setDefinition(e.target.value)}
+          rows={3}
+          className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+          placeholder="What it means..."
+        />
+      </div>
+      <div className="mb-3">
+        <label className="block text-sm font-medium mb-1">Example <span className="text-neutral-400 font-normal">(optional)</span></label>
+        <textarea
+          value={example}
+          onChange={(e) => setExample(e.target.value)}
           rows={2}
           className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
-          placeholder="Answer..."
+          placeholder="A concrete example..."
         />
       </div>
       <div className="mb-3">
@@ -708,7 +762,7 @@ function CardForm({
       <div className="flex gap-2">
         <button
           onClick={handleSubmit}
-          disabled={saving || !front.trim() || !back.trim()}
+          disabled={saving || !title.trim() || !definition.trim()}
           className="px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90 disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save"}
@@ -995,6 +1049,7 @@ export default function StudyPage() {
   const [cards, setCards] = useState<StudyCard[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -1026,9 +1081,9 @@ export default function StudyPage() {
   return (
     <div className="flex h-full">
       {/* Sidebar */}
-      <div className="w-44 shrink-0 border-r border-neutral-200 dark:border-neutral-700 p-4">
+      <div className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col">
         <h1 className="text-lg font-bold mb-4">Study</h1>
-        <nav className="space-y-1">
+        <nav className="space-y-1 mb-4">
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -1043,16 +1098,26 @@ export default function StudyPage() {
             </button>
           ))}
         </nav>
+
+        {/* Group selector in sidebar */}
+        {!loading && (
+          <GroupTree
+            groups={groups}
+            cards={cards}
+            selectedId={selectedGroupId}
+            onSelect={setSelectedGroupId}
+          />
+        )}
       </div>
 
       {/* Main panel */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-6 flex flex-col">
         {loading ? (
           <p className="text-neutral-500">Loading...</p>
         ) : tab === "review" ? (
-          <ReviewTab cards={cards} groups={groups} onUpdate={fetchData} />
+          <ReviewTab cards={cards} groups={groups} selectedGroupId={selectedGroupId} onUpdate={fetchData} />
         ) : tab === "cards" ? (
-          <CardsTab cards={cards} groups={groups} onUpdate={fetchData} />
+          <CardsTab cards={cards} groups={groups} selectedGroupId={selectedGroupId} onUpdate={fetchData} />
         ) : (
           <SettingsTab groups={groups} onUpdate={fetchData} />
         )}

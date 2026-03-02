@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
+    "name": "Category Theory",
+    "parent_id": null,
+    "settings": {
+      "dailyNewLimit": 20,
+      "dailyReviewLimit": 100
+    },
+    "created_at": "2026-03-02T11:58:47.519Z"
+  }
+]
