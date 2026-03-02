@@ -8,10 +8,10 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { front, back } = body;
+  const { front, back, group_id } = body;
   if (!front?.trim() || !back?.trim()) {
     return NextResponse.json({ error: "front and back are required" }, { status: 400 });
   }
-  const card = await createCard(front.trim(), back.trim());
+  const card = await createCard(front.trim(), back.trim(), group_id ?? null);
   return NextResponse.json(card, { status: 201 });
 }
