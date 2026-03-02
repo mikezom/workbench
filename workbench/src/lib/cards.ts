@@ -15,8 +15,12 @@ export interface StudyCard {
 }
 
 async function readCards(): Promise<StudyCard[]> {
-  const raw = await fs.readFile(DATA_PATH, "utf-8");
-  return JSON.parse(raw);
+  try {
+    const raw = await fs.readFile(DATA_PATH, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
 }
 
 async function writeCards(cards: StudyCard[]): Promise<void> {

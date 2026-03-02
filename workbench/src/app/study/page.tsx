@@ -95,11 +95,12 @@ function ReviewTab({
 
   const handleRate = async (rating: number) => {
     setSubmitting(true);
-    await fetch(`/api/cards/${card.id}/review`, {
+    const res = await fetch(`/api/cards/${card.id}/review`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rating }),
     });
+    if (!res.ok) { setSubmitting(false); return; }
     setRevealed(false);
     setSubmitting(false);
     if (currentIdx + 1 < dueCards.length) {
