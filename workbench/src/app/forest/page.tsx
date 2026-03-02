@@ -26,10 +26,10 @@ export default function ForestPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-xs text-neutral-500 shrink-0">
-        <span className="font-medium text-neutral-700 dark:text-neutral-300">Forest</span>
-        <span className="text-neutral-300 dark:text-neutral-600">/</span>
+    <div className="flex flex-col h-screen bg-white">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-neutral-200 bg-white text-xs text-neutral-500 shrink-0">
+        <span className="font-medium text-neutral-700">Forest</span>
+        <span className="text-neutral-300">/</span>
         <span className="font-mono truncate">{currentPath}</span>
       </div>
       <iframe
