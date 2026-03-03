@@ -794,6 +794,106 @@ export function createCardsBulk(
 }
 
 // ---------------------------------------------------------------------------
+// Session query
+// ---------------------------------------------------------------------------
+
+export interface SessionResponse {
+  cards: CardJson[];
+  nextRollover: string;
+  budgetInfo: {
+    newUsed: number;
+    newLimit: number;
+    reviewUsed: number;
+    reviewLimit: number;
+    newAvailable: number;
+    reviewAvailable: number;
+  };
+}
+
+export function getSessionCards(groupId: string | null): SessionResponse {
+  const db = getDb();
+
+  // 1. Determine rollover_hour, daily_new_limit, daily_review_limit
+  let rolloverHour = 5;
+  let dailyNewLimit = 20;
+  let dailyReviewLimit = 100;
+
+  if (groupId) {
+    const group = db
+      .prepare(
+        "SELECT rollover_hour, daily_new_limit, daily_review_limit FROM groups WHERE id = ?"
+      )
+      .get(groupId) as
+      | { rollover_hour: number; daily_new_limit: number; daily_review_limit: number }
+      | undefined;
+
+    if (group) {
+      rolloverHour = group.rollover_hour;
+      dailyNewLimit = group.daily_new_limit;
+      dailyReviewLimit = group.daily_review_limit;
+    }
+  }
+
+  // 2. Get rollover boundaries
+  const { next } = getRolloverBoundary(rolloverHour);
+  const now = new Date().toISOString();
+
+  // 3. Get due cards
+  let dueCards: DbCard[];
+  if (groupId) {
+    const descendantIds = getDescendantIds(groupId);
+    const placeholders = descendantIds.map(() => "?").join(", ");
+    dueCards = db
+      .prepare(
+        `SELECT * FROM cards
+         WHERE group_id IN (${placeholders}) AND scheduled_at <= ?
+         ORDER BY scheduled_at ASC`
+      )
+      .all(...descendantIds, now) as DbCard[];
+  } else {
+    dueCards = db
+      .prepare(
+        `SELECT * FROM cards
+         WHERE scheduled_at <= ?
+         ORDER BY scheduled_at ASC`
+      )
+      .all(now) as DbCard[];
+  }
+
+  // 4. Separate into new and review
+  const newCards = dueCards.filter((c) => c.fsrs_state === 0);
+  const reviewCards = dueCards.filter((c) => c.fsrs_state > 0);
+
+  // 5. Get today's studied counts
+  let studiedToday = { new: 0, review: 0 };
+  if (groupId) {
+    studiedToday = getGroupStudiedToday(groupId);
+  }
+
+  // 6. Apply limits
+  const newRemaining = Math.max(0, dailyNewLimit - studiedToday.new);
+  const reviewRemaining = Math.max(0, dailyReviewLimit - studiedToday.review);
+
+  // 7. Slice
+  const limitedNew = newCards.slice(0, newRemaining);
+  const limitedReview = reviewCards.slice(0, reviewRemaining);
+
+  // 8. Return
+  return {
+    cards: [...limitedNew, ...limitedReview].map(toCardJson),
+    nextRollover: next.toISOString(),
+    budgetInfo: {
+      newUsed: studiedToday.new,
+      newLimit: dailyNewLimit,
+      reviewUsed: studiedToday.review,
+      reviewLimit: dailyReviewLimit,
+      newAvailable: limitedNew.length,
+      reviewAvailable: limitedReview.length,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Study log helpers
 // ---------------------------------------------------------------------------
 
