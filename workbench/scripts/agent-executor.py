@@ -612,3 +612,62 @@ def run_build(
     raise RuntimeError(
         f"Build failed after {MAX_BUILD_FIX_ATTEMPTS} attempts"
     )
+
+
+# ---------------------------------------------------------------------------
+# Main orchestrator
+# ---------------------------------------------------------------------------
+
+
+def execute_task(conn: sqlite3.Connection, task: dict) -> None:
+    """Execute a full task lifecycle: worktree → Claude → rebase → build.
+
+    On success: returns normally (caller sets status to 'waiting_for_review').
+    On cancel: cleans up worktree, raises CancelledError.
+    On failure: preserves worktree for debugging, raises the original exception.
+    """
+    task_id = task["id"]
+    prompt = task["prompt"]
+
+    worktree_path = None
+    branch_name = None
+
+    try:
+        # Step 1: Create worktree
+        append_output(conn, task_id, "system", "Creating git worktree...")
+        worktree_path, branch_name = create_worktree(REPO_ROOT, task_id, task["title"])
+
+        # Update task record with worktree info
+        conn.execute(
+            "UPDATE agent_tasks SET branch_name = ?, worktree_path = ? WHERE id = ?",
+            (branch_name, worktree_path, task_id),
+        )
+        conn.commit()
+        append_output(conn, task_id, "system",
+            f"Worktree: {worktree_path}  Branch: {branch_name}")
+
+        # Step 2: Invoke Claude Code
+        invoke_claude(worktree_path, prompt, conn, task_id)
+
+        # Step 3: Rebase onto main
+        rebase_onto_main(REPO_ROOT, worktree_path, branch_name, conn, task_id)
+
+        # Step 4: Run build validation
+        run_build(worktree_path, conn, task_id)
+
+        append_output(conn, task_id, "system",
+            "Execution complete — task ready for review")
+        log.info("Task %d execution complete", task_id)
+
+    except CancelledError:
+        append_output(conn, task_id, "system", "Task cancelled — cleaning up")
+        if worktree_path and branch_name:
+            cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+        raise
+
+    except Exception:
+        # Preserve worktree on failure for debugging
+        if worktree_path:
+            append_output(conn, task_id, "system",
+                f"Task failed — worktree preserved at {worktree_path} for debugging")
+        raise
