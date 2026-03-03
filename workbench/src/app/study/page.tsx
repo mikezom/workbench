@@ -183,12 +183,10 @@ function GroupTree({
 
 function ReviewTab({
   cards,
-  groups,
   selectedGroupId,
   onUpdate,
 }: {
   cards: StudyCard[];
-  groups: Group[];
   selectedGroupId: string | null;
   onUpdate: () => Promise<void>;
 }) {
@@ -1172,7 +1170,7 @@ export default function StudyPage() {
         {loading ? (
           <p className="text-neutral-500">Loading...</p>
         ) : tab === "review" ? (
-          <ReviewTab cards={cards} groups={groups} selectedGroupId={selectedGroupId} onUpdate={fetchData} />
+          <ReviewTab cards={cards} selectedGroupId={selectedGroupId} onUpdate={fetchData} />
         ) : tab === "cards" ? (
           <CardsTab cards={cards} groups={groups} selectedGroupId={selectedGroupId} onUpdate={fetchData} />
         ) : (
