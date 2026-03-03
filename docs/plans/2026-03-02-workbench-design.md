@@ -9,7 +9,7 @@ Agent (TODO), Forest (forester docs), Study (FSRS flashcards), and Crawl (web re
 
 - **Framework**: Next.js (App Router)
 - **Storage**: JSON files in `data/` directory
-- **Runtime**: Node.js 18
+- **Runtime**: Node.js 20
 - **Styling**: Tailwind CSS
 
 ## Sections

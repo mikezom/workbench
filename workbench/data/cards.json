@@ -9,18 +9,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-05T13:01:54.343Z",
+      "stability": 2.3065,
+      "difficulty": 2.1043314,
       "elapsed_days": 0,
-      "scheduled_days": 0,
-      "reps": 0,
+      "scheduled_days": 3,
+      "reps": 3,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 2,
+      "last_review": "2026-03-02T13:01:54.343Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T13:01:54.345Z"
   },
   {
     "id": "a51745ec-dcfe-4a99-93c3-39aa5b5b1585",
@@ -32,18 +33,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-05T13:01:56.489Z",
+      "stability": 1.33589976,
+      "difficulty": 3.4509278,
       "elapsed_days": 0,
-      "scheduled_days": 0,
-      "reps": 0,
+      "scheduled_days": 3,
+      "reps": 3,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 2,
+      "last_review": "2026-03-02T13:01:56.489Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T13:01:56.490Z"
   },
   {
     "id": "57bca0c0-3cf3-423f-830c-cb090ee6a715",
@@ -55,18 +57,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-03T13:03:01.987Z",
+      "stability": 1.42469376,
+      "difficulty": 6.50909534,
       "elapsed_days": 0,
-      "scheduled_days": 0,
-      "reps": 0,
+      "scheduled_days": 1,
+      "reps": 3,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 2,
+      "last_review": "2026-03-02T13:03:01.987Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T13:03:01.988Z"
   },
   {
     "id": "01a178f8-2256-4e26-a38f-cb3dfebdcfa1",
@@ -78,18 +81,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-03T13:15:06.174Z",
+      "stability": 0.8281648,
+      "difficulty": 7.38233661,
       "elapsed_days": 0,
-      "scheduled_days": 0,
-      "reps": 0,
+      "scheduled_days": 1,
+      "reps": 3,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 2,
+      "last_review": "2026-03-02T13:15:06.174Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T13:15:06.174Z"
   },
   {
     "id": "4232d6da-8136-4975-9433-b8f25d98e52a",
@@ -101,18 +105,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-10T12:13:51.475Z",
+      "stability": 8.2956,
+      "difficulty": 1,
       "elapsed_days": 0,
-      "scheduled_days": 0,
-      "reps": 0,
+      "scheduled_days": 8,
+      "reps": 1,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 2,
+      "last_review": "2026-03-02T12:13:51.475Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T12:13:51.477Z"
   },
   {
     "id": "d27464f0-86ca-4800-b6f5-0c7e716be554",
@@ -124,18 +129,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-03T17:11:56.388Z",
+      "stability": 0.91305015,
+      "difficulty": 7.65790166,
       "elapsed_days": 0,
-      "scheduled_days": 0,
-      "reps": 0,
+      "scheduled_days": 1,
+      "reps": 4,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 2,
+      "last_review": "2026-03-02T17:11:56.388Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T17:11:56.390Z"
   },
   {
     "id": "3d029229-f548-47af-af83-0b6a218bfe02",
@@ -147,18 +153,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-03T17:11:58.996Z",
+      "stability": 0.91305015,
+      "difficulty": 7.65790166,
       "elapsed_days": 0,
-      "scheduled_days": 0,
-      "reps": 0,
+      "scheduled_days": 1,
+      "reps": 4,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 2,
+      "last_review": "2026-03-02T17:11:58.996Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T17:11:58.996Z"
   },
   {
     "id": "d5611e8a-390d-4514-b227-bb47c8ee13cb",
@@ -170,18 +177,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
-      "elapsed_days": 0,
+      "due": "2026-03-03T01:43:41.470Z",
+      "stability": 0.17934132,
+      "difficulty": 9.41184867,
+      "elapsed_days": 1,
       "scheduled_days": 0,
-      "reps": 0,
+      "reps": 4,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 1,
+      "last_review": "2026-03-03T01:42:41.470Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-03T01:42:41.472Z"
   },
   {
     "id": "43b5776d-b7f6-4aed-99d2-dc988564c8c2",
@@ -193,18 +201,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-02T13:21:12.079Z",
+      "stability": 0.48140657,
+      "difficulty": 8.25557787,
       "elapsed_days": 0,
       "scheduled_days": 0,
-      "reps": 0,
+      "reps": 3,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 1,
+      "last_review": "2026-03-02T13:15:12.079Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T13:15:12.080Z"
   },
   {
     "id": "2227e117-490e-4423-8ea6-e1ca6a8fd652",
@@ -216,17 +225,18 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T11:58:47.519Z",
-      "stability": 0,
-      "difficulty": 0,
+      "due": "2026-03-02T13:21:13.285Z",
+      "stability": 0.05995496,
+      "difficulty": 9.19279765,
       "elapsed_days": 0,
       "scheduled_days": 0,
-      "reps": 0,
+      "reps": 3,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 0
+      "state": 1,
+      "last_review": "2026-03-02T13:15:13.285Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T11:58:47.519Z"
+    "updated_at": "2026-03-02T13:15:13.286Z"
   }
 ]

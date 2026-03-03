@@ -29,3 +29,30 @@ npm-debug.log*
 
 # Backups from MCP tools
 *.backup
+
+# Hidden/server files (home directory)
+.bash_history
+.bash_logout
+.bashrc
+.cache/
+.claude.json
+.claude/
+.config/
+.dotnet/
+.gitconfig
+.lesshst
+.npm/
+.npmrc
+.nvm/
+.pip/
+.profile
+.pydistutils.cfg
+.ssh/
+.sudo_as_admin_successful
+.vscode-server/
+.wget-hsts
+.zai/
+
+# Misc
+*.apkg
+note.md

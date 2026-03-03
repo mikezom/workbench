@@ -38,6 +38,4 @@ When completing any task, follow this branch-based workflow:
    git branch -d task/<short-description>
    ```
 
-8. **Log detailed progress** — After all tasks in the session are complete, append a session entry to `DETAILED_PROGRESS.md` with:
-   - Date and phase/topic heading
-   - For each task: commit ID, problem description, and list of files changed with what was done in each
+8. **Reflect and log progress** — After all tasks in the session are complete, invoke the `reflection-after-work` skill. This handles logging to DETAILED_PROGRESS.md, updating PROGRESS.md, and recording any mistakes in REFLECTION.md. Never skip this step.
