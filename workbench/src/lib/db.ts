@@ -219,3 +219,151 @@ export async function migrateFromJson(): Promise<MigrationResult> {
 
   return { migrated: true, groups: groups.length, cards: cards.length };
 }
+
+// ---------------------------------------------------------------------------
+// Group types
+// ---------------------------------------------------------------------------
+
+export interface DbGroup {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  daily_new_limit: number;
+  daily_review_limit: number;
+  rollover_hour: number;
+  created_at: string;
+}
+
+export interface GroupJson {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  settings: { dailyNewLimit: number; dailyReviewLimit: number; rolloverHour: number };
+  created_at: string;
+}
+
+function toGroupJson(row: DbGroup): GroupJson {
+  return {
+    id: row.id,
+    name: row.name,
+    parent_id: row.parent_id,
+    settings: {
+      dailyNewLimit: row.daily_new_limit,
+      dailyReviewLimit: row.daily_review_limit,
+      rolloverHour: row.rollover_hour,
+    },
+    created_at: row.created_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Group queries
+// ---------------------------------------------------------------------------
+
+export function getAllGroups(): GroupJson[] {
+  const db = getDb();
+  const rows = db.prepare("SELECT * FROM groups ORDER BY created_at").all() as DbGroup[];
+  return rows.map(toGroupJson);
+}
+
+export function getGroup(id: string): GroupJson | undefined {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM groups WHERE id = ?").get(id) as DbGroup | undefined;
+  return row ? toGroupJson(row) : undefined;
+}
+
+export function createGroup(
+  name: string,
+  parentId: string | null = null,
+  settings?: { dailyNewLimit?: number; dailyReviewLimit?: number; rolloverHour?: number }
+): GroupJson {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  db.prepare(
+    `INSERT INTO groups (id, name, parent_id, daily_new_limit, daily_review_limit, rollover_hour, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    name,
+    parentId,
+    settings?.dailyNewLimit ?? 20,
+    settings?.dailyReviewLimit ?? 100,
+    settings?.rolloverHour ?? 5,
+    now
+  );
+
+  return getGroup(id)!;
+}
+
+export function updateGroup(
+  id: string,
+  updates: { name?: string; settings?: { dailyNewLimit?: number; dailyReviewLimit?: number; rolloverHour?: number } }
+): GroupJson | null {
+  const db = getDb();
+  const existing = db.prepare("SELECT * FROM groups WHERE id = ?").get(id) as DbGroup | undefined;
+  if (!existing) return null;
+
+  const newName = updates.name ?? existing.name;
+  const newDailyNew = updates.settings?.dailyNewLimit ?? existing.daily_new_limit;
+  const newDailyReview = updates.settings?.dailyReviewLimit ?? existing.daily_review_limit;
+  const newRollover = updates.settings?.rolloverHour ?? existing.rollover_hour;
+
+  db.prepare(
+    `UPDATE groups SET name = ?, daily_new_limit = ?, daily_review_limit = ?, rollover_hour = ? WHERE id = ?`
+  ).run(newName, newDailyNew, newDailyReview, newRollover, id);
+
+  return getGroup(id)!;
+}
+
+export function getDescendantIds(id: string): string[] {
+  const db = getDb();
+  const result: string[] = [id];
+  const queue = [id];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const children = db
+      .prepare("SELECT id FROM groups WHERE parent_id = ?")
+      .all(current) as { id: string }[];
+    for (const child of children) {
+      result.push(child.id);
+      queue.push(child.id);
+    }
+  }
+
+  return result;
+}
+
+export function deleteGroupCascade(id: string): { deleted: boolean; cardsDeleted: number } {
+  const db = getDb();
+
+  const existing = db.prepare("SELECT id FROM groups WHERE id = ?").get(id) as { id: string } | undefined;
+  if (!existing) return { deleted: false, cardsDeleted: 0 };
+
+  const ids = getDescendantIds(id);
+  const placeholders = ids.map(() => "?").join(", ");
+
+  const result = db.transaction(() => {
+    // Count cards that will be deleted
+    const countResult = db
+      .prepare(`SELECT COUNT(*) as count FROM cards WHERE group_id IN (${placeholders})`)
+      .get(...ids) as { count: number };
+    const cardsDeleted = countResult.count;
+
+    // Delete study_log entries for these groups
+    db.prepare(`DELETE FROM study_log WHERE group_id IN (${placeholders})`).run(...ids);
+
+    // Delete cards in these groups
+    db.prepare(`DELETE FROM cards WHERE group_id IN (${placeholders})`).run(...ids);
+
+    // Delete the groups themselves (children first via reversed order is not needed since
+    // parent_id has ON DELETE SET NULL, but we can delete all at once)
+    db.prepare(`DELETE FROM groups WHERE id IN (${placeholders})`).run(...ids);
+
+    return cardsDeleted;
+  })();
+
+  return { deleted: true, cardsDeleted: result };
+}
