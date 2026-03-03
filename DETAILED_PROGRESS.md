@@ -395,3 +395,38 @@ screen before those cards reappeared. This was disruptive to the review flow.
   scheduled before `nextRollover` are now immediately appended to the end of
   `immediateQueue` after review. Progress info simplified from
   "X ready | Y delayed" to "X remaining".
+
+---
+
+## 2026-03-03 — Git Housekeeping & Push
+
+### Task 1: Fix .gitignore patterns and commit project docs
+
+**Commit:** `c2fb702`
+
+**Problem:** Several `.gitignore` patterns were incorrect — SQLite DB entries
+used `data/workbench.db` (anchored to repo root) but actual files were at
+`workbench/data/workbench.db`. The `.next/` directory at the repo root also
+wasn't covered. Additionally, PROGRESS.md, REFLECTION.md, and
+DETAILED_PROGRESS.md had unstaged changes, and 15 commits had never been pushed
+to origin.
+
+**Changes:**
+- `.gitignore` — Changed SQLite patterns from `data/workbench.db` to
+  `**/workbench.db` (and similarly for `-wal`, `-shm`). Changed `data/*.bak`
+  to `*.json.bak`. Added root-level `.next/` pattern alongside existing
+  `workbench/.next/`.
+- `DETAILED_PROGRESS.md` — Committed accumulated session logs.
+- `PROGRESS.md` — Committed accumulated phase status updates.
+- `REFLECTION.md` — Committed accumulated reflection entries.
+
+### Task 2: Push to remote and clean up
+
+**Problem:** 16 commits were local-only. The `task/study-queue-sqlite` branch
+was stale (already merged). The remote used HTTPS which lacked credentials.
+
+**Changes:**
+- Deleted stale branch `task/study-queue-sqlite`.
+- Switched remote URL from HTTPS to SSH (`git@github.com:mikezom/workbench.git`).
+- Added GitHub host key to `~/.ssh/known_hosts` via `ssh-keyscan`.
+- Pushed all 16 commits to `origin/main`.

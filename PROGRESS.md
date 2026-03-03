@@ -103,5 +103,6 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 | 3c - Study UI & Card Model | Complete | Sidebar groups, centered cards, title/def/example model; UI tuning `1ae7b2e` |
 | 3d - Study Queue + SQLite | Complete | Queue system, intra-day re-queuing, SQLite migration; `3bf802a` |
 | 3e - Study Review UX Fix | Complete | Immediate requeue replaces delayed queue + countdown; `d71a95a` |
+| Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 4 - Crawl | Not started | |
 | 5 - Agent | Not started | Placeholder only |
