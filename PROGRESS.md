@@ -22,6 +22,14 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [x] Create forest landing page that loads the forester site
 - [x] Verify forester JS/CSS/KaTeX rendering works
 
+### Phase 2a: Forest macOS Migration
+- [x] Clone forester repo and initialize theme submodule
+- [x] Install opam, forester 5.0, and watchexec on macOS
+- [x] Fix symlink to `output/forest/` and update Next.js rewrites for tree page navigation
+- [x] Set up fonts (Inria Sans, Source Han Sans/Serif, KaTeX)
+- [x] Fix external links to open in new browser window (`target="_blank"`)
+- [x] Create `start-workbench.sh` startup script (dev server + watchexec)
+
 ### Phase 3: Study Section (FSRS)
 - [x] Install and integrate `ts-fsrs` library
 - [x] Build JSON file storage layer for cards (`data/cards.json`)
@@ -70,6 +78,7 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 | 0 - Setup | Complete | Commit `da39b42` |
 | 1 - Layout | Complete | Commit `450adeb` |
 | 2 - Forest | Complete | Commit `450adeb` |
+| 2a - Forest macOS Migration | Complete | Forester repo, toolchain, fonts, link fixes; uncommitted |
 | 3 - Study | Complete | Commit `7eb1f33` |
 | 3a - Study Enhancements | Complete | Groups, settings, Anki import |
 | 3b - Study UI & Fixes | Complete | Sidebar layout, cascading delete, import fix |

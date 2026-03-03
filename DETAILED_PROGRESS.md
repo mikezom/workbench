@@ -167,3 +167,75 @@ interaction flow.
   "Click to reveal answer" hint text. Added hover effect (`cursor-pointer`,
   `hover:border-neutral-400`) when card is clickable. Added `e.stopPropagation()`
   to rating buttons to prevent card click interference.
+
+---
+
+## 2026-03-03 — Forest Section: macOS Migration & Setup
+
+### Task 1: Set up forester repo and toolchain on macOS
+
+**Commit:** uncommitted
+
+**Problem:** Migrating from Tencent Cloud Ubuntu server to macOS. Needed
+forester CLI, theme, and the full build pipeline working locally.
+
+**Changes:**
+- Cloned `https://github.com/mikezom/forester` to `/Users/ccnas/DEVELOPMENT/forester-repo/`
+- Initialized theme git submodule (switched URL from SSH to HTTPS for host key compatibility)
+- Installed theme npm dependencies (`cd theme && npm install`)
+- Installed `opam` via Homebrew, initialized opam, installed `forester` 5.0 via opam
+- Installed `watchexec` via Homebrew for file watching
+- Created `trees/` directory and ran initial `forester build`
+- `forester-repo/forest.toml` — Updated URL to `http://localhost:5090/forest/`
+
+### Task 2: Connect forester output to workbench
+
+**Commit:** uncommitted
+
+**Problem:** The workbench forest section had no static files to serve. The
+original `public/forest/ → output/` symlink was wrong — tree pages are in
+`output/forest/`, not `output/`.
+
+**Changes:**
+- Created `workbench/public/` directory
+- Symlinked `workbench/public/forest/ → forester-repo/output/forest/`
+  (corrected from `output/` to `output/forest/` after discovering forester's
+  output structure puts tree pages and theme assets in the `forest/` subdirectory)
+- `workbench/next.config.mjs` — Replaced stale root-level afterFiles rewrites
+  (designed for URL-at-root scheme) with two fallback rewrites that serve
+  `index.xml` for `/forest/:tree/` directory paths. This fixes local link
+  navigation (Next.js doesn't auto-serve `index.xml` as directory index).
+
+### Task 3: Fix fonts
+
+**Commit:** uncommitted
+
+**Problem:** Font files (Inria Sans, Source Han Sans/Serif, KaTeX) were missing
+from the theme, causing 404s on every page load.
+
+**Changes:**
+- Copied KaTeX fonts from `theme/node_modules/katex/dist/fonts/` to `theme/fonts/`
+- User manually placed Inria Sans and Source Han Sans/Serif woff2 files in `theme/fonts/`
+- Rebuilt forester so fonts propagate to `output/forest/fonts/`
+
+### Task 4: Fix external links opening in iframe
+
+**Commit:** uncommitted
+
+**Problem:** Clicking external links (e.g., GitHub URLs) navigated within the
+iframe instead of opening a new browser window.
+
+**Changes:**
+- `forester-repo/theme/links.xsl` — Added `target="_blank" rel="noopener noreferrer"`
+  to external link template (for `type="external"` and non-local links with `display-uri`)
+- `forester-repo/theme/metadata.xsl` — Added `target="_blank" rel="noopener noreferrer"`
+  to DOI, external, slides, and video meta link templates
+
+### Task 5: Create startup script
+
+**Commit:** uncommitted
+
+**Changes:**
+- `/Users/ccnas/DEVELOPMENT/start-workbench.sh` — New script that starts
+  `npm run dev`, runs initial `forester build`, and launches `watchexec` to
+  watch `trees/` and `forest.toml` for changes. Handles cleanup on Ctrl+C.
