@@ -214,6 +214,24 @@ def cleanup_worktree(
         )
 
 
+def inject_claude_md(worktree_path: str) -> None:
+    """Copy the working agent CLAUDE.md into the worktree root.
+
+    Claude Code auto-discovers CLAUDE.md files in the working directory.
+    The source file lives at workbench/data/agent-working-claude.md in the
+    worktree (since the worktree is a checkout of the repo).  We copy it
+    to the worktree root so Claude Code finds it.
+    """
+    src = os.path.join(worktree_path, "workbench", "data", "agent-working-claude.md")
+    dst = os.path.join(worktree_path, "CLAUDE.md")
+
+    if os.path.isfile(src):
+        shutil.copy2(src, dst)
+        log.info("Injected CLAUDE.md into worktree from %s", src)
+    else:
+        log.warning("agent-working-claude.md not found at %s — skipping CLAUDE.md injection", src)
+
+
 # ---------------------------------------------------------------------------
 # Claude Code CLI invocation
 # ---------------------------------------------------------------------------
@@ -648,6 +666,9 @@ def execute_task(conn: sqlite3.Connection, task: dict) -> None:
         conn.commit()
         append_output(conn, task_id, "system",
             f"Worktree: {worktree_path}  Branch: {branch_name}")
+
+        # Step 1b: Inject working agent CLAUDE.md
+        inject_claude_md(worktree_path)
 
         # Step 2: Invoke Claude Code
         invoke_claude(worktree_path, prompt, conn, task_id)
