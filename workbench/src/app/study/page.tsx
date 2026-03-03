@@ -45,11 +45,6 @@ interface Group {
   created_at: string;
 }
 
-interface DayGroupLog {
-  new: number;
-  review: number;
-}
-
 type Tab = "review" | "cards" | "settings";
 
 /* ------------------------------------------------------------------ */
