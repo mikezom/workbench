@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllCards, createCard } from "@/lib/cards";
+import { getAllCards, createCard } from "@/lib/db";
 
-export async function GET() {
-  const cards = await getAllCards();
+export function GET() {
+  const cards = getAllCards();
   return NextResponse.json(cards);
 }
 
@@ -13,8 +13,18 @@ export async function POST(req: NextRequest) {
   const cardFront = front?.trim() || title?.trim() || "";
   const cardBack = back?.trim() || definition?.trim() || "";
   if (!cardFront || !cardBack) {
-    return NextResponse.json({ error: "front/back or title/definition are required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "front/back or title/definition are required" },
+      { status: 400 }
+    );
   }
-  const card = await createCard(cardFront, cardBack, group_id ?? null, { title, definition, example });
+  const card = createCard({
+    front: cardFront,
+    back: cardBack,
+    group_id: group_id ?? null,
+    title,
+    definition,
+    example,
+  });
   return NextResponse.json(card, { status: 201 });
 }

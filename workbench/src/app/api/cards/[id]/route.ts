@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateCard, deleteCard } from "@/lib/cards";
+import { updateCard, deleteCard } from "@/lib/db";
 
 export async function PUT(
   req: NextRequest,
@@ -7,18 +7,25 @@ export async function PUT(
 ) {
   const body = await req.json();
   const { front, back, group_id, title, definition, example } = body;
-  const card = await updateCard(params.id, { front, back, group_id, title, definition, example });
+  const card = updateCard(params.id, {
+    front,
+    back,
+    group_id,
+    title,
+    definition,
+    example,
+  });
   if (!card) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
   return NextResponse.json(card);
 }
 
-export async function DELETE(
+export function DELETE(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const deleted = await deleteCard(params.id);
+  const deleted = deleteCard(params.id);
   if (!deleted) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }

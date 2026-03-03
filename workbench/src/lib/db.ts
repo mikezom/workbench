@@ -367,3 +367,425 @@ export function deleteGroupCascade(id: string): { deleted: boolean; cardsDeleted
 
   return { deleted: true, cardsDeleted: result };
 }
+
+// ---------------------------------------------------------------------------
+// Card types
+// ---------------------------------------------------------------------------
+
+export interface DbCard {
+  id: string;
+  front: string;
+  back: string;
+  title: string | null;
+  definition: string | null;
+  example: string | null;
+  source: string | null;
+  group_id: string | null;
+  scheduled_at: string;
+  fsrs_state: number;
+  fsrs_stability: number;
+  fsrs_difficulty: number;
+  fsrs_elapsed_days: number;
+  fsrs_scheduled_days: number;
+  fsrs_reps: number;
+  fsrs_lapses: number;
+  fsrs_last_review: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CardJson {
+  id: string;
+  front: string;
+  back: string;
+  title: string | null;
+  definition: string | null;
+  example: string | null;
+  source: string | null;
+  group_id: string | null;
+  scheduled_at: string;
+  fsrs: {
+    due: string;
+    state: number;
+    stability: number;
+    difficulty: number;
+    elapsed_days: number;
+    scheduled_days: number;
+    reps: number;
+    lapses: number;
+    last_review: string | null;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+function toCardJson(row: DbCard): CardJson {
+  return {
+    id: row.id,
+    front: row.front,
+    back: row.back,
+    title: row.title,
+    definition: row.definition,
+    example: row.example,
+    source: row.source,
+    group_id: row.group_id,
+    scheduled_at: row.scheduled_at,
+    fsrs: {
+      due: row.scheduled_at,
+      state: row.fsrs_state,
+      stability: row.fsrs_stability,
+      difficulty: row.fsrs_difficulty,
+      elapsed_days: row.fsrs_elapsed_days,
+      scheduled_days: row.fsrs_scheduled_days,
+      reps: row.fsrs_reps,
+      lapses: row.fsrs_lapses,
+      last_review: row.fsrs_last_review,
+    },
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Rollover boundary helper
+// ---------------------------------------------------------------------------
+
+export function getRolloverBoundary(
+  rolloverHour: number,
+  now?: Date
+): { current: Date; next: Date } {
+  const n = now ?? new Date();
+
+  // Build today's rollover: same calendar date, rolloverHour:00:00.000 UTC
+  const todayRollover = new Date(
+    Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), rolloverHour)
+  );
+
+  let current: Date;
+  if (n < todayRollover) {
+    // Before today's rollover -> current = yesterday's rollover
+    current = new Date(todayRollover.getTime() - 24 * 60 * 60 * 1000);
+  } else {
+    current = todayRollover;
+  }
+
+  const next = new Date(current.getTime() + 24 * 60 * 60 * 1000);
+  return { current, next };
+}
+
+// ---------------------------------------------------------------------------
+// New card distribution (private)
+// ---------------------------------------------------------------------------
+
+function computeNewCardSlot(
+  db: Database.Database,
+  groupId: string,
+  now: Date
+): string {
+  const group = db
+    .prepare("SELECT rollover_hour, daily_new_limit FROM groups WHERE id = ?")
+    .get(groupId) as { rollover_hour: number; daily_new_limit: number } | undefined;
+
+  if (!group) {
+    return now.toISOString();
+  }
+
+  const { current: todayRollover } = getRolloverBoundary(group.rollover_hour, now);
+
+  const countStmt = db.prepare(
+    `SELECT COUNT(*) as count FROM cards
+     WHERE group_id = ? AND fsrs_state = 0
+       AND scheduled_at >= ? AND scheduled_at < ?`
+  );
+
+  for (let day = 0; day <= 365; day++) {
+    const slotStart = new Date(todayRollover.getTime() + day * 24 * 60 * 60 * 1000);
+    const slotEnd = new Date(slotStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const row = countStmt.get(
+      groupId,
+      slotStart.toISOString(),
+      slotEnd.toISOString()
+    ) as { count: number };
+
+    if (row.count < group.daily_new_limit) {
+      return slotStart.toISOString();
+    }
+  }
+
+  // Fallback: 365 days from today's rollover
+  return new Date(
+    todayRollover.getTime() + 365 * 24 * 60 * 60 * 1000
+  ).toISOString();
+}
+
+// ---------------------------------------------------------------------------
+// Card queries
+// ---------------------------------------------------------------------------
+
+export function getAllCards(): CardJson[] {
+  const db = getDb();
+  const rows = db.prepare("SELECT * FROM cards ORDER BY created_at").all() as DbCard[];
+  return rows.map(toCardJson);
+}
+
+export function getCard(id: string): CardJson | undefined {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM cards WHERE id = ?")
+    .get(id) as DbCard | undefined;
+  return row ? toCardJson(row) : undefined;
+}
+
+export function createCard(data: {
+  front: string;
+  back: string;
+  group_id?: string | null;
+  title?: string;
+  definition?: string;
+  example?: string;
+}): CardJson {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  const scheduledAt =
+    data.group_id ? computeNewCardSlot(db, data.group_id, now) : nowIso;
+
+  db.prepare(
+    `INSERT INTO cards (
+      id, front, back, title, definition, example, source, group_id,
+      scheduled_at, fsrs_state, fsrs_stability, fsrs_difficulty,
+      fsrs_elapsed_days, fsrs_scheduled_days, fsrs_reps, fsrs_lapses,
+      fsrs_last_review, created_at, updated_at
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, NULL, ?,
+      ?, 0, 0, 0,
+      0, 0, 0, 0,
+      NULL, ?, ?
+    )`
+  ).run(
+    id,
+    data.front,
+    data.back,
+    data.title ?? null,
+    data.definition ?? null,
+    data.example ?? null,
+    data.group_id ?? null,
+    scheduledAt,
+    nowIso,
+    nowIso
+  );
+
+  return getCard(id)!;
+}
+
+export function updateCard(
+  id: string,
+  updates: {
+    front?: string;
+    back?: string;
+    group_id?: string | null;
+    title?: string;
+    definition?: string;
+    example?: string;
+  }
+): CardJson | null {
+  const db = getDb();
+  const existing = db
+    .prepare("SELECT * FROM cards WHERE id = ?")
+    .get(id) as DbCard | undefined;
+  if (!existing) return null;
+
+  const sets: string[] = [];
+  const values: unknown[] = [];
+
+  if (updates.front !== undefined) {
+    sets.push("front = ?");
+    values.push(updates.front);
+  }
+  if (updates.back !== undefined) {
+    sets.push("back = ?");
+    values.push(updates.back);
+  }
+  if (updates.group_id !== undefined) {
+    sets.push("group_id = ?");
+    values.push(updates.group_id);
+  }
+  if (updates.title !== undefined) {
+    sets.push("title = ?");
+    values.push(updates.title);
+  }
+  if (updates.definition !== undefined) {
+    sets.push("definition = ?");
+    values.push(updates.definition);
+  }
+  if (updates.example !== undefined) {
+    sets.push("example = ?");
+    values.push(updates.example);
+  }
+
+  if (sets.length === 0) return toCardJson(existing);
+
+  sets.push("updated_at = ?");
+  values.push(new Date().toISOString());
+  values.push(id);
+
+  db.prepare(`UPDATE cards SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+
+  return getCard(id)!;
+}
+
+export function deleteCard(id: string): boolean {
+  const db = getDb();
+  const result = db.prepare("DELETE FROM cards WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Bulk create for Anki import
+// ---------------------------------------------------------------------------
+
+export function createCardsBulk(
+  cards: Array<{
+    front: string;
+    back: string;
+    group_id?: string | null;
+    title?: string;
+    definition?: string;
+    example?: string;
+  }>
+): CardJson[] {
+  const db = getDb();
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  // Pre-compute slot counters per group to avoid re-querying per card
+  const slotCounters = new Map<
+    string,
+    { rolloverHour: number; dailyNewLimit: number; countsPerDay: Map<string, number> }
+  >();
+
+  function getOrInitGroupSlots(groupId: string) {
+    let entry = slotCounters.get(groupId);
+    if (entry) return entry;
+
+    const group = db
+      .prepare("SELECT rollover_hour, daily_new_limit FROM groups WHERE id = ?")
+      .get(groupId) as { rollover_hour: number; daily_new_limit: number } | undefined;
+
+    if (!group) {
+      entry = { rolloverHour: 5, dailyNewLimit: 20, countsPerDay: new Map() };
+      slotCounters.set(groupId, entry);
+      return entry;
+    }
+
+    const { current: todayRollover } = getRolloverBoundary(group.rollover_hour, now);
+
+    // Pre-load existing new-card counts per day-slot for this group
+    const countsPerDay = new Map<string, number>();
+
+    const countStmt = db.prepare(
+      `SELECT COUNT(*) as count FROM cards
+       WHERE group_id = ? AND fsrs_state = 0
+         AND scheduled_at >= ? AND scheduled_at < ?`
+    );
+
+    // Pre-load counts for the first 366 day slots
+    for (let day = 0; day <= 365; day++) {
+      const slotStart = new Date(todayRollover.getTime() + day * 24 * 60 * 60 * 1000);
+      const slotEnd = new Date(slotStart.getTime() + 24 * 60 * 60 * 1000);
+      const row = countStmt.get(
+        groupId,
+        slotStart.toISOString(),
+        slotEnd.toISOString()
+      ) as { count: number };
+      if (row.count > 0) {
+        countsPerDay.set(slotStart.toISOString(), row.count);
+      }
+    }
+
+    entry = {
+      rolloverHour: group.rollover_hour,
+      dailyNewLimit: group.daily_new_limit,
+      countsPerDay,
+    };
+    slotCounters.set(groupId, entry);
+    return entry;
+  }
+
+  function findSlotForGroup(groupId: string): string {
+    const info = getOrInitGroupSlots(groupId);
+    const { current: todayRollover } = getRolloverBoundary(info.rolloverHour, now);
+
+    for (let day = 0; day <= 365; day++) {
+      const slotStart = new Date(todayRollover.getTime() + day * 24 * 60 * 60 * 1000);
+      const key = slotStart.toISOString();
+      const currentCount = info.countsPerDay.get(key) ?? 0;
+
+      if (currentCount < info.dailyNewLimit) {
+        info.countsPerDay.set(key, currentCount + 1);
+        return key;
+      }
+    }
+
+    // Fallback
+    return new Date(
+      getRolloverBoundary(info.rolloverHour, now).current.getTime() +
+        365 * 24 * 60 * 60 * 1000
+    ).toISOString();
+  }
+
+  const insertStmt = db.prepare(
+    `INSERT INTO cards (
+      id, front, back, title, definition, example, source, group_id,
+      scheduled_at, fsrs_state, fsrs_stability, fsrs_difficulty,
+      fsrs_elapsed_days, fsrs_scheduled_days, fsrs_reps, fsrs_lapses,
+      fsrs_last_review, created_at, updated_at
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, NULL, ?,
+      ?, 0, 0, 0,
+      0, 0, 0, 0,
+      NULL, ?, ?
+    )`
+  );
+
+  const createdIds: string[] = [];
+
+  const runInserts = db.transaction(() => {
+    for (const c of cards) {
+      const id = crypto.randomUUID();
+      const scheduledAt = c.group_id
+        ? findSlotForGroup(c.group_id)
+        : nowIso;
+
+      insertStmt.run(
+        id,
+        c.front,
+        c.back,
+        c.title ?? null,
+        c.definition ?? null,
+        c.example ?? null,
+        c.group_id ?? null,
+        scheduledAt,
+        nowIso,
+        nowIso
+      );
+
+      createdIds.push(id);
+    }
+  });
+
+  runInserts();
+
+  // Retrieve all created cards
+  if (createdIds.length === 0) return [];
+
+  const placeholders = createdIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(`SELECT * FROM cards WHERE id IN (${placeholders}) ORDER BY created_at`)
+    .all(...createdIds) as DbCard[];
+
+  return rows.map(toCardJson);
+}
