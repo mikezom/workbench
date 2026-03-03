@@ -383,3 +383,134 @@ def invoke_claude(
     except Exception:
         _kill_process(proc)
         raise
+
+
+# ---------------------------------------------------------------------------
+# Rebase onto main
+# ---------------------------------------------------------------------------
+
+
+def _is_rebase_in_progress(worktree_path: str) -> bool:
+    """Check whether a rebase is currently in progress in the worktree."""
+    result = _run_git(["status"], cwd=worktree_path)
+    return bool(re.search(r"rebase in progress", result.stdout, re.IGNORECASE))
+
+
+def rebase_onto_main(
+    repo_root: str,
+    worktree_path: str,
+    branch_name: str,
+    conn: sqlite3.Connection,
+    task_id: int,
+) -> None:
+    """Rebase the worktree branch onto main with iterative conflict resolution.
+
+    Fetches the latest refs, then attempts ``git rebase main``.  If conflicts
+    arise, invokes Claude up to :data:`MAX_CONFLICT_ATTEMPTS` times to resolve
+    them.  If all attempts are exhausted the rebase is aborted and a
+    :class:`RuntimeError` is raised.
+
+    Raises:
+        CancelledError: If the task is cancelled during conflict resolution.
+        RuntimeError: If conflict resolution fails after all attempts.
+    """
+    # Fetch latest refs
+    append_output(conn, task_id, "system", "Fetching latest refs from origin…")
+    _run_git(["fetch", "origin"], cwd=repo_root)
+
+    # Attempt rebase
+    append_output(conn, task_id, "system", f"Rebasing {branch_name} onto main…")
+    result = _run_git(["rebase", "main"], cwd=worktree_path)
+
+    if result.returncode == 0:
+        append_output(conn, task_id, "system", "Rebase completed cleanly.")
+        log.info("Rebase of %s onto main succeeded without conflicts", branch_name)
+        return
+
+    # Conflicts detected — enter resolution loop
+    log.warning(
+        "Rebase of %s onto main hit conflicts (rc=%d), entering resolution loop",
+        branch_name,
+        result.returncode,
+    )
+    append_output(
+        conn,
+        task_id,
+        "system",
+        f"Rebase conflicts detected. Attempting resolution (max {MAX_CONFLICT_ATTEMPTS} attempts)…",
+    )
+
+    for attempt in range(1, MAX_CONFLICT_ATTEMPTS + 1):
+        # Check cancellation
+        if check_cancelled(conn, task_id):
+            log.info("Task %d cancelled during rebase conflict resolution", task_id)
+            _run_git(["rebase", "--abort"], cwd=worktree_path)
+            raise CancelledError(f"Task {task_id} was cancelled")
+
+        # Gather context for Claude
+        status_result = _run_git(["status"], cwd=worktree_path)
+        diff_result = _run_git(["diff"], cwd=worktree_path)
+
+        diff_text = diff_result.stdout[:5000]
+        if len(diff_result.stdout) > 5000:
+            diff_text += "\n\n… (truncated)"
+
+        conflict_prompt = (
+            f"A `git rebase main` on branch `{branch_name}` has produced merge "
+            f"conflicts (attempt {attempt}/{MAX_CONFLICT_ATTEMPTS}).\n\n"
+            f"## git status\n```\n{status_result.stdout}\n```\n\n"
+            f"## git diff\n```\n{diff_text}\n```\n\n"
+            "Please resolve ALL conflicts in the listed files:\n"
+            "1. Edit each conflicted file to pick the correct resolution.\n"
+            "2. `git add` each resolved file.\n"
+            "3. Run `git rebase --continue` to proceed.\n\n"
+            "Do NOT run `git rebase --abort`."
+        )
+
+        append_output(
+            conn,
+            task_id,
+            "system",
+            f"Conflict resolution attempt {attempt}/{MAX_CONFLICT_ATTEMPTS}…",
+        )
+
+        try:
+            invoke_claude(worktree_path, conflict_prompt, conn, task_id)
+        except RuntimeError:
+            # Claude may exit non-zero even if it resolved the conflicts and
+            # ran `git rebase --continue` successfully.  Check the actual
+            # rebase state before giving up.
+            log.warning(
+                "invoke_claude raised RuntimeError during conflict resolution "
+                "attempt %d — checking if rebase was resolved anyway",
+                attempt,
+            )
+
+        # Check if the rebase is still in progress
+        if not _is_rebase_in_progress(worktree_path):
+            append_output(
+                conn,
+                task_id,
+                "system",
+                f"Rebase conflicts resolved on attempt {attempt}.",
+            )
+            log.info(
+                "Rebase conflicts resolved after %d attempt(s)", attempt
+            )
+            return
+
+    # All attempts exhausted — abort and raise
+    log.error(
+        "Failed to resolve rebase conflicts after %d attempts — aborting rebase",
+        MAX_CONFLICT_ATTEMPTS,
+    )
+    _run_git(["rebase", "--abort"], cwd=worktree_path)
+    append_output(
+        conn,
+        task_id,
+        "system",
+        f"Rebase aborted after {MAX_CONFLICT_ATTEMPTS} failed conflict resolution attempts.",
+    )
+    raise RuntimeError(
+        f"Rebase conflict resolution failed after {MAX_CONFLICT_ATTEMPTS} attempts"
+    )
