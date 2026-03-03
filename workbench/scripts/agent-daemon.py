@@ -21,12 +21,14 @@ import time
 import traceback
 from datetime import datetime, timedelta, timezone
 
+from agent_executor import execute_task as run_task_pipeline
+from agent_executor import CancelledError as ExecutorCancelledError
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 POLL_INTERVAL = 5  # seconds between polls
-STUB_DURATION_SECONDS = int(os.environ.get("STUB_DURATION_SECONDS", "10"))
 STALE_LOCK_MINUTES = 30
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -208,35 +210,6 @@ def recover_stale_lock(conn: sqlite3.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Stub executor (Phase 5e replaces this)
-# ---------------------------------------------------------------------------
-
-
-def execute_task(conn: sqlite3.Connection, task: dict) -> None:
-    """Stub executor: sleeps in 1s intervals, checks for cancellation."""
-    task_id = task["id"]
-    log.info("Starting execution of task %d: %s", task_id, task["title"])
-    append_output(conn, task_id, "system", f"Starting execution of task: {task['title']}")
-
-    for i in range(STUB_DURATION_SECONDS):
-        time.sleep(1)
-
-        # Check for cancellation each second
-        if check_cancelled(conn, task_id):
-            log.info("Task %d cancelled during execution", task_id)
-            append_output(conn, task_id, "system", "Task cancelled by user")
-            raise CancelledError(f"Task {task_id} was cancelled")
-
-        # Log progress
-        progress = f"Stub progress: {i + 1}/{STUB_DURATION_SECONDS}s"
-        append_output(conn, task_id, "system", progress)
-        log.debug("Task %d: %s", task_id, progress)
-
-    append_output(conn, task_id, "system", "Execution complete (stub)")
-    log.info("Task %d execution complete (stub)", task_id)
-
-
-# ---------------------------------------------------------------------------
 # Signal handling
 # ---------------------------------------------------------------------------
 
@@ -263,7 +236,7 @@ def main() -> None:
 
     log.info("Agent daemon starting (pid=%d)", os.getpid())
     log.info("DB path: %s", DB_PATH)
-    log.info("Poll interval: %ds, Stub duration: %ds", POLL_INTERVAL, STUB_DURATION_SECONDS)
+    log.info("Poll interval: %ds", POLL_INTERVAL)
 
     if not os.path.exists(DB_PATH):
         log.error("Database not found at %s — exiting", DB_PATH)
@@ -292,13 +265,13 @@ def main() -> None:
                     log.info("Task %d status -> developing", task_id)
 
                     try:
-                        execute_task(conn, task)
+                        run_task_pipeline(conn, task)
                         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                         update_task_status(
                             conn, task_id, "waiting_for_review", completed_at=now
                         )
                         log.info("Task %d status -> waiting_for_review", task_id)
-                    except CancelledError:
+                    except (CancelledError, ExecutorCancelledError):
                         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                         update_task_status(
                             conn, task_id, "cancelled", completed_at=now
