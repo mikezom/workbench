@@ -64,6 +64,11 @@ npm-debug.log*
 # Backup files from migration
 *.json.bak
 
+# Progress/reflection files (session-local, not project code)
+PROGRESS.md
+DETAILED_PROGRESS.md
+REFLECTION.md
+
 # Misc
 *.apkg
 note.md
