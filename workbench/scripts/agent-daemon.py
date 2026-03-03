@@ -5,7 +5,7 @@ from __future__ import annotations
 Agent polling daemon (Module B).
 
 Polls SQLite for pending agent tasks, acquires a global lock,
-executes them (stub for now — Phase 5e replaces with real Claude Code),
+executes them via agent_executor.py (Module C),
 and handles cancellation.
 
 Run directly:  python3 scripts/agent-daemon.py
@@ -22,7 +22,7 @@ import traceback
 from datetime import datetime, timedelta, timezone
 
 from agent_executor import execute_task as run_task_pipeline
-from agent_executor import CancelledError as ExecutorCancelledError
+from agent_executor import CancelledError
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -46,15 +46,6 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 log = logging.getLogger("agent-daemon")
-
-# ---------------------------------------------------------------------------
-# Cancellation exception
-# ---------------------------------------------------------------------------
-
-
-class CancelledError(Exception):
-    pass
-
 
 # ---------------------------------------------------------------------------
 # Database helpers
@@ -271,7 +262,7 @@ def main() -> None:
                             conn, task_id, "waiting_for_review", completed_at=now
                         )
                         log.info("Task %d status -> waiting_for_review", task_id)
-                    except (CancelledError, ExecutorCancelledError):
+                    except CancelledError:
                         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                         update_task_status(
                             conn, task_id, "cancelled", completed_at=now

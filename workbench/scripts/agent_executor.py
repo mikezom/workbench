@@ -101,7 +101,7 @@ def slugify(title: str) -> str:
     slug = title.lower()
     slug = re.sub(r"[^a-z0-9]+", "-", slug)
     slug = slug.strip("-")
-    return slug[:50]
+    return slug[:50] or "untitled"
 
 
 def check_cancelled(conn: sqlite3.Connection, task_id: int) -> bool:
@@ -325,6 +325,8 @@ def invoke_claude(
         "--output-format",
         "stream-json",
         "--verbose",
+        "--max-turns",
+        "50",
     ]
 
     # Remove CLAUDECODE from env to prevent nested-session errors
@@ -332,6 +334,7 @@ def invoke_claude(
     env.pop("CLAUDECODE", None)
 
     log.info("Invoking Claude CLI: cwd=%s prompt_len=%d", cwd, len(prompt))
+    append_output(conn, task_id, "system", "Invoking Claude Code CLI...")
 
     proc = subprocess.Popen(
         cmd,
