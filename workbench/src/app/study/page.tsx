@@ -27,6 +27,7 @@ interface StudyCard {
   example?: string;
   source: string | null;
   group_id: string | null;
+  scheduled_at: string;
   fsrs: FSRSData;
   created_at: string;
   updated_at: string;
@@ -195,11 +196,14 @@ function ReviewTab({
   selectedGroupId: string | null;
   onUpdate: () => Promise<void>;
 }) {
-  const [sessionCards, setSessionCards] = useState<StudyCard[]>([]);
-  const [currentIdx, setCurrentIdx] = useState(0);
+  const [immediateQueue, setImmediateQueue] = useState<StudyCard[]>([]);
+  const [delayedCards, setDelayedCards] = useState<
+    Array<{ card: StudyCard; availableAt: Date }>
+  >([]);
   const [revealed, setRevealed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [nextRollover, setNextRollover] = useState<Date | null>(null);
   const [budgetInfo, setBudgetInfo] = useState<{
     newUsed: number;
     newLimit: number;
@@ -208,92 +212,80 @@ function ReviewTab({
     newAvailable: number;
     reviewAvailable: number;
   } | null>(null);
+  const [countdown, setCountdown] = useState<string | null>(null);
+  const [totalReviewed, setTotalReviewed] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const selectedGroup = useMemo(
-    () => groups.find((g) => g.id === selectedGroupId) ?? null,
-    [groups, selectedGroupId]
-  );
+  // Derived state
+  const card = immediateQueue[0] ?? null;
+  const isWaiting = !card && delayedCards.length > 0;
+  const isComplete = sessionStarted && !card && delayedCards.length === 0;
 
-  // Build session cards when group selected
-  const startSession = useCallback(async () => {
+  // Promote delayed cards whose availableAt has passed
+  const promoteDelayed = useCallback(() => {
     const now = new Date();
+    const ready: StudyCard[] = [];
+    const stillWaiting: Array<{ card: StudyCard; availableAt: Date }> = [];
 
-    // Filter due cards for selected group
-    let dueCards: StudyCard[];
-    if (selectedGroupId === null) {
-      dueCards = cards.filter((c) => new Date(c.fsrs.due) <= now);
-    } else {
-      const descendantIds = getDescendantIds(selectedGroupId, groups);
-      dueCards = cards.filter(
-        (c) =>
-          new Date(c.fsrs.due) <= now &&
-          c.group_id !== null &&
-          descendantIds.includes(c.group_id)
-      );
-    }
-
-    // Separate new vs review
-    const newCards = dueCards.filter((c) => c.fsrs.state === 0);
-    const reviewCards = dueCards.filter((c) => c.fsrs.state > 0);
-
-    // Get limits from group settings (or defaults if "All Cards")
-    let dailyNewLimit = 20;
-    let dailyReviewLimit = 100;
-    if (selectedGroup) {
-      dailyNewLimit = selectedGroup.settings.dailyNewLimit;
-      dailyReviewLimit = selectedGroup.settings.dailyReviewLimit;
-    }
-
-    // Fetch study log for this group
-    let log: DayGroupLog = { new: 0, review: 0 };
-    if (selectedGroupId) {
-      try {
-        const res = await fetch(
-          `/api/study-log?group_id=${encodeURIComponent(selectedGroupId)}`
-        );
-        if (res.ok) {
-          log = await res.json();
-        }
-      } catch {
-        // use defaults
+    for (const entry of delayedCards) {
+      if (entry.availableAt <= now) {
+        ready.push(entry.card);
+      } else {
+        stillWaiting.push(entry);
       }
     }
 
-    // Apply limits
-    const newRemaining = Math.max(0, dailyNewLimit - log.new);
-    const reviewRemaining = Math.max(0, dailyReviewLimit - log.review);
+    if (ready.length > 0) {
+      setImmediateQueue((prev) => [...prev, ...ready]);
+      setDelayedCards(stillWaiting);
+    }
 
-    const limitedNew = newCards.slice(0, newRemaining);
-    const limitedReview = reviewCards.slice(0, reviewRemaining);
+    // Update countdown for earliest still-waiting card
+    if (stillWaiting.length > 0) {
+      const earliest = stillWaiting.reduce((a, b) =>
+        a.availableAt < b.availableAt ? a : b
+      );
+      const diffMs = earliest.availableAt.getTime() - now.getTime();
+      if (diffMs <= 0) {
+        setCountdown("0:00");
+      } else {
+        const totalSec = Math.ceil(diffMs / 1000);
+        const minutes = Math.floor(totalSec / 60);
+        const seconds = totalSec % 60;
+        setCountdown(`${minutes}:${seconds.toString().padStart(2, "0")}`);
+      }
+    } else {
+      setCountdown(null);
+    }
+  }, [delayedCards]);
 
-    setBudgetInfo({
-      newUsed: log.new,
-      newLimit: dailyNewLimit,
-      reviewUsed: log.review,
-      reviewLimit: dailyReviewLimit,
-      newAvailable: limitedNew.length,
-      reviewAvailable: limitedReview.length,
-    });
+  // Start session: fetch from /api/cards/session
+  const startSession = useCallback(async () => {
+    const url = selectedGroupId
+      ? `/api/cards/session?group_id=${encodeURIComponent(selectedGroupId)}`
+      : `/api/cards/session`;
 
-    // Combine: new cards first, then reviews
-    const combined = [...limitedNew, ...limitedReview];
-    setSessionCards(combined);
-    setCurrentIdx(0);
-    setRevealed(false);
-    setSessionStarted(true);
-  }, [cards, groups, selectedGroupId, selectedGroup]);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
 
-  // Auto-start when group changes
-  useEffect(() => {
-    setSessionStarted(false);
-    setSessionCards([]);
-    setBudgetInfo(null);
+      setImmediateQueue(data.cards);
+      setNextRollover(new Date(data.nextRollover));
+      setBudgetInfo(data.budgetInfo);
+      setDelayedCards([]);
+      setRevealed(false);
+      setTotalReviewed(0);
+      setCountdown(null);
+      setSessionStarted(true);
+    } catch {
+      // ignore fetch errors
+    }
   }, [selectedGroupId]);
 
-  const card = sessionCards[currentIdx];
-
+  // Handle rating a card
   const handleRate = async (rating: number) => {
-    if (!card) return;
+    if (!card || !nextRollover) return;
     setSubmitting(true);
     try {
       const res = await fetch(`/api/cards/${card.id}/review`, {
@@ -305,19 +297,63 @@ function ReviewTab({
         setSubmitting(false);
         return;
       }
+
+      const result = await res.json();
+      const scheduledAt = new Date(result.scheduledAt);
+
+      // Remove current card from front of queue
+      setImmediateQueue((prev) => prev.slice(1));
       setRevealed(false);
-      if (currentIdx + 1 < sessionCards.length) {
-        setCurrentIdx(currentIdx + 1);
-      } else {
-        // Session complete
-        await onUpdate();
-        setSessionStarted(false);
-        setSessionCards([]);
+      setTotalReviewed((prev) => prev + 1);
+
+      // If scheduled before nextRollover, it comes back today
+      if (scheduledAt < nextRollover) {
+        setDelayedCards((prev) => [
+          ...prev,
+          { card: result.card, availableAt: scheduledAt },
+        ]);
       }
+      // else: card is done for today — no action needed
+
+      await onUpdate();
     } finally {
       setSubmitting(false);
     }
   };
+
+  // Timer effect: when waiting for delayed cards, tick every second
+  useEffect(() => {
+    if (isWaiting) {
+      // Immediately check on entering waiting state
+      promoteDelayed();
+
+      timerRef.current = setInterval(() => {
+        promoteDelayed();
+      }, 1000);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isWaiting, promoteDelayed]);
+
+  // Reset when group changes
+  useEffect(() => {
+    setSessionStarted(false);
+    setImmediateQueue([]);
+    setDelayedCards([]);
+    setBudgetInfo(null);
+    setNextRollover(null);
+    setCountdown(null);
+    setTotalReviewed(0);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, [selectedGroupId]);
 
   const ratings = [
     { label: "Again", value: 1, color: "bg-red-600 hover:bg-red-700" },
@@ -349,60 +385,74 @@ function ReviewTab({
               Start Review
             </button>
           </div>
-        ) : sessionCards.length === 0 ? (
+        ) : isComplete ? (
           <div className="text-neutral-500 text-center">
             <p className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
               All caught up!
             </p>
+            <p className="text-sm mb-2">{totalReviewed} cards reviewed</p>
             {budgetInfo && (
               <div className="text-sm space-y-1">
                 <p>
                   New today: {budgetInfo.newUsed} / {budgetInfo.newLimit}
                 </p>
                 <p>
-                  Reviews today: {budgetInfo.reviewUsed} / {budgetInfo.reviewLimit}
+                  Reviews today: {budgetInfo.reviewUsed} /{" "}
+                  {budgetInfo.reviewLimit}
                 </p>
               </div>
             )}
-            {selectedGroupId === null && cards.length > 0 && (
-              <p className="mt-2 text-sm">
-                Next review:{" "}
-                {(() => {
-                  const sorted = [...cards].sort(
-                    (a, b) =>
-                      new Date(a.fsrs.due).getTime() -
-                      new Date(b.fsrs.due).getTime()
-                  );
-                  return new Date(sorted[0].fsrs.due).toLocaleString();
-                })()}
+          </div>
+        ) : isWaiting ? (
+          <div className="text-center">
+            <p className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
+              Waiting for cards...
+            </p>
+            {countdown && (
+              <p className="text-3xl font-mono text-neutral-600 dark:text-neutral-400 mb-2">
+                {countdown}
               </p>
             )}
+            <p className="text-sm text-neutral-500">
+              {delayedCards.length} card{delayedCards.length !== 1 ? "s" : ""}{" "}
+              coming back soon
+            </p>
           </div>
         ) : card ? (
           <div className="w-full max-w-xl">
             {/* Card */}
             <div
               onClick={() => !revealed && setRevealed(true)}
-              className={`border border-neutral-200 dark:border-neutral-700 rounded-lg p-6 ${!revealed ? 'cursor-pointer hover:border-neutral-400 dark:hover:border-neutral-500' : ''}`}
+              className={`border border-neutral-200 dark:border-neutral-700 rounded-lg p-6 ${!revealed ? "cursor-pointer hover:border-neutral-400 dark:hover:border-neutral-500" : ""}`}
             >
               {card.title ? (
                 /* Structured card: title / definition / example */
                 <>
                   <h3 className="text-xl font-semibold mb-2">{card.title}</h3>
                   {!revealed && (
-                    <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-4">Click to reveal answer</p>
+                    <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-4">
+                      Click to reveal answer
+                    </p>
                   )}
                   {revealed ? (
                     <>
                       <hr className="my-4 border-neutral-200 dark:border-neutral-700" />
                       <div className="mb-2">
-                        <span className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Definition</span>
-                        <p className="mt-1 text-base leading-relaxed">{card.definition}</p>
+                        <span className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+                          Definition
+                        </span>
+                        <p className="mt-1 text-base leading-relaxed">
+                          {card.definition}
+                        </p>
                       </div>
                       {card.example && (
                         <div className="mt-4 bg-neutral-50 dark:bg-neutral-800/50 rounded p-3">
-                          <span className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">Example</span>
-                          <p className="mt-1 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{card.example}</p>
+                          <span className="text-xs font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+                            Example
+                          </span>
+                          <p className="mt-1 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
+                            {card.example}
+                          </p>
                         </div>
                       )}
                       <div className="flex gap-2 mt-6">
@@ -410,7 +460,10 @@ function ReviewTab({
                           <button
                             key={r.value}
                             disabled={submitting}
-                            onClick={(e) => { e.stopPropagation(); handleRate(r.value); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRate(r.value);
+                            }}
                             className={`px-4 py-2 text-sm text-white rounded ${r.color} disabled:opacity-50`}
                           >
                             {r.label}
@@ -428,7 +481,9 @@ function ReviewTab({
                     dangerouslySetInnerHTML={{ __html: card.front }}
                   />
                   {!revealed && (
-                    <p className="text-sm text-neutral-400 dark:text-neutral-500">Click to reveal answer</p>
+                    <p className="text-sm text-neutral-400 dark:text-neutral-500">
+                      Click to reveal answer
+                    </p>
                   )}
                   {revealed ? (
                     <>
@@ -442,7 +497,10 @@ function ReviewTab({
                           <button
                             key={r.value}
                             disabled={submitting}
-                            onClick={(e) => { e.stopPropagation(); handleRate(r.value); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRate(r.value);
+                            }}
                             className={`px-4 py-2 text-sm text-white rounded ${r.color} disabled:opacity-50`}
                           >
                             {r.label}
@@ -459,17 +517,13 @@ function ReviewTab({
       </div>
 
       {/* Progress info - bottom right */}
-      {sessionStarted && sessionCards.length > 0 && card && (
+      {sessionStarted && !isComplete && (
         <div className="flex justify-end pt-2">
           <div className="text-xs text-neutral-400 dark:text-neutral-500 text-right space-y-0.5">
             <p>
-              {currentIdx + 1} / {sessionCards.length} remaining
+              {immediateQueue.length} ready | {delayedCards.length} delayed
             </p>
-            {budgetInfo && (
-              <p>
-                new {budgetInfo.newAvailable} | review {budgetInfo.reviewAvailable}
-              </p>
-            )}
+            <p>{totalReviewed} reviewed</p>
           </div>
         </div>
       )}
