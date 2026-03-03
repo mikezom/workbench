@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { existsSync, readFileSync, renameSync } from "fs";
 import path from "path";
 import { fsrs, Rating, type Grade, type Card as FSRSCard } from "ts-fsrs";
+import { initAgentSchema } from "./agent-db";
 
 const f = fsrs();
 
@@ -21,6 +22,7 @@ export function getDb(): Database.Database {
   _db.pragma("foreign_keys = ON");
 
   initSchema(_db);
+  initAgentSchema(_db);
   return _db;
 }
 
