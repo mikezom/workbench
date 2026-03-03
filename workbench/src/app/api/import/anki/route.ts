@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseApkg } from "@/lib/anki-import";
-import { createCardsBulk } from "@/lib/cards";
-import { getAllGroups } from "@/lib/groups";
-import { promises as fs } from "fs";
-import path from "path";
-
-const GROUPS_PATH = path.join(process.cwd(), "data", "groups.json");
+import { createCardsBulk, createGroup } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,36 +15,33 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await parseApkg(buffer, maxNotes);
 
-    // Save groups (append to existing, add default settings)
-    const existingGroups = await getAllGroups();
-    const now = new Date().toISOString();
-    const groupsWithSettings = result.groups.map((g) => ({
-      ...g,
-      settings: { dailyNewLimit: 20, dailyReviewLimit: 100 },
-      created_at: now,
-    }));
-    const allGroups = [...existingGroups, ...groupsWithSettings];
-    await fs.writeFile(GROUPS_PATH, JSON.stringify(allGroups, null, 2));
+    // Create groups via DB
+    const createdGroups = result.groups.map((g) =>
+      createGroup(g.name, g.parent_id)
+    );
 
-    // Save cards
-    const created = await createCardsBulk(
+    // Map old group IDs from parser to new DB group IDs
+    const groupIdMap = new Map<string, string>();
+    for (let i = 0; i < result.groups.length; i++) {
+      groupIdMap.set(result.groups[i].id, createdGroups[i].id);
+    }
+
+    // Create cards with remapped group IDs — bulk create handles distribution
+    const created = createCardsBulk(
       result.cards.map((c) => ({
         front: c.front,
         back: c.back,
-        group_id: c.group_id,
+        group_id: groupIdMap.get(c.group_id) ?? null,
       }))
     );
 
     return NextResponse.json({
-      groupsCreated: result.groups.length,
+      groupsCreated: createdGroups.length,
       cardsCreated: created.length,
-      groups: result.groups.map((g) => ({ id: g.id, name: g.name })),
+      groups: createdGroups.map((g) => ({ id: g.id, name: g.name })),
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Import failed";
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
