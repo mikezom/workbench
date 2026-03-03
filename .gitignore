@@ -77,7 +77,7 @@ note.md
 workbench/data/agent-config.json
 
 # Agent worktrees
-workbench/.worktrees/
+.worktrees/
 
 # Agent daemon logs
 workbench/logs/

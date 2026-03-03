@@ -34,7 +34,11 @@ MAX_BUILD_FIX_ATTEMPTS = 3
 CANCEL_CHECK_INTERVAL = 5  # seconds between cancellation checks
 BUILD_TIMEOUT = 300  # seconds
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# scripts/ lives inside workbench/ (Next.js root) which lives inside the git
+# repo root.  Three levels up: scripts/ → workbench/ → repo-root/.
+REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 
 # ---------------------------------------------------------------------------
 # Executable discovery
@@ -123,7 +127,7 @@ def append_output(
 
 
 def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
-    """Run a git command, raising on failure."""
+    """Run a git command and return the result (caller checks returncode)."""
     cmd = ["git"] + args
     log.debug("git %s  (cwd=%s)", " ".join(args), cwd)
     return subprocess.run(
@@ -131,7 +135,6 @@ def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
         cwd=cwd,
         capture_output=True,
         text=True,
-        check=True,
     )
 
 
@@ -158,10 +161,14 @@ def create_worktree(
         "Creating worktree: path=%s branch=%s", worktree_dir, branch_name
     )
 
-    _run_git(
+    result = _run_git(
         ["worktree", "add", worktree_dir, "-b", branch_name, "main"],
         cwd=repo_root,
     )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Failed to create worktree: {result.stderr.strip()}"
+        )
 
     return worktree_dir, branch_name
 
