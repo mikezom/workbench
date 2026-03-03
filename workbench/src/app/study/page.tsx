@@ -209,6 +209,29 @@ function ReviewTab({
   const card = immediateQueue[0] ?? null;
   const isComplete = sessionStarted && !card;
 
+  // Fetch budget info without starting session (for pre-session display)
+  const fetchBudgetInfo = useCallback(async () => {
+    const url = selectedGroupId
+      ? `/api/cards/session?group_id=${encodeURIComponent(selectedGroupId)}`
+      : `/api/cards/session`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      setBudgetInfo(data.budgetInfo);
+    } catch {
+      // ignore fetch errors
+    }
+  }, [selectedGroupId]);
+
+  // Fetch budget info on mount and group change
+  useEffect(() => {
+    if (!sessionStarted) {
+      fetchBudgetInfo();
+    }
+  }, [fetchBudgetInfo, sessionStarted]);
+
   // Start session: fetch from /api/cards/session
   const startSession = useCallback(async () => {
     const url = selectedGroupId
@@ -298,13 +321,35 @@ function ReviewTab({
       {/* Centered content area */}
       <div className="flex-1 flex items-center justify-center">
         {!sessionStarted ? (
-          <div>
-            <button
-              onClick={startSession}
-              className="px-8 py-4 text-lg bg-black text-white border-2 border-white rounded-lg hover:bg-neutral-800"
-            >
-              Start Review
-            </button>
+          <div className="text-center">
+            {budgetInfo && budgetInfo.newAvailable === 0 && budgetInfo.reviewAvailable === 0 ? (
+              <div className="text-neutral-500">
+                <p className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
+                  Congratulations!
+                </p>
+                <p className="text-sm mb-2">
+                  No cards due for review right now.
+                </p>
+                <div className="text-sm space-y-1">
+                  <p>New today: {budgetInfo.newUsed} / {budgetInfo.newLimit}</p>
+                  <p>Reviews today: {budgetInfo.reviewUsed} / {budgetInfo.reviewLimit}</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {budgetInfo && (
+                  <div className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 space-y-1">
+                    <p>{budgetInfo.newAvailable} new {budgetInfo.newAvailable === 1 ? "card" : "cards"} and {budgetInfo.reviewAvailable} {budgetInfo.reviewAvailable === 1 ? "review" : "reviews"} today</p>
+                  </div>
+                )}
+                <button
+                  onClick={startSession}
+                  className="px-8 py-4 text-lg bg-black text-white border-2 border-white rounded-lg hover:bg-neutral-800"
+                >
+                  Start Review
+                </button>
+              </>
+            )}
           </div>
         ) : isComplete ? (
           <div className="text-neutral-500 text-center">
@@ -1046,7 +1091,7 @@ export default function StudyPage() {
   return (
     <div className="flex h-full">
       {/* Sidebar */}
-      <div className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col">
+      <div className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col overflow-y-auto">
         <h1 className="text-lg font-bold mb-4">Study</h1>
         <nav className="space-y-1 mb-4">
           {tabs.map((t) => (
