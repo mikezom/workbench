@@ -514,3 +514,101 @@ def rebase_onto_main(
     raise RuntimeError(
         f"Rebase conflict resolution failed after {MAX_CONFLICT_ATTEMPTS} attempts"
     )
+
+
+# ---------------------------------------------------------------------------
+# Build validation
+# ---------------------------------------------------------------------------
+
+
+def run_build(
+    worktree_path: str, conn: sqlite3.Connection, task_id: int
+) -> None:
+    """Run ``npm run build`` and attempt to fix errors iteratively.
+
+    The Next.js project lives in ``<worktree_path>/workbench/``, so the build
+    command runs there.  If the build fails, Claude is invoked (in the worktree
+    root) with the error output and asked to fix the issues.  Up to
+    ``MAX_BUILD_FIX_ATTEMPTS`` rounds are attempted before giving up.
+    """
+    workbench_dir = os.path.join(worktree_path, "workbench")
+
+    for attempt in range(1, MAX_BUILD_FIX_ATTEMPTS + 1):
+        # Check cancellation before each attempt
+        if check_cancelled(conn, task_id):
+            log.info("Task %d cancelled during build validation", task_id)
+            raise CancelledError(f"Task {task_id} was cancelled")
+
+        last_attempt = attempt == MAX_BUILD_FIX_ATTEMPTS
+
+        append_output(
+            conn,
+            task_id,
+            "system",
+            f"Running build (attempt {attempt}/{MAX_BUILD_FIX_ATTEMPTS})…",
+        )
+
+        try:
+            result = subprocess.run(
+                [NPM_BIN, "run", "build"],
+                cwd=workbench_dir,
+                capture_output=True,
+                text=True,
+                timeout=BUILD_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            log.warning(
+                "Build timed out on attempt %d/%d",
+                attempt,
+                MAX_BUILD_FIX_ATTEMPTS,
+            )
+            append_output(
+                conn,
+                task_id,
+                "system",
+                f"Build timed out after {BUILD_TIMEOUT}s (attempt {attempt}/{MAX_BUILD_FIX_ATTEMPTS}).",
+            )
+            if last_attempt:
+                raise RuntimeError(
+                    f"Build timed out after {MAX_BUILD_FIX_ATTEMPTS} attempts"
+                )
+            continue
+
+        if result.returncode == 0:
+            log.info("Build succeeded on attempt %d", attempt)
+            append_output(conn, task_id, "system", "Build succeeded.")
+            return
+
+        # Build failed — capture output for diagnosis
+        error_output = (result.stdout + "\n" + result.stderr).strip()
+        if len(error_output) > 5000:
+            error_output = error_output[:5000] + "\n\n… (truncated)"
+
+        log.warning(
+            "Build failed on attempt %d/%d (rc=%d)",
+            attempt,
+            MAX_BUILD_FIX_ATTEMPTS,
+            result.returncode,
+        )
+        append_output(
+            conn,
+            task_id,
+            "system",
+            f"Build failed (attempt {attempt}/{MAX_BUILD_FIX_ATTEMPTS}):\n{error_output}",
+        )
+
+        if not last_attempt:
+            fix_prompt = (
+                f"The `npm run build` command failed (attempt {attempt}/{MAX_BUILD_FIX_ATTEMPTS}).\n\n"
+                f"## Build output\n```\n{error_output}\n```\n\n"
+                "Please fix the build errors in the source files.\n"
+                "- Focus ONLY on fixing the errors shown above.\n"
+                "- Do NOT refactor or change unrelated code.\n"
+                "- Do NOT modify configuration files unless the error specifically requires it."
+            )
+            invoke_claude(worktree_path, fix_prompt, conn, task_id)
+
+    # All attempts exhausted
+    raise RuntimeError(
+        f"Build failed after {MAX_BUILD_FIX_ATTEMPTS} attempts"
+    )
