@@ -191,9 +191,6 @@ function ReviewTab({
   onUpdate: () => Promise<void>;
 }) {
   const [immediateQueue, setImmediateQueue] = useState<StudyCard[]>([]);
-  const [delayedCards, setDelayedCards] = useState<
-    Array<{ card: StudyCard; availableAt: Date }>
-  >([]);
   const [revealed, setRevealed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -206,52 +203,11 @@ function ReviewTab({
     newAvailable: number;
     reviewAvailable: number;
   } | null>(null);
-  const [countdown, setCountdown] = useState<string | null>(null);
   const [totalReviewed, setTotalReviewed] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Derived state
   const card = immediateQueue[0] ?? null;
-  const isWaiting = !card && delayedCards.length > 0;
-  const isComplete = sessionStarted && !card && delayedCards.length === 0;
-
-  // Promote delayed cards whose availableAt has passed
-  const promoteDelayed = useCallback(() => {
-    const now = new Date();
-    const ready: StudyCard[] = [];
-    const stillWaiting: Array<{ card: StudyCard; availableAt: Date }> = [];
-
-    for (const entry of delayedCards) {
-      if (entry.availableAt <= now) {
-        ready.push(entry.card);
-      } else {
-        stillWaiting.push(entry);
-      }
-    }
-
-    if (ready.length > 0) {
-      setImmediateQueue((prev) => [...prev, ...ready]);
-      setDelayedCards(stillWaiting);
-    }
-
-    // Update countdown for earliest still-waiting card
-    if (stillWaiting.length > 0) {
-      const earliest = stillWaiting.reduce((a, b) =>
-        a.availableAt < b.availableAt ? a : b
-      );
-      const diffMs = earliest.availableAt.getTime() - now.getTime();
-      if (diffMs <= 0) {
-        setCountdown("0:00");
-      } else {
-        const totalSec = Math.ceil(diffMs / 1000);
-        const minutes = Math.floor(totalSec / 60);
-        const seconds = totalSec % 60;
-        setCountdown(`${minutes}:${seconds.toString().padStart(2, "0")}`);
-      }
-    } else {
-      setCountdown(null);
-    }
-  }, [delayedCards]);
+  const isComplete = sessionStarted && !card;
 
   // Start session: fetch from /api/cards/session
   const startSession = useCallback(async () => {
@@ -267,10 +223,8 @@ function ReviewTab({
       setImmediateQueue(data.cards);
       setNextRollover(new Date(data.nextRollover));
       setBudgetInfo(data.budgetInfo);
-      setDelayedCards([]);
       setRevealed(false);
       setTotalReviewed(0);
-      setCountdown(null);
       setSessionStarted(true);
     } catch {
       // ignore fetch errors
@@ -296,18 +250,16 @@ function ReviewTab({
       const scheduledAt = new Date(result.scheduledAt);
 
       // Remove current card from front of queue
-      setImmediateQueue((prev) => prev.slice(1));
+      setImmediateQueue((prev) => {
+        const rest = prev.slice(1);
+        // If scheduled before nextRollover, immediately requeue at the end
+        if (scheduledAt < nextRollover) {
+          return [...rest, result.card];
+        }
+        return rest;
+      });
       setRevealed(false);
       setTotalReviewed((prev) => prev + 1);
-
-      // If scheduled before nextRollover, it comes back today
-      if (scheduledAt < nextRollover) {
-        setDelayedCards((prev) => [
-          ...prev,
-          { card: result.card, availableAt: scheduledAt },
-        ]);
-      }
-      // else: card is done for today — no action needed
 
       await onUpdate();
     } finally {
@@ -315,38 +267,13 @@ function ReviewTab({
     }
   };
 
-  // Timer effect: when waiting for delayed cards, tick every second
-  useEffect(() => {
-    if (isWaiting) {
-      // Immediately check on entering waiting state
-      promoteDelayed();
-
-      timerRef.current = setInterval(() => {
-        promoteDelayed();
-      }, 1000);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [isWaiting, promoteDelayed]);
-
   // Reset when group changes
   useEffect(() => {
     setSessionStarted(false);
     setImmediateQueue([]);
-    setDelayedCards([]);
     setBudgetInfo(null);
     setNextRollover(null);
-    setCountdown(null);
     setTotalReviewed(0);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
   }, [selectedGroupId]);
 
   const ratings = [
@@ -396,21 +323,6 @@ function ReviewTab({
                 </p>
               </div>
             )}
-          </div>
-        ) : isWaiting ? (
-          <div className="text-center">
-            <p className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
-              Waiting for cards...
-            </p>
-            {countdown && (
-              <p className="text-3xl font-mono text-neutral-600 dark:text-neutral-400 mb-2">
-                {countdown}
-              </p>
-            )}
-            <p className="text-sm text-neutral-500">
-              {delayedCards.length} card{delayedCards.length !== 1 ? "s" : ""}{" "}
-              coming back soon
-            </p>
           </div>
         ) : card ? (
           <div className="w-full max-w-xl">
@@ -514,9 +426,7 @@ function ReviewTab({
       {sessionStarted && !isComplete && (
         <div className="flex justify-end pt-2">
           <div className="text-xs text-neutral-400 dark:text-neutral-500 text-right space-y-0.5">
-            <p>
-              {immediateQueue.length} ready | {delayedCards.length} delayed
-            </p>
+            <p>{immediateQueue.length} remaining</p>
             <p>{totalReviewed} reviewed</p>
           </div>
         </div>
