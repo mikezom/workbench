@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAgentConfig, type AgentConfig } from "@/lib/agent-config";
+import { readFileSync, existsSync } from "fs";
+import path from "path";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -20,7 +22,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const systemPrompt = `You are a task decomposition assistant. Given a user's objective, break it down into atomic, independent sub-tasks that a coding agent can execute one at a time.
+  const claudeMdPath = path.join(process.cwd(), "data", "agent-decompose-claude.md");
+  let systemPrompt: string;
+  if (existsSync(claudeMdPath)) {
+    systemPrompt = readFileSync(claudeMdPath, "utf-8");
+  } else {
+    systemPrompt = `You are a task decomposition assistant. Given a user's objective, break it down into atomic, independent sub-tasks that a coding agent can execute one at a time.
 
 Rules:
 - Each sub-task must be independently executable (no dependencies between tasks)
@@ -33,6 +40,7 @@ Return a JSON array of objects with "title" and "prompt" fields:
   {"title": "Short task title", "prompt": "Detailed description of what to implement..."},
   ...
 ]`;
+  }
 
   try {
     const tasks = await callLLM(config, systemPrompt, prompt.trim());
