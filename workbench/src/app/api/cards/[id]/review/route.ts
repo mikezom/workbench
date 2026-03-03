@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fsrs, Rating, type Grade } from "ts-fsrs";
-import { getCard, updateCardFSRS } from "@/lib/cards";
-import { recordStudy } from "@/lib/study-log";
-
-const f = fsrs();
+import { Rating } from "ts-fsrs";
+import { reviewCard } from "@/lib/db";
 
 export async function POST(
   req: NextRequest,
@@ -15,27 +12,10 @@ export async function POST(
     return NextResponse.json({ error: "rating must be 1-4" }, { status: 400 });
   }
 
-  const studyCard = await getCard(params.id);
-  if (!studyCard) {
+  const result = reviewCard(params.id, rating);
+  if (!result) {
     return NextResponse.json({ error: "Card not found" }, { status: 404 });
   }
 
-  // ts-fsrs needs Date objects, but our stored card has ISO strings
-  const fsrsCard = {
-    ...studyCard.fsrs,
-    due: new Date(studyCard.fsrs.due),
-    last_review: studyCard.fsrs.last_review
-      ? new Date(studyCard.fsrs.last_review)
-      : undefined,
-  };
-
-  const result = f.next(fsrsCard, new Date(), rating as Grade);
-  const updated = await updateCardFSRS(params.id, result.card);
-
-  if (studyCard.group_id) {
-    const isNew = studyCard.fsrs.state === 0;
-    await recordStudy(studyCard.group_id, isNew);
-  }
-
-  return NextResponse.json(updated);
+  return NextResponse.json(result);
 }

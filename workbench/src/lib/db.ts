@@ -1,6 +1,9 @@
 import Database from "better-sqlite3";
 import { existsSync, readFileSync, renameSync } from "fs";
 import path from "path";
+import { fsrs, Rating, type Grade, type Card as FSRSCard } from "ts-fsrs";
+
+const f = fsrs();
 
 // ---------------------------------------------------------------------------
 // Singleton database connection
@@ -788,4 +791,135 @@ export function createCardsBulk(
     .all(...createdIds) as DbCard[];
 
   return rows.map(toCardJson);
+}
+
+// ---------------------------------------------------------------------------
+// Study log helpers
+// ---------------------------------------------------------------------------
+
+export function getGroupStudiedToday(
+  groupId: string
+): { new: number; review: number } {
+  const db = getDb();
+
+  const group = db
+    .prepare("SELECT rollover_hour FROM groups WHERE id = ?")
+    .get(groupId) as { rollover_hour: number } | undefined;
+
+  const rolloverHour = group?.rollover_hour ?? 5;
+  const { current: rolloverStart } = getRolloverBoundary(rolloverHour);
+
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(was_new = 1), 0) AS new_count,
+         COALESCE(SUM(was_new = 0), 0) AS review_count
+       FROM study_log
+       WHERE group_id = ? AND reviewed_at >= ?`
+    )
+    .get(groupId, rolloverStart.toISOString()) as {
+    new_count: number;
+    review_count: number;
+  };
+
+  return { new: row.new_count, review: row.review_count };
+}
+
+function recordStudy(
+  db: Database.Database,
+  cardId: string,
+  groupId: string,
+  rating: Rating,
+  wasNew: boolean
+): void {
+  db.prepare(
+    `INSERT INTO study_log (card_id, group_id, rating, was_new, reviewed_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(cardId, groupId, rating, wasNew ? 1 : 0, new Date().toISOString());
+}
+
+// ---------------------------------------------------------------------------
+// Review
+// ---------------------------------------------------------------------------
+
+export interface ReviewResult {
+  card: CardJson;
+  scheduledAt: string;
+  intervalMinutes: number;
+}
+
+export function reviewCard(
+  cardId: string,
+  rating: Rating
+): ReviewResult | null {
+  const db = getDb();
+
+  const row = db
+    .prepare("SELECT * FROM cards WHERE id = ?")
+    .get(cardId) as DbCard | undefined;
+  if (!row) return null;
+
+  const wasNew = row.fsrs_state === 0;
+
+  // Build a ts-fsrs Card from the DB row
+  const fsrsCard: FSRSCard = {
+    due: new Date(row.scheduled_at),
+    stability: row.fsrs_stability,
+    difficulty: row.fsrs_difficulty,
+    elapsed_days: row.fsrs_elapsed_days,
+    scheduled_days: row.fsrs_scheduled_days,
+    learning_steps: 0,
+    reps: row.fsrs_reps,
+    lapses: row.fsrs_lapses,
+    state: row.fsrs_state,
+    last_review: row.fsrs_last_review
+      ? new Date(row.fsrs_last_review)
+      : undefined,
+  };
+
+  const now = new Date();
+  const result = f.next(fsrsCard, now, rating as Grade);
+  const newCard = result.card;
+  const newDue = newCard.due;
+  const scheduledAt = newDue.toISOString();
+  const intervalMinutes = Math.round(
+    (newDue.getTime() - now.getTime()) / 60000
+  );
+
+  db.prepare(
+    `UPDATE cards SET
+       scheduled_at       = ?,
+       fsrs_state         = ?,
+       fsrs_stability     = ?,
+       fsrs_difficulty    = ?,
+       fsrs_elapsed_days  = ?,
+       fsrs_scheduled_days = ?,
+       fsrs_reps          = ?,
+       fsrs_lapses        = ?,
+       fsrs_last_review   = ?,
+       updated_at         = ?
+     WHERE id = ?`
+  ).run(
+    scheduledAt,
+    newCard.state as number,
+    newCard.stability,
+    newCard.difficulty,
+    newCard.elapsed_days,
+    newCard.scheduled_days,
+    newCard.reps,
+    newCard.lapses,
+    newCard.last_review ? newCard.last_review.toISOString() : null,
+    now.toISOString(),
+    cardId
+  );
+
+  if (row.group_id) {
+    recordStudy(db, cardId, row.group_id, rating, wasNew);
+  }
+
+  return {
+    card: getCard(cardId)!,
+    scheduledAt,
+    intervalMinutes,
+  };
 }
