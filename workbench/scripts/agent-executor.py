@@ -212,3 +212,174 @@ def cleanup_worktree(
         log.warning(
             "Failed to delete branch %s", branch_name, exc_info=True
         )
+
+
+# ---------------------------------------------------------------------------
+# Claude Code CLI invocation
+# ---------------------------------------------------------------------------
+
+
+def _kill_process(proc: subprocess.Popen) -> None:
+    """Terminate a subprocess, escalating to kill if needed.
+
+    Sends SIGTERM first, waits up to 5 seconds, then sends SIGKILL if the
+    process is still alive.  Never raises.
+    """
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            log.warning("Process %d did not terminate in 5s — killing", proc.pid)
+            proc.kill()
+            proc.wait()
+    except Exception:
+        log.warning("Error while killing process", exc_info=True)
+
+
+def _store_event(
+    conn: sqlite3.Connection, task_id: int, event: dict
+) -> None:
+    """Categorize a stream-json event and store it in the task output table."""
+    etype = event.get("type", "")
+
+    if etype == "assistant":
+        # event["message"]["content"] may be a list of blocks or a string
+        content = event.get("message", {}).get("content", "")
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(block.get("text", ""))
+            content = "\n".join(parts)
+        if content:
+            append_output(conn, task_id, "assistant", content)
+
+    elif etype == "result":
+        result_text = event.get("result", "")
+        if result_text:
+            append_output(conn, task_id, "assistant", result_text)
+        # Also store cost/duration metadata as a system message
+        cost = event.get("cost_usd")
+        duration = event.get("duration_ms")
+        if cost is not None or duration is not None:
+            meta = {}
+            if cost is not None:
+                meta["cost_usd"] = cost
+            if duration is not None:
+                meta["duration_ms"] = duration
+            append_output(conn, task_id, "system", json.dumps(meta))
+
+    elif etype == "tool_use":
+        name = event.get("name", event.get("tool", "unknown"))
+        raw_input = json.dumps(event.get("input", ""))
+        truncated = raw_input[:500]
+        append_output(conn, task_id, "tool", f"[tool: {name}] {truncated}")
+
+    elif etype == "tool_result":
+        content = event.get("content", "")
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    parts.append(block.get("text", block.get("content", "")))
+                else:
+                    parts.append(str(block))
+            content = "\n".join(parts)
+        if not isinstance(content, str):
+            content = json.dumps(content)
+        append_output(conn, task_id, "tool", content[:2000])
+
+    elif etype == "system":
+        text = event.get("message", event.get("content", ""))
+        if not text:
+            text = json.dumps(event)
+        append_output(conn, task_id, "system", text)
+
+    else:
+        # Unknown event type — store raw JSON as system
+        append_output(conn, task_id, "system", json.dumps(event))
+
+
+def invoke_claude(
+    cwd: str,
+    prompt: str,
+    conn: sqlite3.Connection,
+    task_id: int,
+) -> None:
+    """Invoke the Claude Code CLI and stream-parse its output.
+
+    Launches ``claude -p <prompt>`` with stream-json output, reads events
+    line-by-line, and stores each one via :func:`_store_event`.  Periodically
+    checks for task cancellation and kills the subprocess if cancelled.
+
+    Raises:
+        CancelledError: If the task is cancelled during execution.
+        RuntimeError: If the CLI exits with a non-zero return code.
+    """
+    cmd = [
+        CLAUDE_BIN,
+        "-p",
+        prompt,
+        "--dangerously-skip-permissions",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+    ]
+
+    # Remove CLAUDECODE from env to prevent nested-session errors
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
+
+    log.info("Invoking Claude CLI: cwd=%s prompt_len=%d", cwd, len(prompt))
+
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+
+    last_cancel_check = time.monotonic()
+
+    try:
+        for line in proc.stdout:  # type: ignore[union-attr]
+            line = line.strip()
+            if not line:
+                continue
+
+            try:
+                event = json.loads(line)
+                _store_event(conn, task_id, event)
+            except json.JSONDecodeError:
+                append_output(conn, task_id, "stderr", line)
+
+            # Periodic cancellation check
+            now = time.monotonic()
+            if now - last_cancel_check >= CANCEL_CHECK_INTERVAL:
+                last_cancel_check = now
+                if check_cancelled(conn, task_id):
+                    log.info("Task %d cancelled — killing Claude CLI", task_id)
+                    _kill_process(proc)
+                    raise CancelledError(f"Task {task_id} was cancelled")
+
+        # Wait for process to finish
+        proc.wait()
+
+        # Capture any remaining stderr
+        stderr_tail = proc.stderr.read() if proc.stderr else ""  # type: ignore[union-attr]
+        if stderr_tail and stderr_tail.strip():
+            append_output(conn, task_id, "stderr", stderr_tail.strip())
+
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"Claude CLI exited with code {proc.returncode}"
+            )
+
+    except CancelledError:
+        raise
+    except Exception:
+        _kill_process(proc)
+        raise
