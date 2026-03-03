@@ -60,6 +60,24 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [x] Structured review display: title only -> reveal definition + example
 - [x] Create 10 category theory sample cards for style tuning
 
+### Phase 3d: Study Queue System + SQLite Migration
+- [x] Design queue-based review system with intra-day re-queuing
+- [x] Create SQLite database layer (better-sqlite3) replacing JSON file storage
+- [x] Migrate cards, groups, study_log tables to SQLite
+- [x] Implement JSON → SQLite migration on first run
+- [x] Add groups DB layer (CRUD, cascading delete, descendant queries)
+- [x] Add cards DB layer (CRUD, bulk create, new card distribution across day-slots)
+- [x] Add study log, review API with FSRS scheduling in transactions
+- [x] Add session API endpoint with rollover-aware daily budget enforcement
+- [x] Update Anki import to use SQLite DB functions
+- [x] Rewrite ReviewTab with immediate queue, delayed cards, countdown timer
+- [x] Add rollover hour setting to group settings UI
+- [x] Delete old JSON storage layer (cards.ts, groups.ts, study-log.ts)
+- [x] Fix descendant group budget counting, UTC→local rollover, review transaction
+
+### Phase 3e: Study Review UX Fix
+- [x] Replace delayed card queue + countdown timer with immediate requeuing
+
 ### Phase 4: Crawl Section
 - [ ] Define hardcoded sources config (HN, ArXiv, Lobste.rs, nLab, Planet Haskell)
 - [ ] Build backend API for fetching and parsing web content
@@ -83,5 +101,7 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 | 3a - Study Enhancements | Complete | Groups, settings, Anki import |
 | 3b - Study UI & Fixes | Complete | Sidebar layout, cascading delete, import fix |
 | 3c - Study UI & Card Model | Complete | Sidebar groups, centered cards, title/def/example model; UI tuning `1ae7b2e` |
+| 3d - Study Queue + SQLite | Complete | Queue system, intra-day re-queuing, SQLite migration; `3bf802a` |
+| 3e - Study Review UX Fix | Complete | Immediate requeue replaces delayed queue + countdown; `d71a95a` |
 | 4 - Crawl | Not started | |
 | 5 - Agent | Not started | Placeholder only |

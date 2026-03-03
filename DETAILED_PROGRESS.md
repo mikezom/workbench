@@ -239,3 +239,159 @@ iframe instead of opening a new browser window.
 - `/Users/ccnas/DEVELOPMENT/start-workbench.sh` — New script that starts
   `npm run dev`, runs initial `forester build`, and launches `watchexec` to
   watch `trees/` and `forest.toml` for changes. Handles cleanup on Ctrl+C.
+
+---
+
+## 2026-03-03 — Phase 3d: Study Queue System + SQLite Migration
+
+### Design & Planning
+
+**Commits:** `ae51de9`, `ee4b497`
+
+**Problem:** The review session showed each card exactly once regardless of rating.
+Cards rated "Again" should re-enter the session after a short delay. Additionally,
+JSON file storage needed replacing with SQLite for performance.
+
+**Changes:**
+- `docs/plans/2026-03-03-study-queue-sqlite-design.md` — Design doc covering
+  data model (SQLite tables for cards, groups, study_log), session behavior
+  (intra-day re-queuing), new card distribution, and migration strategy.
+- `docs/plans/2026-03-03-study-queue-sqlite-plan.md` — 9-task implementation plan.
+
+---
+
+### Task 1: SQLite foundation
+
+**Commit:** `07ad46d`
+
+**Changes:**
+- `workbench/src/lib/db.ts` — Created SQLite database layer with `getDb()`
+  singleton, `CREATE TABLE IF NOT EXISTS` schema for cards/groups/study_log
+  tables, and JSON-to-SQLite migration logic that reads existing JSON files
+  and inserts into SQLite, then renames originals to `.bak`.
+- `workbench/src/app/api/migrate/route.ts` — POST endpoint to trigger migration.
+
+---
+
+### Task 2: Groups DB layer
+
+**Commit:** `d7ff797`
+
+**Changes:**
+- `workbench/src/lib/db.ts` — Added `getAllGroups()`, `createGroup()`,
+  `updateGroup()`, `deleteGroupCascade()`, `getDescendantIds()` functions.
+- `workbench/src/app/api/groups/route.ts` — Switched imports from `@/lib/groups`
+  to `@/lib/db`.
+- `workbench/src/app/api/groups/[id]/route.ts` — Switched to `deleteGroupCascade`.
+
+---
+
+### Task 3: Cards DB layer + distribution
+
+**Commit:** `647b20b`
+
+**Changes:**
+- `workbench/src/lib/db.ts` — Added `getAllCards()`, `getCard()`, `createCard()`,
+  `updateCard()`, `deleteCard()`, `createCardsBulk()`, `computeNewCardSlot()`
+  for distributing new cards across day-slots under daily_new_limit.
+- `workbench/src/app/api/cards/route.ts` — Switched imports to `@/lib/db`.
+- `workbench/src/app/api/cards/[id]/route.ts` — Switched imports to `@/lib/db`.
+
+---
+
+### Task 4: Study log + Review API
+
+**Commit:** `2e24bb3`
+
+**Changes:**
+- `workbench/src/lib/db.ts` — Added `getRolloverBoundary()`,
+  `getGroupStudiedToday()`, `reviewCard()` wrapping FSRS scheduling + DB update
+  + study_log insert.
+- `workbench/src/app/api/cards/[id]/review/route.ts` — Returns
+  `{ card, scheduledAt, intervalMinutes }` from `reviewCard()`.
+- `workbench/src/app/api/study-log/route.ts` — Switched imports to `@/lib/db`.
+
+---
+
+### Task 5: Session API endpoint
+
+**Commit:** `7eaa45a`
+
+**Changes:**
+- `workbench/src/lib/db.ts` — Added `getSessionCards()` returning due cards with
+  rollover-aware daily budget enforcement.
+- `workbench/src/app/api/cards/session/route.ts` — GET endpoint returning session
+  cards, nextRollover, and budgetInfo.
+
+---
+
+### Task 6: Anki import update
+
+**Commit:** `92d0d4f`
+
+**Changes:**
+- `workbench/src/app/api/import/anki/route.ts` — Removed direct JSON file writing,
+  uses `createGroup` and `createCardsBulk` from `@/lib/db`. Remaps parser group
+  IDs to new DB-generated IDs.
+
+---
+
+### Task 7: ReviewTab rewrite
+
+**Commit:** `9f13554`
+
+**Changes:**
+- `workbench/src/app/study/page.tsx` — Complete rewrite of `ReviewTab` with:
+  - `immediateQueue` + `delayedCards` (with `availableAt`) state management
+  - Session loaded from `/api/cards/session?group_id=X`
+  - Intra-day re-queuing: cards with `scheduledAt < nextRollover` are delayed
+    and re-enter queue when their delay expires
+  - Countdown timer showing "M:SS" while waiting for delayed cards
+  - 4 UI states: not started, card present, waiting (countdown), complete
+
+---
+
+### Task 8–9: Settings UI + Cleanup
+
+**Commit:** `90953af`
+
+**Changes:**
+- `workbench/src/app/study/page.tsx` — Added rolloverHour input (0-23) to
+  GroupSettingsEditor with grid-cols-3 layout. SettingsTab shows "Rollover: X:00".
+- Deleted `workbench/src/lib/cards.ts`, `workbench/src/lib/groups.ts`,
+  `workbench/src/lib/study-log.ts` (replaced by `db.ts`).
+- `.gitignore` — Added `data/workbench.db`, `data/workbench.db-wal`,
+  `data/workbench.db-shm`, `data/*.bak`.
+
+---
+
+### Bug fixes
+
+**Commits:** `99e5ad9`, `3bf802a`, `4e5c3ee`
+
+**Changes:**
+- `workbench/src/lib/db.ts` — Fixed `getGroupStudiedToday()` to account for
+  descendant groups (was only checking parent). Fixed `getRolloverBoundary()`
+  to use local time instead of UTC. Wrapped `reviewCard()` UPDATE+INSERT in
+  a transaction.
+- `workbench/src/app/study/page.tsx` — Removed unused `groups` prop from
+  ReviewTab. Removed unused `DayGroupLog` interface.
+
+---
+
+## 2026-03-03 — Replace delayed card queue with immediate requeuing
+
+### Immediate requeue for intra-day cards
+
+**Commit:** `d71a95a`
+
+**Problem:** The review session used a delayed queue with a countdown timer for
+cards scheduled within the same day. Users had to wait for a "Waiting for cards..."
+screen before those cards reappeared. This was disruptive to the review flow.
+
+**Changes:**
+- `workbench/src/app/study/page.tsx` — Removed `delayedCards` state, countdown
+  timer (`timerRef`, `promoteDelayed`), and "Waiting for cards..." UI. Cards
+  scheduled before `nextRollover` are now immediately appended to the end of
+  `immediateQueue` after review. Progress info simplified from
+  "X ready | Y delayed" to "X remaining".

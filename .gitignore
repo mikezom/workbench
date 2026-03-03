@@ -1,5 +1,8 @@
 # Dependencies
 workbench/node_modules/
+
+# Next.js build output
+.next/
 workbench/.next/
 
 # OS files
@@ -54,10 +57,12 @@ npm-debug.log*
 .zai/
 
 # SQLite database files
-data/workbench.db
-data/workbench.db-wal
-data/workbench.db-shm
-data/*.bak
+**/workbench.db
+**/workbench.db-wal
+**/workbench.db-shm
+
+# Backup files from migration
+*.json.bak
 
 # Misc
 *.apkg
