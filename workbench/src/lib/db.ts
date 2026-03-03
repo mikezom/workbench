@@ -459,20 +459,16 @@ export function getRolloverBoundary(
 ): { current: Date; next: Date } {
   const n = now ?? new Date();
 
-  // Build today's rollover: same calendar date, rolloverHour:00:00.000 UTC
-  const todayRollover = new Date(
-    Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), rolloverHour)
-  );
-
-  let current: Date;
-  if (n < todayRollover) {
+  // Build today's rollover in local time
+  const current = new Date(n);
+  current.setHours(rolloverHour, 0, 0, 0);
+  if (n < current) {
     // Before today's rollover -> current = yesterday's rollover
-    current = new Date(todayRollover.getTime() - 24 * 60 * 60 * 1000);
-  } else {
-    current = todayRollover;
+    current.setDate(current.getDate() - 1);
   }
 
-  const next = new Date(current.getTime() + 24 * 60 * 60 * 1000);
+  const next = new Date(current);
+  next.setDate(next.getDate() + 1);
   return { current, next };
 }
 
@@ -909,15 +905,19 @@ export function getGroupStudiedToday(
   const rolloverHour = group?.rollover_hour ?? 5;
   const { current: rolloverStart } = getRolloverBoundary(rolloverHour);
 
+  // Include all descendant groups so daily limits are enforced across children
+  const ids = getDescendantIds(groupId);
+  const placeholders = ids.map(() => "?").join(", ");
+
   const row = db
     .prepare(
       `SELECT
          COALESCE(SUM(was_new = 1), 0) AS new_count,
          COALESCE(SUM(was_new = 0), 0) AS review_count
        FROM study_log
-       WHERE group_id = ? AND reviewed_at >= ?`
+       WHERE group_id IN (${placeholders}) AND reviewed_at >= ?`
     )
-    .get(groupId, rolloverStart.toISOString()) as {
+    .get(...ids, rolloverStart.toISOString()) as {
     new_count: number;
     review_count: number;
   };
@@ -986,36 +986,41 @@ export function reviewCard(
     (newDue.getTime() - now.getTime()) / 60000
   );
 
-  db.prepare(
-    `UPDATE cards SET
-       scheduled_at       = ?,
-       fsrs_state         = ?,
-       fsrs_stability     = ?,
-       fsrs_difficulty    = ?,
-       fsrs_elapsed_days  = ?,
-       fsrs_scheduled_days = ?,
-       fsrs_reps          = ?,
-       fsrs_lapses        = ?,
-       fsrs_last_review   = ?,
-       updated_at         = ?
-     WHERE id = ?`
-  ).run(
-    scheduledAt,
-    newCard.state as number,
-    newCard.stability,
-    newCard.difficulty,
-    newCard.elapsed_days,
-    newCard.scheduled_days,
-    newCard.reps,
-    newCard.lapses,
-    newCard.last_review ? newCard.last_review.toISOString() : null,
-    now.toISOString(),
-    cardId
-  );
+  // Wrap card update + study log insert in a transaction for atomicity
+  const doReview = db.transaction(() => {
+    db.prepare(
+      `UPDATE cards SET
+         scheduled_at       = ?,
+         fsrs_state         = ?,
+         fsrs_stability     = ?,
+         fsrs_difficulty    = ?,
+         fsrs_elapsed_days  = ?,
+         fsrs_scheduled_days = ?,
+         fsrs_reps          = ?,
+         fsrs_lapses        = ?,
+         fsrs_last_review   = ?,
+         updated_at         = ?
+       WHERE id = ?`
+    ).run(
+      scheduledAt,
+      newCard.state as number,
+      newCard.stability,
+      newCard.difficulty,
+      newCard.elapsed_days,
+      newCard.scheduled_days,
+      newCard.reps,
+      newCard.lapses,
+      newCard.last_review ? newCard.last_review.toISOString() : null,
+      now.toISOString(),
+      cardId
+    );
 
-  if (row.group_id) {
-    recordStudy(db, cardId, row.group_id, rating, wasNew);
-  }
+    if (row.group_id) {
+      recordStudy(db, cardId, row.group_id, rating, wasNew);
+    }
+  });
+
+  doReview();
 
   return {
     card: getCard(cardId)!,
