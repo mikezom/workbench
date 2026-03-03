@@ -177,19 +177,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-03T01:43:41.470Z",
-      "stability": 0.17934132,
-      "difficulty": 9.41184867,
-      "elapsed_days": 1,
-      "scheduled_days": 0,
-      "reps": 4,
+      "due": "2026-03-04T09:08:26.412Z",
+      "stability": 0.21099655,
+      "difficulty": 9.39766519,
+      "elapsed_days": 0,
+      "scheduled_days": 1,
+      "reps": 5,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 1,
-      "last_review": "2026-03-03T01:42:41.470Z"
+      "state": 2,
+      "last_review": "2026-03-03T09:08:26.412Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-03T01:42:41.472Z"
+    "updated_at": "2026-03-03T09:08:26.412Z"
   },
   {
     "id": "43b5776d-b7f6-4aed-99d2-dc988564c8c2",
@@ -201,19 +201,19 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T13:21:12.079Z",
-      "stability": 0.48140657,
-      "difficulty": 8.25557787,
-      "elapsed_days": 0,
-      "scheduled_days": 0,
-      "reps": 3,
+      "due": "2026-03-04T09:08:28.207Z",
+      "stability": 0.91305015,
+      "difficulty": 7.65790166,
+      "elapsed_days": 1,
+      "scheduled_days": 1,
+      "reps": 4,
       "lapses": 0,
       "learning_steps": 0,
-      "state": 1,
-      "last_review": "2026-03-02T13:15:12.079Z"
+      "state": 2,
+      "last_review": "2026-03-03T09:08:28.207Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T13:15:12.080Z"
+    "updated_at": "2026-03-03T09:08:28.207Z"
   },
   {
     "id": "2227e117-490e-4423-8ea6-e1ca6a8fd652",
@@ -225,18 +225,66 @@
     "source": null,
     "group_id": "2cea022c-b5a7-4fc6-9867-4fccca28b03c",
     "fsrs": {
-      "due": "2026-03-02T13:21:13.285Z",
-      "stability": 0.05995496,
-      "difficulty": 9.19279765,
-      "elapsed_days": 0,
+      "due": "2026-03-03T09:09:30.729Z",
+      "stability": 0.02561662,
+      "difficulty": 9.71990645,
+      "elapsed_days": 1,
       "scheduled_days": 0,
-      "reps": 3,
+      "reps": 4,
       "lapses": 0,
       "learning_steps": 0,
       "state": 1,
-      "last_review": "2026-03-02T13:15:13.285Z"
+      "last_review": "2026-03-03T09:08:30.729Z"
     },
     "created_at": "2026-03-02T11:58:47.519Z",
-    "updated_at": "2026-03-02T13:15:13.286Z"
+    "updated_at": "2026-03-03T09:08:30.730Z"
+  },
+  {
+    "id": "dd5b4178-b6a7-475d-8abf-6beb15558b93",
+    "front": "Idea 1",
+    "back": "Definition 1",
+    "title": "Idea 1",
+    "definition": "Definition 1",
+    "example": "Example 1",
+    "source": null,
+    "group_id": "738446d7-af8a-46b6-b2a2-5b7ee73fa358",
+    "fsrs": {
+      "due": "2026-03-03T09:10:54.675Z",
+      "stability": 0.212,
+      "difficulty": 6.4133,
+      "elapsed_days": 0,
+      "scheduled_days": 0,
+      "reps": 1,
+      "lapses": 0,
+      "learning_steps": 0,
+      "state": 1,
+      "last_review": "2026-03-03T09:09:54.675Z"
+    },
+    "created_at": "2026-03-03T09:09:29.252Z",
+    "updated_at": "2026-03-03T09:09:54.675Z"
+  },
+  {
+    "id": "8cde2cf6-4783-48dc-8141-c5fc9f4969c7",
+    "front": "Idea 2",
+    "back": "Definition 2",
+    "title": "Idea 2",
+    "definition": "Definition 2",
+    "example": "Example 2",
+    "source": null,
+    "group_id": "738446d7-af8a-46b6-b2a2-5b7ee73fa358",
+    "fsrs": {
+      "due": "2026-03-03T09:10:56.972Z",
+      "stability": 0.212,
+      "difficulty": 6.4133,
+      "elapsed_days": 0,
+      "scheduled_days": 0,
+      "reps": 1,
+      "lapses": 0,
+      "learning_steps": 0,
+      "state": 1,
+      "last_review": "2026-03-03T09:09:56.972Z"
+    },
+    "created_at": "2026-03-03T09:09:46.239Z",
+    "updated_at": "2026-03-03T09:09:56.973Z"
   }
 ]

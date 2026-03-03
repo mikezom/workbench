@@ -53,6 +53,12 @@ npm-debug.log*
 .wget-hsts
 .zai/
 
+# SQLite database files
+data/workbench.db
+data/workbench.db-wal
+data/workbench.db-shm
+data/*.bak
+
 # Misc
 *.apkg
 note.md

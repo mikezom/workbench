@@ -40,6 +40,7 @@ interface Group {
   settings: {
     dailyNewLimit: number;
     dailyReviewLimit: number;
+    rolloverHour: number;
   };
   created_at: string;
 }
@@ -959,8 +960,7 @@ function SettingsTab({
               <div className="min-w-0 flex-1">
                 <span className="font-medium">{g.name}</span>
                 <span className="ml-2 text-xs text-neutral-400 dark:text-neutral-500">
-                  New: {g.settings.dailyNewLimit} / Review:{" "}
-                  {g.settings.dailyReviewLimit}
+                  New: {g.settings.dailyNewLimit} / Review: {g.settings.dailyReviewLimit} / Rollover: {g.settings.rolloverHour}:00
                 </span>
               </div>
               <div className="flex gap-2 shrink-0 ml-3">
@@ -1008,7 +1008,7 @@ function GroupSettingsEditor({
   depth: number;
   onSave: (
     name: string,
-    settings: { dailyNewLimit: number; dailyReviewLimit: number }
+    settings: { dailyNewLimit: number; dailyReviewLimit: number; rolloverHour: number }
   ) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -1019,12 +1019,13 @@ function GroupSettingsEditor({
   const [dailyReviewLimit, setDailyReviewLimit] = useState(
     group.settings.dailyReviewLimit
   );
+  const [rolloverHour, setRolloverHour] = useState(group.settings.rolloverHour ?? 5);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     if (!name.trim()) return;
     setSaving(true);
-    await onSave(name.trim(), { dailyNewLimit, dailyReviewLimit });
+    await onSave(name.trim(), { dailyNewLimit, dailyReviewLimit, rolloverHour });
     setSaving(false);
   };
 
@@ -1042,7 +1043,7 @@ function GroupSettingsEditor({
           className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-3 gap-3 mb-3">
         <div>
           <label className="block text-sm font-medium mb-1">
             Daily New Limit
@@ -1068,6 +1069,18 @@ function GroupSettingsEditor({
             }
             className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Day Rollover Hour</label>
+          <input
+            type="number"
+            min={0}
+            max={23}
+            value={rolloverHour}
+            onChange={(e) => setRolloverHour(parseInt(e.target.value) || 0)}
+            className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+          />
+          <p className="text-xs text-neutral-400 mt-1">Hour (0-23) when a new study day begins</p>
         </div>
       </div>
       <div className="flex gap-2">
