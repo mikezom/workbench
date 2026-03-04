@@ -15,6 +15,8 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<HomePost | null>(null);
   const [formData, setFormData] = useState({ content: "", image_url: "" });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     fetchPosts();
@@ -31,13 +33,35 @@ export default function Home() {
 
     if (!formData.content.trim()) return;
 
+    let imageUrl = formData.image_url;
+
+    if (selectedFile) {
+      setUploading(true);
+      const uploadFormData = new FormData();
+      uploadFormData.append("image", selectedFile);
+
+      try {
+        const uploadRes = await fetch("/api/home/upload", {
+          method: "POST",
+          body: uploadFormData,
+        });
+        const uploadData = await uploadRes.json();
+        imageUrl = uploadData.url;
+      } catch {
+        alert("Failed to upload image");
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    }
+
     if (editingPost) {
       await fetch(`/api/home/${editingPost.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: formData.content,
-          image_url: formData.image_url || null,
+          image_url: imageUrl || null,
         }),
       });
     } else {
@@ -46,12 +70,13 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: formData.content,
-          image_url: formData.image_url || null,
+          image_url: imageUrl || null,
         }),
       });
     }
 
     setFormData({ content: "", image_url: "" });
+    setSelectedFile(null);
     setEditingPost(null);
     setIsModalOpen(false);
     fetchPosts();
@@ -80,6 +105,7 @@ export default function Home() {
     setIsModalOpen(false);
     setEditingPost(null);
     setFormData({ content: "", image_url: "" });
+    setSelectedFile(null);
   }
 
   return (
@@ -148,17 +174,25 @@ export default function Home() {
               </div>
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2">
-                  Image URL (optional)
+                  Image (optional)
                 </label>
                 <input
-                  type="url"
-                  value={formData.image_url}
-                  onChange={(e) =>
-                    setFormData({ ...formData, image_url: e.target.value })
-                  }
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setSelectedFile(file);
+                      setFormData({ ...formData, image_url: "" });
+                    }
+                  }}
                   className="w-full px-3 py-2 border rounded dark:bg-neutral-700 dark:border-neutral-600"
-                  placeholder="https://example.com/image.jpg"
                 />
+                {selectedFile && (
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                    Selected: {selectedFile.name}
+                  </p>
+                )}
               </div>
               <div className="flex gap-2 justify-end">
                 <button
@@ -170,9 +204,10 @@ export default function Home() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  disabled={uploading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {editingPost ? "Update" : "Create"}
+                  {uploading ? "Uploading..." : editingPost ? "Update" : "Create"}
                 </button>
               </div>
             </form>
