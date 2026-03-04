@@ -101,6 +101,7 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [x] Add copy to clipboard functionality with feedback
 - [x] Add delete with confirmation dialog
 - [x] Create clipboard-section.md documentation
+- [x] Replace confirm() dialog with animated two-step button confirmation
 
 ### Phase 4: Crawl Section
 - [ ] Define hardcoded sources config (HN, ArXiv, Lobste.rs, nLab, Planet Haskell)
@@ -181,7 +182,7 @@ Full spec: `docs/agent-section.md`
 | 3e - Study Review UX Fix | Complete | Immediate requeue replaces delayed queue + countdown; `d71a95a` |
 | 3f - Study Scroll & Review Info | Complete | Scroll isolation, review info display, zero-cards congrats; `b6a65fa` |
 | 3g - Dark Mode Color Fixes | Complete | True neutral grays across all sections, themed button outline; `b07fb19` |
-| 3h - Clipboard Section | Complete | Full UI with CRUD, infinite scroll, copy functionality; `c003b10` |
+| 3h - Clipboard Section | Complete | Full UI with CRUD, infinite scroll, copy functionality, animated delete confirmation; `8ef0cc2` |
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | Not started | |
