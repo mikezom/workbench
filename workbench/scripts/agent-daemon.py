@@ -22,7 +22,8 @@ import traceback
 from datetime import datetime, timedelta, timezone
 
 from agent_executor import execute_task as run_task_pipeline
-from agent_executor import CancelledError
+from agent_executor import resume_task as run_resume_pipeline
+from agent_executor import CancelledError, QuestionsAsked
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -90,6 +91,26 @@ def get_next_pending_task(conn: sqlite3.Connection) -> dict | None:
     row = conn.execute(
         "SELECT * FROM agent_tasks WHERE status = 'waiting_for_dev' "
         "ORDER BY created_at ASC LIMIT 1"
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_task_ready_to_resume(conn: sqlite3.Connection) -> dict | None:
+    """Return the oldest task with status 'waiting_for_review' where all questions are answered."""
+    row = conn.execute(
+        """SELECT t.* FROM agent_tasks t
+           WHERE t.status = 'waiting_for_review'
+           AND NOT EXISTS (
+             SELECT 1 FROM agent_task_questions q
+             WHERE q.task_id = t.id AND q.answer IS NULL
+           )
+           AND EXISTS (
+             SELECT 1 FROM agent_task_questions q2
+             WHERE q2.task_id = t.id
+           )
+           ORDER BY t.created_at ASC LIMIT 1"""
     ).fetchone()
     if row is None:
         return None
@@ -259,9 +280,12 @@ def main() -> None:
                         run_task_pipeline(conn, task)
                         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                         update_task_status(
-                            conn, task_id, "waiting_for_review", completed_at=now
+                            conn, task_id, "finished", completed_at=now
                         )
-                        log.info("Task %d status -> waiting_for_review", task_id)
+                        log.info("Task %d status -> finished", task_id)
+                    except QuestionsAsked:
+                        update_task_status(conn, task_id, "waiting_for_review")
+                        log.info("Task %d status -> waiting_for_review (questions)", task_id)
                     except CancelledError:
                         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                         update_task_status(
@@ -283,6 +307,49 @@ def main() -> None:
                     finally:
                         release_lock(conn)
                         log.info("Lock released")
+                else:
+                    # No new tasks — check for resumable tasks
+                    resume = get_task_ready_to_resume(conn)
+                    if resume:
+                        resume_id = resume["id"]
+                        log.info("Found resumable task %d: %s", resume_id, resume["title"])
+
+                        if not acquire_lock(conn, resume_id):
+                            log.warning("Failed to acquire lock for resume task %d", resume_id)
+                            time.sleep(POLL_INTERVAL)
+                            continue
+
+                        update_task_status(conn, resume_id, "developing")
+                        log.info("Task %d status -> developing (resume)", resume_id)
+
+                        try:
+                            run_resume_pipeline(conn, resume)
+                            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                            update_task_status(
+                                conn, resume_id, "finished", completed_at=now
+                            )
+                            log.info("Resumed task %d status -> finished", resume_id)
+                        except QuestionsAsked:
+                            update_task_status(conn, resume_id, "waiting_for_review")
+                            log.info("Resumed task %d -> waiting_for_review (more questions)", resume_id)
+                        except CancelledError:
+                            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                            update_task_status(
+                                conn, resume_id, "cancelled", completed_at=now
+                            )
+                            log.info("Resumed task %d -> cancelled", resume_id)
+                        except Exception:
+                            tb = traceback.format_exc()
+                            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                            update_task_status(
+                                conn, resume_id, "failed",
+                                completed_at=now, error_message=tb,
+                            )
+                            log.error("Resumed task %d failed:\n%s", resume_id, tb)
+                            append_output(conn, resume_id, "system", f"Resume failed: {tb}")
+                        finally:
+                            release_lock(conn)
+                            log.info("Lock released (resume)")
 
         except Exception:
             log.error("Unexpected error in poll loop:\n%s", traceback.format_exc())
