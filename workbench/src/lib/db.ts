@@ -4,6 +4,7 @@ import path from "path";
 import { fsrs, Rating, type Grade, type Card as FSRSCard } from "ts-fsrs";
 import { initAgentSchema } from "./agent-db";
 import { initClipboardSchema } from "./clipboard-db";
+import { initHomeSchema } from "./home-db";
 
 const f = fsrs();
 
@@ -25,6 +26,7 @@ export function getDb(): Database.Database {
   initSchema(_db);
   initAgentSchema(_db);
   initClipboardSchema(_db);
+  initHomeSchema(_db);
   return _db;
 }
 
