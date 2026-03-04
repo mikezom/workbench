@@ -1066,3 +1066,408 @@ def resume_task(conn: sqlite3.Connection, task: dict) -> None:
             append_output(conn, task_id, "system",
                 f"Resumed task failed — worktree preserved at {worktree_path}")
         raise
+
+
+# ---------------------------------------------------------------------------
+# Decompose agent execution
+# ---------------------------------------------------------------------------
+
+
+def inject_decompose_claude_md(repo_root: str) -> None:
+    """Inject agent-decompose-claude.md as CLAUDE.md in the repo root.
+
+    Unlike worker agents, decompose agents run in the main repo (no worktree).
+    """
+    source = os.path.join(repo_root, "workbench", "data", "agent-decompose-claude.md")
+    dest = os.path.join(repo_root, "CLAUDE.md")
+
+    if not os.path.isfile(source):
+        raise FileNotFoundError(
+            f"Decompose CLAUDE.md not found at {source}"
+        )
+
+    with open(source, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    with open(dest, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    log.info("Injected decompose CLAUDE.md into %s", dest)
+
+
+def remove_decompose_claude_md(repo_root: str) -> None:
+    """Remove the injected CLAUDE.md from repo root."""
+    dest = os.path.join(repo_root, "CLAUDE.md")
+    if os.path.isfile(dest):
+        os.remove(dest)
+        log.info("Removed decompose CLAUDE.md from %s", dest)
+
+
+def check_decompose_questions(repo_root: str) -> list[dict] | None:
+    """Check for decompose-questions.json in the repo root.
+
+    Returns:
+        List of question dicts if found, None otherwise.
+    """
+    questions_path = os.path.join(repo_root, "decompose-questions.json")
+    if not os.path.isfile(questions_path):
+        return None
+
+    with open(questions_path, "r", encoding="utf-8") as f:
+        questions = json.load(f)
+
+    log.info("Found %d decompose question(s)", len(questions))
+    return questions
+
+
+def check_breakdown(repo_root: str) -> list[dict] | None:
+    """Check for breakdown.json in the repo root.
+
+    Returns:
+        List of task dicts if found, None otherwise.
+    """
+    breakdown_path = os.path.join(repo_root, "breakdown.json")
+    if not os.path.isfile(breakdown_path):
+        return None
+
+    with open(breakdown_path, "r", encoding="utf-8") as f:
+        breakdown = json.load(f)
+
+    log.info("Found breakdown with %d sub-task(s)", len(breakdown))
+    return breakdown
+
+
+def check_reflection_result(repo_root: str) -> dict | None:
+    """Check for reflection-complete.json or reflection-retry.json.
+
+    Returns:
+        Dict with reflection result if found, None otherwise.
+    """
+    complete_path = os.path.join(repo_root, "reflection-complete.json")
+    retry_path = os.path.join(repo_root, "reflection-retry.json")
+
+    if os.path.isfile(complete_path):
+        with open(complete_path, "r", encoding="utf-8") as f:
+            result = json.load(f)
+        log.info("Found reflection-complete.json")
+        return {"type": "complete", "data": result}
+
+    if os.path.isfile(retry_path):
+        with open(retry_path, "r", encoding="utf-8") as f:
+            result = json.load(f)
+        log.info("Found reflection-retry.json")
+        return {"type": "retry", "data": result}
+
+    return None
+
+
+def cleanup_decompose_files(repo_root: str) -> None:
+    """Remove all decompose-related JSON files from repo root."""
+    files_to_remove = [
+        "decompose-questions.json",
+        "breakdown.json",
+        "reflection-complete.json",
+        "reflection-retry.json",
+    ]
+
+    for filename in files_to_remove:
+        path = os.path.join(repo_root, filename)
+        if os.path.isfile(path):
+            os.remove(path)
+            log.debug("Removed %s", filename)
+
+
+def execute_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
+    """Execute a decompose task: understand objective and create breakdown.
+
+    This handles Phase 1 (understand) and Phase 2 (breakdown).
+    The agent runs in the main repo (no worktree).
+
+    On success: stores breakdown, transitions to waiting_for_approval.
+    On questions: stores questions, raises QuestionsAsked.
+    On cancel: cleans up, raises CancelledError.
+    On failure: raises the original exception.
+    """
+    task_id = task["id"]
+    prompt = task["prompt"]
+
+    try:
+        # Step 1: Inject decompose CLAUDE.md
+        append_output(conn, task_id, "system", "Starting decompose agent...")
+        inject_decompose_claude_md(REPO_ROOT)
+
+        # Step 2: Invoke Claude Code in main repo
+        invoke_claude(REPO_ROOT, prompt, conn, task_id)
+
+        # Step 3: Check for questions
+        questions = check_decompose_questions(REPO_ROOT)
+        if questions:
+            append_output(conn, task_id, "system",
+                f"Decompose agent asked {len(questions)} clarification question(s)")
+            save_questions_to_db(conn, task_id, questions)
+            cleanup_decompose_files(REPO_ROOT)
+            remove_decompose_claude_md(REPO_ROOT)
+            raise QuestionsAsked(f"Decompose task {task_id} has {len(questions)} questions")
+
+        # Step 4: Check for breakdown
+        breakdown = check_breakdown(REPO_ROOT)
+        if not breakdown:
+            raise RuntimeError("Decompose agent did not produce breakdown.json")
+
+        # Step 5: Store breakdown in database
+        conn.execute(
+            "UPDATE agent_tasks SET decompose_breakdown = ? WHERE id = ?",
+            (json.dumps(breakdown), task_id),
+        )
+        conn.commit()
+
+        append_output(conn, task_id, "system",
+            f"Breakdown created with {len(breakdown)} sub-task(s) — awaiting user approval")
+        log.info("Decompose task %d created breakdown with %d sub-tasks", task_id, len(breakdown))
+
+        # Cleanup
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+
+    except CancelledError:
+        append_output(conn, task_id, "system", "Decompose task cancelled")
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+        raise
+
+    except QuestionsAsked:
+        # Questions already saved, files cleaned up
+        raise
+
+    except Exception:
+        append_output(conn, task_id, "system", "Decompose task failed")
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+        raise
+
+
+def resume_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
+    """Resume a decompose task after user answered questions.
+
+    Similar to execute_decompose_task but includes Q&A context in prompt.
+    """
+    task_id = task["id"]
+    prompt = task["prompt"]
+
+    try:
+        # Step 1: Build Q&A context
+        rows = conn.execute(
+            "SELECT question_id, question, answer FROM agent_task_questions WHERE task_id = ?",
+            (task_id,),
+        ).fetchall()
+
+        qa_context = "\n".join(
+            f"Q{i+1} ({row['question_id']}): {row['question']}\nA: {row['answer']}"
+            for i, row in enumerate(rows)
+        )
+
+        resumed_prompt = (
+            f"Previous Clarification Q&A:\n\n{qa_context}\n\n"
+            f"Original Objective:\n{prompt}\n\n"
+            f"Continue with the breakdown using these answers."
+        )
+
+        append_output(conn, task_id, "system",
+            f"Resuming decompose task with {len(rows)} answered question(s)...")
+
+        # Step 2: Inject decompose CLAUDE.md
+        inject_decompose_claude_md(REPO_ROOT)
+
+        # Step 3: Re-invoke Claude Code
+        invoke_claude(REPO_ROOT, resumed_prompt, conn, task_id)
+
+        # Step 4: Check for new questions
+        questions = check_decompose_questions(REPO_ROOT)
+        if questions:
+            append_output(conn, task_id, "system",
+                f"Decompose agent asked {len(questions)} more question(s)")
+            # Clear old questions and save new ones
+            conn.execute(
+                "DELETE FROM agent_task_questions WHERE task_id = ?",
+                (task_id,),
+            )
+            save_questions_to_db(conn, task_id, questions)
+            cleanup_decompose_files(REPO_ROOT)
+            remove_decompose_claude_md(REPO_ROOT)
+            raise QuestionsAsked(f"Decompose task {task_id} has {len(questions)} new questions")
+
+        # Step 5: Check for breakdown
+        breakdown = check_breakdown(REPO_ROOT)
+        if not breakdown:
+            raise RuntimeError("Decompose agent did not produce breakdown.json")
+
+        # Step 6: Store breakdown
+        conn.execute(
+            "UPDATE agent_tasks SET decompose_breakdown = ? WHERE id = ?",
+            (json.dumps(breakdown), task_id),
+        )
+        conn.commit()
+
+        append_output(conn, task_id, "system",
+            f"Breakdown created with {len(breakdown)} sub-task(s) — awaiting user approval")
+        log.info("Resumed decompose task %d created breakdown with %d sub-tasks",
+            task_id, len(breakdown))
+
+        # Cleanup
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+
+    except CancelledError:
+        append_output(conn, task_id, "system", "Decompose task cancelled")
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+        raise
+
+    except QuestionsAsked:
+        raise
+
+    except Exception:
+        append_output(conn, task_id, "system", "Resumed decompose task failed")
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+        raise
+
+
+def retry_decompose_breakdown(conn: sqlite3.Connection, task: dict, user_comment: str) -> None:
+    """Retry breakdown creation after user rejection.
+
+    Invokes the decompose agent with the user's rejection comment.
+    """
+    task_id = task["id"]
+    prompt = task["prompt"]
+    previous_breakdown = task.get("decompose_breakdown")
+
+    try:
+        # Build context with rejection feedback
+        retry_prompt = (
+            f"User Rejection Comments:\n\n{user_comment}\n\n"
+            f"Original Objective:\n{prompt}\n\n"
+        )
+
+        if previous_breakdown:
+            retry_prompt += f"Previous Breakdown (rejected):\n{previous_breakdown}\n\n"
+
+        retry_prompt += (
+            "The user rejected your previous breakdown. "
+            "Address their concerns and create a revised breakdown."
+        )
+
+        append_output(conn, task_id, "system",
+            "Retrying breakdown with user feedback...")
+
+        # Inject decompose CLAUDE.md
+        inject_decompose_claude_md(REPO_ROOT)
+
+        # Invoke Claude Code
+        invoke_claude(REPO_ROOT, retry_prompt, conn, task_id)
+
+        # Check for breakdown
+        breakdown = check_breakdown(REPO_ROOT)
+        if not breakdown:
+            raise RuntimeError("Decompose agent did not produce revised breakdown.json")
+
+        # Store new breakdown
+        conn.execute(
+            "UPDATE agent_tasks SET decompose_breakdown = ?, decompose_user_comment = NULL WHERE id = ?",
+            (json.dumps(breakdown), task_id),
+        )
+        conn.commit()
+
+        append_output(conn, task_id, "system",
+            f"Revised breakdown created with {len(breakdown)} sub-task(s)")
+        log.info("Decompose task %d created revised breakdown", task_id)
+
+        # Cleanup
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+
+    except Exception:
+        append_output(conn, task_id, "system", "Breakdown retry failed")
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+        raise
+
+
+def execute_decompose_reflection(conn: sqlite3.Connection, task: dict) -> None:
+    """Execute decompose reflection phase.
+
+    Reviews all completed sub-tasks and determines if objective was achieved.
+    Either completes the decompose task or loops back to Phase 1.
+    """
+    task_id = task["id"]
+
+    try:
+        # Step 1: Gather sub-task results
+        sub_tasks = conn.execute(
+            """SELECT id, title, prompt, status, commit_id, user_task_comment
+               FROM agent_tasks
+               WHERE parent_task_id = ?
+               ORDER BY created_at ASC""",
+            (task_id,),
+        ).fetchall()
+
+        if not sub_tasks:
+            raise RuntimeError("No sub-tasks found for reflection")
+
+        # Build reflection context
+        results_context = "Reflection Context: All sub-tasks completed\n\n"
+        results_context += f"Original Objective: {task['prompt']}\n\n"
+        results_context += "Sub-task Results:\n\n"
+
+        for i, sub in enumerate(sub_tasks, 1):
+            results_context += f"{i}. {sub['title']}\n"
+            results_context += f"   Status: {sub['status']}\n"
+            results_context += f"   User Comment: {sub['user_task_comment'] or 'None'}\n"
+            if sub['commit_id']:
+                results_context += f"   Commit: {sub['commit_id']}\n"
+            results_context += "\n"
+
+        append_output(conn, task_id, "system",
+            f"Starting reflection on {len(sub_tasks)} completed sub-task(s)...")
+
+        # Step 2: Inject decompose CLAUDE.md
+        inject_decompose_claude_md(REPO_ROOT)
+
+        # Step 3: Invoke Claude Code with reflection context
+        invoke_claude(REPO_ROOT, results_context, conn, task_id)
+
+        # Step 4: Check reflection result
+        result = check_reflection_result(REPO_ROOT)
+        if not result:
+            raise RuntimeError("Decompose agent did not produce reflection result")
+
+        if result["type"] == "complete":
+            # Success! Mark decompose task as complete
+            append_output(conn, task_id, "system",
+                f"Reflection complete: {result['data'].get('summary', 'Objective achieved')}")
+            log.info("Decompose task %d reflection complete", task_id)
+
+        elif result["type"] == "retry":
+            # False-finishes detected, need to loop back
+            false_finishes = result["data"].get("false_finished_tasks", [])
+            append_output(conn, task_id, "system",
+                f"Reflection identified {len(false_finishes)} false-finished task(s) — looping back")
+            log.info("Decompose task %d needs retry due to false-finishes", task_id)
+
+            # Store retry context for next invocation
+            conn.execute(
+                "UPDATE agent_tasks SET decompose_user_comment = ? WHERE id = ?",
+                (json.dumps(result["data"]), task_id),
+            )
+            conn.commit()
+
+        # Cleanup
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+
+    except Exception:
+        append_output(conn, task_id, "system", "Reflection failed")
+        cleanup_decompose_files(REPO_ROOT)
+        remove_decompose_claude_md(REPO_ROOT)
+        raise
+

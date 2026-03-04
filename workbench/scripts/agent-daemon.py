@@ -23,6 +23,12 @@ from datetime import datetime, timedelta, timezone
 
 from agent_executor import execute_task as run_task_pipeline
 from agent_executor import resume_task as run_resume_pipeline
+from agent_executor import (
+    execute_decompose_task as run_decompose_pipeline,
+    resume_decompose_task as run_decompose_resume_pipeline,
+    retry_decompose_breakdown as run_decompose_retry_pipeline,
+    execute_decompose_reflection as run_decompose_reflection_pipeline,
+)
 from agent_executor import CancelledError, QuestionsAsked
 
 # ---------------------------------------------------------------------------
@@ -109,6 +115,78 @@ def get_task_ready_to_resume(conn: sqlite3.Connection) -> dict | None:
            AND EXISTS (
              SELECT 1 FROM agent_task_questions q2
              WHERE q2.task_id = t.id
+           )
+           ORDER BY t.created_at ASC LIMIT 1"""
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_decompose_task_to_start(conn: sqlite3.Connection) -> dict | None:
+    """Return the oldest decompose task with status 'decompose_understanding'."""
+    row = conn.execute(
+        """SELECT * FROM agent_tasks
+           WHERE task_type = 'decompose'
+           AND status = 'decompose_understanding'
+           ORDER BY created_at ASC LIMIT 1"""
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_decompose_task_ready_to_resume(conn: sqlite3.Connection) -> dict | None:
+    """Return decompose task with answered questions."""
+    row = conn.execute(
+        """SELECT t.* FROM agent_tasks t
+           WHERE t.task_type = 'decompose'
+           AND t.status = 'decompose_waiting_for_answers'
+           AND NOT EXISTS (
+             SELECT 1 FROM agent_task_questions q
+             WHERE q.task_id = t.id AND q.answer IS NULL
+           )
+           AND EXISTS (
+             SELECT 1 FROM agent_task_questions q2
+             WHERE q2.task_id = t.id
+           )
+           ORDER BY t.created_at ASC LIMIT 1"""
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_decompose_task_to_retry(conn: sqlite3.Connection) -> dict | None:
+    """Return decompose task rejected by user (has decompose_user_comment)."""
+    row = conn.execute(
+        """SELECT * FROM agent_tasks
+           WHERE task_type = 'decompose'
+           AND status = 'decompose_breaking_down'
+           AND decompose_user_comment IS NOT NULL
+           ORDER BY created_at ASC LIMIT 1"""
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_decompose_task_ready_for_reflection(conn: sqlite3.Connection) -> dict | None:
+    """Return decompose task where all sub-tasks are completed and commented."""
+    row = conn.execute(
+        """SELECT t.* FROM agent_tasks t
+           WHERE t.task_type = 'decompose'
+           AND t.status = 'decompose_waiting_for_completion'
+           AND NOT EXISTS (
+             SELECT 1 FROM agent_tasks sub
+             WHERE sub.parent_task_id = t.id
+             AND sub.status NOT IN ('finished', 'failed', 'cancelled')
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM agent_tasks sub2
+             WHERE sub2.parent_task_id = t.id
+             AND sub2.user_task_comment IS NULL
+             AND sub2.status IN ('finished', 'failed')
            )
            ORDER BY t.created_at ASC LIMIT 1"""
     ).fetchone()
@@ -350,6 +428,169 @@ def main() -> None:
                         finally:
                             release_lock(conn)
                             log.info("Lock released (resume)")
+
+                    # No worker tasks — check for decompose tasks
+                    if not resume:
+                        decompose = get_decompose_task_to_start(conn)
+                        if decompose:
+                            decompose_id = decompose["id"]
+                            log.info("Found decompose task %d: %s", decompose_id, decompose["title"])
+
+                            if not acquire_lock(conn, decompose_id):
+                                log.warning("Failed to acquire lock for decompose task %d", decompose_id)
+                                time.sleep(POLL_INTERVAL)
+                                continue
+
+                            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                            update_task_status(conn, decompose_id, "decompose_understanding", started_at=now)
+                            log.info("Decompose task %d status -> decompose_understanding", decompose_id)
+
+                            try:
+                                run_decompose_pipeline(conn, decompose)
+                                update_task_status(conn, decompose_id, "decompose_waiting_for_approval")
+                                log.info("Decompose task %d status -> decompose_waiting_for_approval", decompose_id)
+                            except QuestionsAsked:
+                                update_task_status(conn, decompose_id, "decompose_waiting_for_answers")
+                                log.info("Decompose task %d status -> decompose_waiting_for_answers", decompose_id)
+                            except CancelledError:
+                                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                update_task_status(conn, decompose_id, "cancelled", completed_at=now)
+                                log.info("Decompose task %d status -> cancelled", decompose_id)
+                            except Exception:
+                                tb = traceback.format_exc()
+                                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                update_task_status(
+                                    conn, decompose_id, "failed",
+                                    completed_at=now, error_message=tb,
+                                )
+                                log.error("Decompose task %d failed:\n%s", decompose_id, tb)
+                                append_output(conn, decompose_id, "system", f"Decompose failed: {tb}")
+                            finally:
+                                release_lock(conn)
+                                log.info("Lock released (decompose)")
+
+                        # Check for decompose tasks ready to resume
+                        if not decompose:
+                            decompose_resume = get_decompose_task_ready_to_resume(conn)
+                            if decompose_resume:
+                                resume_id = decompose_resume["id"]
+                                log.info("Found decompose task to resume %d", resume_id)
+
+                                if not acquire_lock(conn, resume_id):
+                                    log.warning("Failed to acquire lock for decompose resume %d", resume_id)
+                                    time.sleep(POLL_INTERVAL)
+                                    continue
+
+                                update_task_status(conn, resume_id, "decompose_breaking_down")
+                                log.info("Decompose task %d status -> decompose_breaking_down (resume)", resume_id)
+
+                                try:
+                                    run_decompose_resume_pipeline(conn, decompose_resume)
+                                    update_task_status(conn, resume_id, "decompose_waiting_for_approval")
+                                    log.info("Decompose task %d status -> decompose_waiting_for_approval", resume_id)
+                                except QuestionsAsked:
+                                    update_task_status(conn, resume_id, "decompose_waiting_for_answers")
+                                    log.info("Decompose task %d -> decompose_waiting_for_answers (more questions)", resume_id)
+                                except CancelledError:
+                                    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                    update_task_status(conn, resume_id, "cancelled", completed_at=now)
+                                    log.info("Decompose task %d -> cancelled", resume_id)
+                                except Exception:
+                                    tb = traceback.format_exc()
+                                    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                    update_task_status(
+                                        conn, resume_id, "failed",
+                                        completed_at=now, error_message=tb,
+                                    )
+                                    log.error("Decompose resume %d failed:\n%s", resume_id, tb)
+                                    append_output(conn, resume_id, "system", f"Decompose resume failed: {tb}")
+                                finally:
+                                    release_lock(conn)
+                                    log.info("Lock released (decompose resume)")
+
+                            # Check for decompose tasks to retry (user rejected breakdown)
+                            if not decompose_resume:
+                                decompose_retry = get_decompose_task_to_retry(conn)
+                                if decompose_retry:
+                                    retry_id = decompose_retry["id"]
+                                    log.info("Found decompose task to retry %d", retry_id)
+
+                                    if not acquire_lock(conn, retry_id):
+                                        log.warning("Failed to acquire lock for decompose retry %d", retry_id)
+                                        time.sleep(POLL_INTERVAL)
+                                        continue
+
+                                    log.info("Decompose task %d retrying breakdown", retry_id)
+
+                                    try:
+                                        user_comment = decompose_retry["decompose_user_comment"]
+                                        run_decompose_retry_pipeline(conn, decompose_retry, user_comment)
+                                        update_task_status(conn, retry_id, "decompose_waiting_for_approval")
+                                        log.info("Decompose task %d status -> decompose_waiting_for_approval (retry)", retry_id)
+                                    except CancelledError:
+                                        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                        update_task_status(conn, retry_id, "cancelled", completed_at=now)
+                                        log.info("Decompose task %d -> cancelled", retry_id)
+                                    except Exception:
+                                        tb = traceback.format_exc()
+                                        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                        update_task_status(
+                                            conn, retry_id, "failed",
+                                            completed_at=now, error_message=tb,
+                                        )
+                                        log.error("Decompose retry %d failed:\n%s", retry_id, tb)
+                                        append_output(conn, retry_id, "system", f"Decompose retry failed: {tb}")
+                                    finally:
+                                        release_lock(conn)
+                                        log.info("Lock released (decompose retry)")
+
+                                # Check for decompose tasks ready for reflection
+                                if not decompose_retry:
+                                    decompose_reflect = get_decompose_task_ready_for_reflection(conn)
+                                    if decompose_reflect:
+                                        reflect_id = decompose_reflect["id"]
+                                        log.info("Found decompose task ready for reflection %d", reflect_id)
+
+                                        if not acquire_lock(conn, reflect_id):
+                                            log.warning("Failed to acquire lock for decompose reflection %d", reflect_id)
+                                            time.sleep(POLL_INTERVAL)
+                                            continue
+
+                                        update_task_status(conn, reflect_id, "decompose_reflecting")
+                                        log.info("Decompose task %d status -> decompose_reflecting", reflect_id)
+
+                                        try:
+                                            run_decompose_reflection_pipeline(conn, decompose_reflect)
+                                            # Check if reflection wants to retry or complete
+                                            task_after = conn.execute(
+                                                "SELECT decompose_user_comment FROM agent_tasks WHERE id = ?",
+                                                (reflect_id,)
+                                            ).fetchone()
+                                            if task_after and task_after["decompose_user_comment"]:
+                                                # Retry needed - loop back to understanding
+                                                update_task_status(conn, reflect_id, "decompose_understanding")
+                                                log.info("Decompose task %d -> decompose_understanding (retry from reflection)", reflect_id)
+                                            else:
+                                                # Complete
+                                                now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                                update_task_status(conn, reflect_id, "decompose_complete", completed_at=now)
+                                                log.info("Decompose task %d status -> decompose_complete", reflect_id)
+                                        except CancelledError:
+                                            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                            update_task_status(conn, reflect_id, "cancelled", completed_at=now)
+                                            log.info("Decompose task %d -> cancelled", reflect_id)
+                                        except Exception:
+                                            tb = traceback.format_exc()
+                                            now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                                            update_task_status(
+                                                conn, reflect_id, "failed",
+                                                completed_at=now, error_message=tb,
+                                            )
+                                            log.error("Decompose reflection %d failed:\n%s", reflect_id, tb)
+                                            append_output(conn, reflect_id, "system", f"Decompose reflection failed: {tb}")
+                                        finally:
+                                            release_lock(conn)
+                                            log.info("Lock released (decompose reflection)")
 
         except Exception:
             log.error("Unexpected error in poll loop:\n%s", traceback.format_exc())

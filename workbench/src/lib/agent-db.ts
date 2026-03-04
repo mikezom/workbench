@@ -14,13 +14,22 @@ export function initAgentSchema(db: Database.Database): void {
       status TEXT NOT NULL DEFAULT 'waiting_for_dev'
         CHECK (status IN (
           'waiting_for_dev', 'developing', 'waiting_for_review',
-          'finished', 'failed', 'cancelled'
+          'finished', 'failed', 'cancelled',
+          'decompose_understanding', 'decompose_waiting_for_answers',
+          'decompose_breaking_down', 'decompose_waiting_for_approval',
+          'decompose_approved', 'decompose_waiting_for_completion',
+          'decompose_reflecting', 'decompose_complete'
         )),
       parent_objective TEXT,
+      parent_task_id INTEGER REFERENCES agent_tasks(id) ON DELETE SET NULL,
+      task_type TEXT NOT NULL DEFAULT 'worker' CHECK (task_type IN ('worker', 'decompose')),
       branch_name TEXT,
       worktree_path TEXT,
       error_message TEXT,
       commit_id TEXT,
+      decompose_breakdown TEXT,
+      decompose_user_comment TEXT,
+      user_task_comment TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       started_at TEXT,
       completed_at TEXT
@@ -72,7 +81,17 @@ export type AgentTaskStatus =
   | "waiting_for_review"
   | "finished"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "decompose_understanding"
+  | "decompose_waiting_for_answers"
+  | "decompose_breaking_down"
+  | "decompose_waiting_for_approval"
+  | "decompose_approved"
+  | "decompose_waiting_for_completion"
+  | "decompose_reflecting"
+  | "decompose_complete";
+
+export type AgentTaskType = "worker" | "decompose";
 
 export interface AgentTask {
   id: number;
@@ -80,10 +99,15 @@ export interface AgentTask {
   prompt: string;
   status: AgentTaskStatus;
   parent_objective: string | null;
+  parent_task_id: number | null;
+  task_type: AgentTaskType;
   branch_name: string | null;
   worktree_path: string | null;
   error_message: string | null;
   commit_id: string | null;
+  decompose_breakdown: string | null;  // JSON string of breakdown
+  decompose_user_comment: string | null;  // User's rejection comment
+  user_task_comment: string | null;  // User's comment on completed task (for reflection)
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -122,14 +146,22 @@ export function createTask(data: {
   title: string;
   prompt: string;
   parent_objective?: string;
+  parent_task_id?: number;
+  task_type?: AgentTaskType;
 }): AgentTask {
   const db = getDb();
   const result = db
     .prepare(
-      `INSERT INTO agent_tasks (title, prompt, parent_objective)
-       VALUES (?, ?, ?)`
+      `INSERT INTO agent_tasks (title, prompt, parent_objective, parent_task_id, task_type)
+       VALUES (?, ?, ?, ?, ?)`
     )
-    .run(data.title, data.prompt, data.parent_objective ?? null);
+    .run(
+      data.title,
+      data.prompt,
+      data.parent_objective ?? null,
+      data.parent_task_id ?? null,
+      data.task_type ?? "worker"
+    );
 
   return getTask(result.lastInsertRowid as number)!;
 }
@@ -165,6 +197,9 @@ export function updateTask(
     worktree_path?: string;
     error_message?: string;
     commit_id?: string;
+    decompose_breakdown?: string;
+    decompose_user_comment?: string;
+    user_task_comment?: string;
     started_at?: string;
     completed_at?: string;
   }
@@ -334,6 +369,60 @@ export function getTasksReadyToResume(): AgentTask[] {
        AND EXISTS (
          SELECT 1 FROM agent_task_questions q2
          WHERE q2.task_id = t.id
+       )
+       ORDER BY t.created_at ASC
+       LIMIT 1`
+    )
+    .all() as AgentTask[];
+}
+
+// ---------------------------------------------------------------------------
+// Decompose-specific functions
+// ---------------------------------------------------------------------------
+
+export function getSubTasks(parentTaskId: number): AgentTask[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT * FROM agent_tasks
+       WHERE parent_task_id = ?
+       ORDER BY created_at ASC`
+    )
+    .all(parentTaskId) as AgentTask[];
+}
+
+export function areAllSubTasksCommented(parentTaskId: number): boolean {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `SELECT COUNT(*) as total,
+              SUM(CASE WHEN user_task_comment IS NOT NULL THEN 1 ELSE 0 END) as commented
+       FROM agent_tasks
+       WHERE parent_task_id = ?
+       AND status IN ('finished', 'failed')`
+    )
+    .get(parentTaskId) as { total: number; commented: number };
+
+  return result.total > 0 && result.total === result.commented;
+}
+
+export function getDecomposeTasksReadyForReflection(): AgentTask[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT t.* FROM agent_tasks t
+       WHERE t.task_type = 'decompose'
+       AND t.status = 'decompose_waiting_for_completion'
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_tasks sub
+         WHERE sub.parent_task_id = t.id
+         AND sub.status NOT IN ('finished', 'failed', 'cancelled')
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_tasks sub2
+         WHERE sub2.parent_task_id = t.id
+         AND sub2.user_task_comment IS NULL
+         AND sub2.status IN ('finished', 'failed')
        )
        ORDER BY t.created_at ASC
        LIMIT 1`

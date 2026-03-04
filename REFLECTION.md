@@ -213,3 +213,17 @@ prevention strategies, and the relevant git commit IDs.
 **Commit**: `fb86764`
 
 
+
+---
+
+## 2026-03-04 - Committed directly to main instead of task branch
+
+**Problem**: During the dark mode color fixes, I committed changes directly to main branch instead of following the documented workflow of creating a task branch first, then merging to main.
+
+**Root Cause**: I staged files and committed before creating the task branch, violating the git workflow specified in the global CLAUDE.md which requires: `git checkout main && git checkout -b task/<description>` before making any commits.
+
+**Solution**: Used git reflog to find the commit hash, then properly merged it to main. The commit was preserved but the workflow was not followed correctly during the initial attempt.
+
+**Prevention**: Always follow the exact git workflow sequence from CLAUDE.md: (1) checkout main, (2) create task branch, (3) make changes and commit on task branch, (4) checkout main, (5) merge task branch, (6) delete task branch. Never commit before creating the task branch.
+
+**Commit**: `b07fb19`
