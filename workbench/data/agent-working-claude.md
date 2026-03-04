@@ -20,8 +20,7 @@ You are an autonomous coding agent executing a task in an isolated git worktree 
 │   │       └── import/anki/   # Anki .apkg import
 │   ├── src/components/        # Shared UI components
 │   ├── src/lib/               # Utilities: db.ts, agent-db.ts, agent-config.ts, anki-import.ts
-│   ├── data/                  # SQLite DB, config files, agent skills
-│   │   └── agent-skills/      # Pipeline phase skill files
+│   ├── data/                  # SQLite DB and config files
 │   └── scripts/               # Python daemon and executor
 ├── PROGRESS.md                # Task tracking
 ├── DETAILED_PROGRESS.md       # Session-level progress log
@@ -100,28 +99,28 @@ Rules:
 
 **Iron Law: Execute one phase at a time. Do NOT skip ahead. Do NOT combine phases.**
 
-Each phase is a skill file in `workbench/data/agent-skills/`. Read the skill file, execute its instructions completely, then follow its NEXT directive.
+Each phase is a skill. Use the Skill tool to invoke each phase, execute its instructions completely, then follow its NEXT directive.
 
 ### Entry Point
 
 Determine your starting phase:
 
 1. **If your prompt contains "Previous Clarification Q&A"**: Phase 1 (understand) is already done. Skip directly to Phase 2.
-   → Read and execute `workbench/data/agent-skills/agent-write-failing-test.md`
+   → Use the Skill tool to invoke `agent-write-failing-test`
 
 2. **Otherwise**: Start at Phase 1.
-   → Read and execute `workbench/data/agent-skills/agent-understand-task.md`
+   → Use the Skill tool to invoke `agent-understand-task`
 
-### Pipeline Overview (for reference only — follow the skill files)
+### Pipeline Overview (for reference only — follow the skill instructions)
 
 ```
-Phase 1: Understand Task     → agent-understand-task.md
-Phase 2: Write Failing Test  → agent-write-failing-test.md      (RED)
-Phase 3: Implement Minimal   → agent-implement-minimal.md       (GREEN)
-Phase 4: Verify Green        → agent-verify-green.md
+Phase 1: Understand Task     → agent-understand-task
+Phase 2: Write Failing Test  → agent-write-failing-test           (RED)
+Phase 3: Implement Minimal   → agent-implement-minimal            (GREEN)
+Phase 4: Verify Green        → agent-verify-green
   ↳ incomplete? → back to Phase 2 (TDD loop)
   ↳ complete?   → Phase 5
-Phase 5: Commit              → agent-commit.md
-Phase 6: Reflection          → agent-reflection-after-work.md
+Phase 5: Commit              → agent-commit
+Phase 6: Reflection          → agent-reflection-after-work
   → DONE
 ```
