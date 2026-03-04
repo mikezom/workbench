@@ -803,3 +803,23 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 - `workbench/src/lib/date-utils.test.ts` — Test suite with 5 test cases
 
 **Summary**: Created a utility function that formats Date objects as YYYY-MM-DD strings with proper zero-padding for single-digit months and days. Uses local time. Includes comprehensive tests covering edge cases (year boundaries, leap years).
+
+---
+
+## 2026-03-04 — Theme Toggle Button
+
+### Add dark/light theme toggle to sidebar
+
+**Date**: 2026-03-04
+
+**Commit**: `fb86764`
+
+**Files changed**:
+- `workbench/src/lib/theme.ts` — Theme utility module with localStorage persistence
+- `workbench/src/lib/theme.test.ts` — Test suite for theme utilities (11 tests)
+- `workbench/src/components/nav.tsx` — Added theme toggle button at bottom of sidebar
+- `workbench/tailwind.config.ts` — Configured class-based dark mode
+- `workbench/vitest.config.ts` — Changed environment from node to happy-dom for browser API testing
+- `workbench/package.json` — Added happy-dom dev dependency
+
+**Summary**: Implemented a dark/light theme toggle button positioned at the bottom of the navigation sidebar. The theme preference is persisted in localStorage and applied via Tailwind's class-based dark mode. Updated test environment to support browser APIs (localStorage, document).

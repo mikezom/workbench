@@ -200,3 +200,16 @@ prevention strategies, and the relevant git commit IDs.
 
 **Commit**: `5e83e98`
 
+## 2026-03-04 - Vitest environment changed from node to happy-dom
+
+**Problem**: When implementing the theme toggle feature, tests needed to access browser APIs (localStorage, document) to verify theme persistence and DOM manipulation. The vitest config was set to `environment: "node"` which doesn't provide these APIs, causing all tests to fail with "localStorage is not defined".
+
+**Root Cause**: The project was initially set up for backend/utility testing only (node environment). When UI-related functionality requiring browser APIs was added, the test environment needed to be upgraded.
+
+**Solution**: Installed `happy-dom` dev dependency and changed vitest config from `environment: "node"` to `environment: "happy-dom"`. Happy-dom provides a lightweight DOM implementation that's faster than jsdom while supporting all necessary browser APIs.
+
+**Prevention**: When writing tests that interact with browser APIs (localStorage, document, window), ensure the test environment supports them. Happy-dom is now the default environment for all tests in this project. If a specific test needs node environment, it can use `// @vitest-environment node` comment at the top of the file.
+
+**Commit**: `fb86764`
+
+
