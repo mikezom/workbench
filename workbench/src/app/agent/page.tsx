@@ -51,6 +51,16 @@ interface DecomposedTask {
   prompt: string;
 }
 
+interface AgentTaskQuestion {
+  id: number;
+  task_id: number;
+  question_id: string;
+  question: string;
+  options: string[];
+  answer: string | null;
+  created_at: string;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
@@ -400,6 +410,9 @@ function TaskDetailModal({
   const [currentTask, setCurrentTask] = useState(task);
   const outputEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [questions, setQuestions] = useState<AgentTaskQuestion[]>([]);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
+  const [submittingAnswers, setSubmittingAnswers] = useState(false);
 
   // Fetch task output
   const fetchOutput = useCallback(async () => {
@@ -432,22 +445,45 @@ function TaskDetailModal({
     }
   }, [task.id]);
 
+  // Fetch questions for waiting_for_review tasks
+  const fetchQuestions = useCallback(async () => {
+    if (currentTask.status !== "waiting_for_review") return;
+    try {
+      const res = await fetch(`/api/agent/tasks/${task.id}/questions`);
+      if (!res.ok) return;
+      const data: AgentTaskQuestion[] = await res.json();
+      setQuestions(data);
+      // Pre-fill already answered questions
+      const existing: Record<string, string> = {};
+      for (const q of data) {
+        if (q.answer) existing[q.question_id] = q.answer;
+      }
+      if (Object.keys(existing).length > 0) {
+        setSelectedAnswers((prev) => ({ ...existing, ...prev }));
+      }
+    } catch {
+      // ignore
+    }
+  }, [task.id, currentTask.status]);
+
   // Initial load + polling for active tasks
   useEffect(() => {
     fetchOutput();
     fetchTask();
+    fetchQuestions();
 
-    if (task.status === "developing") {
+    if (task.status === "developing" || task.status === "waiting_for_review") {
       pollRef.current = setInterval(() => {
         fetchOutput();
         fetchTask();
+        fetchQuestions();
       }, 3000);
     }
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [fetchOutput, fetchTask, task.status]);
+  }, [fetchOutput, fetchTask, fetchQuestions, task.status]);
 
   // Auto-scroll to bottom when output updates
   useEffect(() => {
@@ -482,6 +518,28 @@ function TaskDetailModal({
       // ignore
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleSubmitAnswers = async () => {
+    const unanswered = questions.filter((q) => !q.answer && !selectedAnswers[q.question_id]);
+    if (unanswered.length > 0) return;
+
+    setSubmittingAnswers(true);
+    try {
+      const res = await fetch(`/api/agent/tasks/${task.id}/questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: selectedAnswers }),
+      });
+      if (res.ok) {
+        fetchQuestions();
+        onTaskUpdated();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setSubmittingAnswers(false);
     }
   };
 
@@ -535,6 +593,73 @@ function TaskDetailModal({
         {currentTask.error_message && (
           <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
             <p className="text-sm text-red-700 dark:text-red-300">{currentTask.error_message}</p>
+          </div>
+        )}
+
+        {/* Clarification Questions */}
+        {currentTask.status === "waiting_for_review" && questions.length > 0 && (
+          <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 bg-purple-50 dark:bg-purple-900/10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">
+              Clarification Questions
+            </p>
+            <div className="space-y-4">
+              {questions.filter((q) => !q.answer).map((q) => (
+                <div key={q.question_id}>
+                  <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 mb-2">
+                    {q.question}
+                  </p>
+                  <div className="space-y-1.5">
+                    {q.options.map((option) => (
+                      <label
+                        key={option}
+                        className={`flex items-center gap-2 px-3 py-2 rounded border cursor-pointer text-sm transition-colors ${
+                          selectedAnswers[q.question_id] === option
+                            ? "border-purple-500 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200"
+                            : "border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={q.question_id}
+                          value={option}
+                          checked={selectedAnswers[q.question_id] === option}
+                          onChange={() =>
+                            setSelectedAnswers((prev) => ({
+                              ...prev,
+                              [q.question_id]: option,
+                            }))
+                          }
+                          className="accent-purple-600"
+                        />
+                        {option}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {questions.some((q) => q.answer) && (
+                <div className="border-t border-purple-200 dark:border-purple-800 pt-3">
+                  <p className="text-xs text-purple-500 dark:text-purple-400 mb-2">Previously answered:</p>
+                  {questions.filter((q) => q.answer).map((q) => (
+                    <div key={q.question_id} className="text-xs text-neutral-500 mb-1">
+                      <span className="font-medium">{q.question}</span> — {q.answer}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {questions.some((q) => !q.answer) && (
+              <button
+                onClick={handleSubmitAnswers}
+                disabled={
+                  submittingAnswers ||
+                  questions.filter((q) => !q.answer).some((q) => !selectedAnswers[q.question_id])
+                }
+                className="mt-3 px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded disabled:opacity-50"
+              >
+                {submittingAnswers ? "Submitting..." : "Submit Answers"}
+              </button>
+            )}
           </div>
         )}
 
