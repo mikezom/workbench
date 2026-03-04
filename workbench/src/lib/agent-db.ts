@@ -46,6 +46,19 @@ export function initAgentSchema(db: Database.Database): void {
 
     INSERT OR IGNORE INTO agent_lock (id, locked, task_id, locked_at)
       VALUES (1, 0, NULL, NULL);
+
+    CREATE TABLE IF NOT EXISTS agent_task_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+      question_id TEXT NOT NULL,
+      question TEXT NOT NULL,
+      options TEXT NOT NULL,
+      answer TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_questions_task
+      ON agent_task_questions(task_id);
   `);
 }
 
@@ -89,6 +102,16 @@ export interface AgentLock {
   locked: number;
   task_id: number | null;
   locked_at: string | null;
+}
+
+export interface AgentTaskQuestion {
+  id: number;
+  task_id: number;
+  question_id: string;
+  question: string;
+  options: string;  // JSON array string
+  answer: string | null;
+  created_at: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -247,4 +270,73 @@ export function getTaskOutput(
        LIMIT ? OFFSET ?`
     )
     .all(taskId, limit, offset) as AgentTaskOutput[];
+}
+
+// ---------------------------------------------------------------------------
+// Task questions
+// ---------------------------------------------------------------------------
+
+export function saveQuestions(
+  taskId: number,
+  questions: { id: string; question: string; options: string[] }[]
+): void {
+  const db = getDb();
+  const insert = db.prepare(
+    `INSERT INTO agent_task_questions (task_id, question_id, question, options)
+     VALUES (?, ?, ?, ?)`
+  );
+  const insertAll = db.transaction(() => {
+    for (const q of questions) {
+      insert.run(taskId, q.id, q.question, JSON.stringify(q.options));
+    }
+  });
+  insertAll();
+}
+
+export function getQuestions(taskId: number): AgentTaskQuestion[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT * FROM agent_task_questions
+       WHERE task_id = ?
+       ORDER BY id ASC`
+    )
+    .all(taskId) as AgentTaskQuestion[];
+}
+
+export function answerQuestions(
+  taskId: number,
+  answers: Record<string, string>
+): void {
+  const db = getDb();
+  const update = db.prepare(
+    `UPDATE agent_task_questions SET answer = ?
+     WHERE task_id = ? AND question_id = ?`
+  );
+  const updateAll = db.transaction(() => {
+    for (const [questionId, answer] of Object.entries(answers)) {
+      update.run(answer, taskId, questionId);
+    }
+  });
+  updateAll();
+}
+
+export function getTasksReadyToResume(): AgentTask[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT t.* FROM agent_tasks t
+       WHERE t.status = 'waiting_for_review'
+       AND NOT EXISTS (
+         SELECT 1 FROM agent_task_questions q
+         WHERE q.task_id = t.id AND q.answer IS NULL
+       )
+       AND EXISTS (
+         SELECT 1 FROM agent_task_questions q2
+         WHERE q2.task_id = t.id
+       )
+       ORDER BY t.created_at ASC
+       LIMIT 1`
+    )
+    .all() as AgentTask[];
 }
