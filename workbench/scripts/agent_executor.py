@@ -142,6 +142,61 @@ def _run_git(args: list[str], cwd: str) -> subprocess.CompletedProcess:
     )
 
 
+def commit_uncommitted_changes(
+    worktree_path: str,
+    conn: sqlite3.Connection,
+    task_id: int,
+) -> bool:
+    """Commit any uncommitted changes left by the agent.
+
+    After Claude CLI finishes, it may have edited files without committing.
+    This function checks for staged or unstaged changes and commits them
+    so they aren't lost during rebase/merge.
+
+    Returns True if a commit was created, False if the working tree was clean.
+    """
+    # Check for any changes (staged or unstaged, including untracked)
+    status = _run_git(["status", "--porcelain"], cwd=worktree_path)
+    if status.returncode != 0:
+        log.warning("git status failed in %s: %s", worktree_path, status.stderr)
+        return False
+
+    # Filter out CLAUDE.md (injected by us, not part of agent work)
+    lines = [
+        l for l in status.stdout.strip().splitlines()
+        if l and not l.strip().endswith("CLAUDE.md")
+    ]
+    if not lines:
+        return False
+
+    log.warning(
+        "Agent left %d uncommitted change(s) — auto-committing", len(lines)
+    )
+    append_output(
+        conn, task_id, "system",
+        f"Agent left uncommitted changes — auto-committing {len(lines)} file(s)",
+    )
+
+    # Stage all changes (except CLAUDE.md)
+    _run_git(["add", "--all"], cwd=worktree_path)
+    # Unstage CLAUDE.md if it got added
+    _run_git(["reset", "HEAD", "CLAUDE.md"], cwd=worktree_path)
+
+    # Commit
+    result = _run_git(
+        ["commit", "-m", "agent: auto-commit uncommitted changes"],
+        cwd=worktree_path,
+    )
+    if result.returncode != 0:
+        log.error("Auto-commit failed: %s", result.stderr.strip())
+        append_output(conn, task_id, "system",
+            f"Auto-commit failed: {result.stderr.strip()}")
+        return False
+
+    log.info("Auto-committed uncommitted changes in %s", worktree_path)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Worktree management
 # ---------------------------------------------------------------------------
@@ -682,6 +737,10 @@ def merge_into_main(
     """
     append_output(conn, task_id, "system", f"Merging {branch_name} into main...")
 
+    # Record HEAD before merge so we can detect no-op merges
+    pre_merge = _run_git(["rev-parse", "HEAD"], cwd=repo_root)
+    pre_merge_sha = pre_merge.stdout.strip() if pre_merge.returncode == 0 else ""
+
     # Checkout main in the repo root
     result = _run_git(["checkout", "main"], cwd=repo_root)
     if result.returncode != 0:
@@ -702,6 +761,17 @@ def merge_into_main(
     # Get the merge commit SHA
     result = _run_git(["rev-parse", "HEAD"], cwd=repo_root)
     commit_sha = result.stdout.strip() if result.returncode == 0 else None
+
+    # Detect no-op merge (HEAD unchanged = "Already up to date")
+    if commit_sha and commit_sha == pre_merge_sha:
+        log.error(
+            "Merge was a no-op — branch %s has no new commits relative to main",
+            branch_name,
+        )
+        append_output(conn, task_id, "system",
+            f"Merge was a no-op — {branch_name} has no new commits. "
+            "The agent likely failed to commit its changes.")
+        return None
 
     append_output(conn, task_id, "system",
         f"Merged into main (commit: {commit_sha[:7] if commit_sha else 'unknown'})")
@@ -814,7 +884,10 @@ def execute_task(conn: sqlite3.Connection, task: dict) -> None:
         # Step 2: Invoke Claude Code
         invoke_claude(worktree_path, prompt, conn, task_id)
 
-        # Step 2b: Check for clarification questions
+        # Step 2b: Auto-commit any uncommitted changes left by the agent
+        commit_uncommitted_changes(worktree_path, conn, task_id)
+
+        # Step 2c: Check for clarification questions
         questions = check_questions(worktree_path)
         if questions:
             append_output(conn, task_id, "system",
@@ -832,12 +905,15 @@ def execute_task(conn: sqlite3.Connection, task: dict) -> None:
         commit_sha = merge_into_main(
             REPO_ROOT, worktree_path, branch_name, conn, task_id
         )
-        if commit_sha:
-            conn.execute(
-                "UPDATE agent_tasks SET commit_id = ? WHERE id = ?",
-                (commit_sha, task_id),
+        if not commit_sha:
+            raise RuntimeError(
+                "Merge produced no changes — agent may have failed to modify any files"
             )
-            conn.commit()
+        conn.execute(
+            "UPDATE agent_tasks SET commit_id = ? WHERE id = ?",
+            (commit_sha, task_id),
+        )
+        conn.commit()
 
         append_output(conn, task_id, "system",
             "Execution complete — task merged and finished")
@@ -920,6 +996,9 @@ def resume_task(conn: sqlite3.Connection, task: dict) -> None:
         # Step 5: Re-invoke Claude Code
         invoke_claude(worktree_path, resumed_prompt, conn, task_id)
 
+        # Step 5b: Auto-commit any uncommitted changes left by the agent
+        commit_uncommitted_changes(worktree_path, conn, task_id)
+
         # Step 6: Check for new questions
         questions = check_questions(worktree_path)
         if questions:
@@ -943,12 +1022,15 @@ def resume_task(conn: sqlite3.Connection, task: dict) -> None:
         commit_sha = merge_into_main(
             REPO_ROOT, worktree_path, branch_name, conn, task_id
         )
-        if commit_sha:
-            conn.execute(
-                "UPDATE agent_tasks SET commit_id = ? WHERE id = ?",
-                (commit_sha, task_id),
+        if not commit_sha:
+            raise RuntimeError(
+                "Merge produced no changes — agent may have failed to modify any files"
             )
-            conn.commit()
+        conn.execute(
+            "UPDATE agent_tasks SET commit_id = ? WHERE id = ?",
+            (commit_sha, task_id),
+        )
+        conn.commit()
 
         append_output(conn, task_id, "system",
             "Resumed task complete — merged and finished")
