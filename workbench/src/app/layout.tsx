@@ -45,7 +45,7 @@ export default function RootLayout({
       >
         <div className="flex h-screen">
           <Nav />
-          <main className="flex-1 overflow-auto">{children}</main>
+          <main className="flex-1 overflow-auto bg-white dark:bg-neutral-900">{children}</main>
         </div>
       </body>
     </html>

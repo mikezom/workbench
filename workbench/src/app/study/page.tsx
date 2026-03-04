@@ -344,7 +344,7 @@ function ReviewTab({
                 )}
                 <button
                   onClick={startSession}
-                  className="px-8 py-4 text-lg bg-black text-white border-2 border-white rounded-lg hover:bg-neutral-800"
+                  className="px-8 py-4 text-lg bg-transparent text-neutral-900 dark:text-neutral-100 border-2 border-neutral-900 dark:border-neutral-400 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 >
                   Start Review
                 </button>
@@ -1089,7 +1089,7 @@ export default function StudyPage() {
   ];
 
   return (
-    <div className="flex h-full bg-white dark:bg-gray-900">
+    <div className="flex h-full bg-white dark:bg-neutral-900">
       {/* Sidebar */}
       <div className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col overflow-y-auto">
         <h1 className="text-lg font-bold mb-4">Study</h1>
