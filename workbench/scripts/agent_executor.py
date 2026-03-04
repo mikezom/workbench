@@ -208,6 +208,7 @@ def create_worktree(
     """Create a git worktree for the given task.
 
     Creates `.worktrees/task-<id>` branching from main as `task/<slug>`.
+    If the branch name already exists, appends the task ID to make it unique.
 
     Returns:
         (worktree_path, branch_name)
@@ -224,6 +225,20 @@ def create_worktree(
         ["worktree", "add", worktree_dir, "-b", branch_name, "main"],
         cwd=repo_root,
     )
+
+    # If branch already exists, try with task ID suffix
+    if result.returncode != 0 and "already exists" in result.stderr.lower():
+        log.warning(
+            "Branch %s already exists, retrying with task ID suffix", branch_name
+        )
+        branch_name = f"task/{slug}-{task_id}"
+        log.info("Retrying with branch name: %s", branch_name)
+
+        result = _run_git(
+            ["worktree", "add", worktree_dir, "-b", branch_name, "main"],
+            cwd=repo_root,
+        )
+
     if result.returncode != 0:
         raise RuntimeError(
             f"Failed to create worktree: {result.stderr.strip()}"
