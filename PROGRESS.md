@@ -127,6 +127,7 @@ Full spec: `docs/agent-section.md`
 - [x] Output streaming to DB (for UI consumption)
 - [x] Rebase onto main with iterative conflict resolution
 - [x] Test running with iterative failure resolution
+- [x] Symlink node_modules from main checkout into worktrees
 - [ ] Knowledge accumulation (deferred to 5f)
 
 #### 5f: CLAUDE.md Files for Agents

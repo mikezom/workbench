@@ -753,3 +753,16 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 
 **Changes:**
 - `PROGRESS.md` — Added phase 5g sub-section with 7 checked items. Updated status table to reflect 5a-5g complete.
+
+---
+
+## 2026-03-04 — Phase 5: Agent Worktree Optimization
+
+### Task 1: Symlink node_modules in worktrees
+
+**Commit:** `81e541b`
+
+**Problem:** Each git worktree created by the agent executor duplicated the full `node_modules` directory (~393MB), wasting disk space and time.
+
+**Changes:**
+- `workbench/scripts/agent_executor.py` — Added `symlink_node_modules()` function that creates a symlink from `<worktree>/workbench/node_modules` to the main checkout's `node_modules`. Called as Step 1c in `execute_task()` after CLAUDE.md injection. Handles existing dirs/stale symlinks gracefully.
