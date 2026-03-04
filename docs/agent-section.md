@@ -2,13 +2,13 @@
 
 ## Overview
 
-The Agent section is an autonomous task execution system built around Claude Code CLI. A user submits a natural-language objective via the web UI; an LLM decomposes it into atomic sub-tasks; a Python polling daemon picks them up one-at-a-time and runs Claude Code in isolated git worktrees. On success, changes are merged to `main` and knowledge is accumulated in project docs.
+The Agent section is an autonomous task execution system built around Claude Code CLI. A user submits a natural-language objective via the web UI; an LLM decomposes it into atomic sub-tasks; a Python polling daemon picks them up one-at-a-time and runs Claude Code in isolated git worktrees. On completion, changes are rebased onto `main` and validated with `npm run build`.
 
 The system comprises three modules:
 
-- **Module A** — Web UI + task decomposition (Next.js)
-- **Module B** — Polling daemon (Python + launchd)
-- **Module C** — Execution pipeline (Python, invokes Claude Code CLI)
+- **Module A** — Web UI + API routes + task decomposition (Next.js)
+- **Module B** — Polling daemon (Python, managed by launchd)
+- **Module C** — Execution pipeline (Python, invoked by the daemon)
 
 ## Architecture
 
@@ -17,16 +17,16 @@ User (browser)
   │
   ▼
 Module A: Next.js UI + API Routes
-  │  POST /api/agent/tasks   → create task
   │  POST /api/agent/decompose → LLM breaks objective into sub-tasks
-  │  GET  /api/agent/tasks   → list tasks (polled by UI)
-  │  GET  /api/agent/tasks/[id]/output → stream task output
-  │  PUT  /api/agent/tasks/[id] → cancel / update status
+  │  POST /api/agent/tasks     → create task(s)
+  │  GET  /api/agent/tasks     → list tasks (polled by UI every 5s)
+  │  GET  /api/agent/tasks/[id]/output → poll task output
+  │  PUT  /api/agent/tasks/[id] → cancel task
   │
   ▼
-SQLite (data/workbench.db) — tasks table
+SQLite (data/workbench.db) — agent_tasks, agent_task_output, agent_lock
   │
-  ▲ poll
+  ▲ poll every 5s
   │
 Module B: Python Polling Daemon (launchd)
   │  Checks for status='waiting_for_dev'
@@ -35,95 +35,277 @@ Module B: Python Polling Daemon (launchd)
   │
   ▼
 Module C: Execution Pipeline (Python)
-  │  1. git worktree add
-  │  2. claude -p [prompt] --dangerously-skip-permissions \
-  │       --output-format stream-json --verbose
-  │  3. Run tests, resolve conflicts (iteratively)
-  │  4. Merge to main, clean up worktree
-  │  5. Update knowledge docs (REFLECTION.md, PROGRESS.md, etc.)
-  │  6. Set status='waiting_for_review', release lock
+  │  1. git worktree add .worktrees/task-<id>
+  │  2. Copy agent-working-claude.md → worktree CLAUDE.md
+  │  3. claude -p [prompt] --output-format stream-json
+  │  4. Rebase onto main (up to 3 conflict resolution attempts)
+  │  5. npm run build (up to 3 fix attempts)
+  │  6. If questions.json found: store questions, set status='waiting_for_review'
+  │  7. If no questions: merge into main, set status='finished'
 ```
 
-## Scope
+Scope: Module C operates **only** on the workbench repo (`/Users/ccnas/DEVELOPMENT/workbench/`).
 
-Module C operates **only** on the workbench repo (`/Users/ccnas/DEVELOPMENT/workbench/`) and its sub-modules. It does not operate on arbitrary external repos.
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/app/agent/page.tsx` | Entire Agent UI — prompt input, task board, detail modal, config panel |
+| `src/lib/agent-db.ts` | Agent SQLite schema, task CRUD, lock management, output storage |
+| `src/lib/agent-config.ts` | Read/write `data/agent-config.json` (LLM provider/model/key) |
+| `src/app/api/agent/tasks/route.ts` | `GET` list all tasks, `POST` create task |
+| `src/app/api/agent/tasks/[id]/route.ts` | `GET` task detail, `PUT` update/cancel, `DELETE` task |
+| `src/app/api/agent/tasks/[id]/output/route.ts` | `GET` task execution output (paginated) |
+| `src/app/api/agent/decompose/route.ts` | `POST` LLM task decomposition |
+| `src/app/api/agent/tasks/[id]/questions/route.ts` | `GET` questions, `POST` answers |
+| `src/app/api/agent/config/route.ts` | `GET` read config (API key masked), `PUT` update config |
+| `scripts/agent-daemon.py` | Polling daemon (Module B) — launchd-managed |
+| `scripts/agent_executor.py` | Execution pipeline (Module C) — imported by daemon |
+| `data/agent-config.json` | LLM config (gitignored, contains API key) |
+| `data/agent-working-claude.md` | CLAUDE.md injected into worktrees for working agents |
+| `data/agent-decompose-claude.md` | System prompt for the decomposition LLM |
+
+## Database Schema
+
+Added to `data/workbench.db` (extends existing schema in `src/lib/db.ts`). Schema initialization is in `src/lib/agent-db.ts`.
+
+### `agent_tasks`
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+prompt TEXT NOT NULL,
+status TEXT NOT NULL DEFAULT 'waiting_for_dev'
+  CHECK (status IN (
+    'waiting_for_dev', 'developing', 'waiting_for_review',
+    'finished', 'failed', 'cancelled'
+  )),
+parent_objective TEXT,       -- original user prompt (if decomposed)
+branch_name TEXT,            -- e.g., 'task/add-login-button'
+worktree_path TEXT,          -- e.g., '.worktrees/task-7'
+error_message TEXT,          -- populated on failure
+commit_id TEXT,              -- final merge commit SHA
+created_at TEXT NOT NULL DEFAULT (datetime('now')),
+started_at TEXT,
+completed_at TEXT
+```
+
+### `agent_task_output`
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+task_id INTEGER NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+type TEXT NOT NULL,           -- 'stdout', 'stderr', 'system', 'assistant', 'tool'
+content TEXT NOT NULL
+```
+
+### `agent_lock`
+
+```sql
+id INTEGER PRIMARY KEY CHECK (id = 1),  -- singleton row
+locked INTEGER NOT NULL DEFAULT 0,
+task_id INTEGER REFERENCES agent_tasks(id),
+locked_at TEXT
+```
+
+The lock table enforces single-task execution. Only one task can run at a time.
+
+### `agent_task_questions`
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+task_id INTEGER NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+question_id TEXT NOT NULL,
+question TEXT NOT NULL,
+options TEXT NOT NULL,            -- JSON array of option strings
+answer TEXT,                     -- NULL until user answers
+created_at TEXT NOT NULL DEFAULT (datetime('now'))
+```
 
 ## Task Statuses
 
-| Status              | Meaning                                                    |
-|---------------------|------------------------------------------------------------|
-| `waiting_for_dev`   | Queued, not yet picked up by the daemon                    |
-| `developing`        | Currently being executed by an agent in a worktree         |
-| `waiting_for_review`| Agent finished; awaiting user review before final merge    |
-| `finished`          | User approved; merged to main                              |
-| `failed`            | Execution failed after exhausting resolution attempts      |
-| `cancelled`         | User cancelled the task                                    |
+| Status | Meaning |
+|--------|---------|
+| `waiting_for_dev` | Queued, not yet picked up by the daemon |
+| `developing` | Currently being executed by an agent in a worktree |
+| `waiting_for_review` | Agent needs clarification; awaiting user answers |
+| `finished` | Build passed; changes merged into main |
+| `failed` | Execution failed after exhausting resolution attempts |
+| `cancelled` | User cancelled the task |
 
-Tasks are **atomic** — no dependencies between tasks. Each sub-task from decomposition is independent and can be executed in any order.
+Tasks are **atomic** — no dependencies between tasks. Each sub-task from decomposition is independent.
 
-## Module A: Web UI + Task Decomposition
+## Task Decomposition
 
-### UI Layout (`/agent` page)
+When the user submits a prompt via the UI, they have two options:
+
+1. **Decompose** — calls `POST /api/agent/decompose` which sends the prompt to the configured LLM with the system prompt from `data/agent-decompose-claude.md`. The LLM returns a JSON array of `{title, prompt}` objects. The UI presents these for review/editing before queuing.
+
+2. **Direct** — creates a single task directly from the prompt text.
+
+The decompose route supports both Anthropic and OpenAI-compatible APIs. It extracts the JSON array from the LLM response (handling potential markdown code block wrapping).
+
+## Execution Pipeline (Module C)
+
+### Lifecycle of a Single Task
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Prompt Input                                           │
-│  ┌───────────────────────────────────────────┐ [Submit] │
-│  │ Describe what you want to build or fix... │          │
-│  └───────────────────────────────────────────┘          │
-├─────────────────────────────────────────────────────────┤
-│  Task Board                                             │
-│                                                         │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                │
-│  │Waiting   │ │Developing│ │Waiting   │                │
-│  │for Dev   │ │          │ │for Review│                │
-│  │          │ │ task-3   │ │          │                │
-│  │ task-4   │ │ [⤢]      │ │ task-2   │                │
-│  │ task-5   │ │          │ │ [⤢]      │                │
-│  └──────────┘ └──────────┘ └──────────┘                │
-│                                                         │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                │
-│  │Finished  │ │Failed    │ │Cancelled │                │
-│  │          │ │          │ │          │                │
-│  │ task-1   │ │          │ │          │                │
-│  │ [⤢]      │ │          │ │          │                │
-│  └──────────┘ └──────────┘ └──────────┘                │
-└─────────────────────────────────────────────────────────┘
+1. Create worktree
+   git worktree add .worktrees/task-<id> -b task/<slug> main
+
+2. Inject CLAUDE.md
+   Copy data/agent-working-claude.md → worktree root as CLAUDE.md
+
+3. Invoke Claude Code CLI
+   claude -p "<prompt>" --dangerously-skip-permissions \
+     --output-format stream-json --verbose
+
+4. Stream output → DB
+   Parse stream-json events, categorize as assistant/tool/system,
+   store in agent_task_output table
+
+5. Check for questions.json
+   If found: store questions in DB, set status='waiting_for_review', preserve worktree
+   If not found: continue to step 6
+
+6. Rebase onto main
+   git fetch origin && git rebase main
+   Up to 3 conflict resolution attempts (invokes claude to resolve)
+
+7. Build validation
+   npm run build
+   Up to 3 fix attempts (invokes claude to fix build errors)
+
+8. Merge into main, clean up worktree and branch
+
+9. Set status='finished'
 ```
 
-- Each task card shows: title, status, timestamps
-- **[⤢] enlarge button**: Opens a detail/interaction view for that task
-  - Shows streaming agent output (from `--output-format stream-json`)
-  - Allows the user to interact while the task is executing
-  - Cancel button to abort a running task at any time
+#### Resume Lifecycle (after user answers questions)
 
-### Task Decomposition
+```
+1. Read answers from DB, format as Q&A context
+2. Delete questions.json from worktree
+3. Re-invoke Claude with original prompt + Q&A context
+4. Check for new questions.json (loop back to step 1 of main lifecycle if found)
+5. Rebase onto main
+6. npm run build (with fix attempts)
+7. Merge into main, clean up worktree and branch
+8. Set status='finished'
+```
 
-When the user submits a prompt:
+### Cancellation
 
-1. Call the configured LLM API to decompose the objective into atomic sub-tasks
-2. Present the sub-tasks to the user for review/edit before queuing
-3. On user confirmation, insert each sub-task into the `tasks` table with `status='waiting_for_dev'`
+- The UI sets `status='cancelled'` via `PUT /api/agent/tasks/[id]`
+- The daemon checks the DB every 5 seconds during execution
+- On detection: kills the Claude subprocess, cleans up the worktree
 
-The LLM model/provider is user-configurable via the UI (see Config below).
+### Worktree Management
 
-### API Routes
+- Created under `/Users/ccnas/DEVELOPMENT/workbench/.worktrees/task-<id>/`
+- Branch naming: `task/<slug>` (derived from task title)
+- On success: worktree preserved for review
+- On cancellation: worktree cleaned up
+- On failure: worktree preserved for debugging
+- `.worktrees/` directory is gitignored
 
-| Route                            | Method | Purpose                                      |
-|----------------------------------|--------|----------------------------------------------|
-| `/api/agent/tasks`               | GET    | List all tasks (with optional status filter)  |
-| `/api/agent/tasks`               | POST   | Create task(s) — either raw or via decompose  |
-| `/api/agent/tasks/[id]`          | GET    | Get single task detail + output               |
-| `/api/agent/tasks/[id]`          | PUT    | Update task (cancel, status change)           |
-| `/api/agent/tasks/[id]`          | DELETE | Delete a task                                 |
-| `/api/agent/tasks/[id]/output`   | GET    | Stream/poll execution output for a task       |
-| `/api/agent/decompose`           | POST   | LLM decomposes a prompt into sub-tasks        |
-| `/api/agent/config`              | GET    | Read agent config                             |
-| `/api/agent/config`              | PUT    | Update agent config                           |
+### Agent Clarification Questions
 
-### Config File
+When Claude needs user clarification during execution, it writes a `questions.json` file to the worktree root:
 
-Stored at `workbench/data/agent-config.json`:
+```json
+[
+  {
+    "id": "q1",
+    "question": "Which approach should I use?",
+    "options": ["Option A", "Option B", "Option C"]
+  }
+]
+```
+
+The executor detects this file after Claude exits:
+- **If found**: Questions are stored in `agent_task_questions` table, task status set to `waiting_for_review`, worktree preserved
+- **If not found**: Pipeline continues to rebase, build, merge
+
+**Resume flow** (after user answers via UI):
+1. Daemon detects task with all questions answered
+2. Re-invokes Claude with original prompt + Q&A context
+3. If Claude writes new `questions.json`, cycle repeats
+4. If no questions: rebase → build → merge into main → `finished`
+
+Questions are stored in the `agent_task_questions` table (see Database Schema).
+
+### Executable Discovery
+
+The executor locates `claude` and `npm` binaries by checking:
+1. Direct `which` lookup
+2. `~/.nvm/` paths (for NVM-installed Node.js)
+
+## Polling Daemon (Module B)
+
+### Script: `scripts/agent-daemon.py`
+
+```python
+# Pseudocode
+while True:
+    if not is_locked():
+        task = get_next_pending_task()  # oldest waiting_for_dev
+        if task:
+            acquire_lock(task.id)
+            set_task_status(task.id, 'developing')
+            try:
+                execute_task(task)  # Module C
+                set_task_status(task.id, 'waiting_for_review')
+            except CancelledError:
+                set_task_status(task.id, 'cancelled')
+            except Exception:
+                set_task_status(task.id, 'failed')
+            finally:
+                release_lock()
+    sleep(5)
+```
+
+### Stale Lock Recovery
+
+On daemon startup, if a lock is older than 30 minutes, it is cleared and the associated task is marked as `failed`. This handles daemon crashes.
+
+### Signal Handling
+
+SIGTERM and SIGINT trigger graceful shutdown — the daemon finishes its current poll cycle and exits.
+
+### launchd Configuration
+
+Plist at `~/Library/LaunchAgents/com.workbench.agent-daemon.plist`:
+- `RunAtLoad: true`, `KeepAlive: true` — auto-restarts on crash
+- `WorkingDirectory`: git repo root
+- Logs: `logs/agent-daemon.out.log`, `logs/agent-daemon.err.log`
+
+Load/unload:
+```bash
+launchctl load ~/Library/LaunchAgents/com.workbench.agent-daemon.plist
+launchctl unload ~/Library/LaunchAgents/com.workbench.agent-daemon.plist
+```
+
+## CLAUDE.md Files
+
+Two separate instruction files for the two agent roles:
+
+1. **Working Agent** (`data/agent-working-claude.md`) — copied into each worktree as `CLAUDE.md`. Contains:
+   - Project structure and tech stack
+   - Coding conventions (route exports, DB transactions, Tailwind-only styling)
+   - Known pitfalls from REFLECTION.md
+   - Git workflow (commit on current branch, no new branches)
+   - Build validation requirement (`npm run build` must pass)
+
+2. **Decomposition Agent** (`data/agent-decompose-claude.md`) — used as the system prompt for `POST /api/agent/decompose`. Contains:
+   - Rules for atomic, independent sub-tasks
+   - Good prompt anatomy (files to modify, behavior, architecture fit, expected outcome)
+   - Output format specification (JSON array)
+
+## Config
+
+Stored at `data/agent-config.json` (gitignored):
 
 ```json
 {
@@ -136,275 +318,68 @@ Stored at `workbench/data/agent-config.json`:
 }
 ```
 
-The UI provides a settings/config panel where the user can:
-- Select provider (Anthropic, OpenAI, etc.)
-- Enter API key
-- Set base URL (for proxies or alternative endpoints)
-- Choose model
+Default provider is Anthropic. Also supports OpenAI-compatible APIs (OpenAI, OpenRouter, etc.).
 
-This file is **gitignored** (contains secrets).
+The config API (`GET /api/agent/config`) masks the API key in responses (`sk-ant-...1234`).
 
-## Module B: Polling Daemon (Python + launchd)
+## UI Layout (`agent/page.tsx`)
 
-### Script Location
-
-`scripts/agent-daemon.py`
-
-### Behavior
-
-```python
-# Pseudocode
-while True:
-    if not is_locked():
-        task = get_next_pending_task()  # status='waiting_for_dev', ordered by created_at
-        if task:
-            acquire_lock(task.id)
-            set_task_status(task.id, 'developing')
-            try:
-                execute_task(task)  # Module C
-                set_task_status(task.id, 'waiting_for_review')
-            except CancelledError:
-                set_task_status(task.id, 'cancelled')
-            except Exception as e:
-                set_task_status(task.id, 'failed', error=str(e))
-            finally:
-                release_lock()
-    sleep(POLL_INTERVAL)  # e.g., 5 seconds
-```
-
-### Global Lock
-
-- Stored in the `tasks` DB or a separate `agent_lock` table
-- Guarantees only one agent runs at a time
-- Released on task completion, failure, or cancellation
-
-### Cancellation
-
-- The UI sets a `cancelled` flag in the DB (via PUT `/api/agent/tasks/[id]`)
-- The daemon checks this flag periodically during execution
-- On detection, kills the Claude Code subprocess and cleans up the worktree
-
-### launchd Configuration
-
-Plist at `~/Library/LaunchAgents/com.workbench.agent-daemon.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.workbench.agent-daemon</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/bin/python3</string>
-        <string>/Users/ccnas/DEVELOPMENT/workbench/scripts/agent-daemon.py</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>WorkingDirectory</key>
-    <string>/Users/ccnas/DEVELOPMENT/workbench</string>
-    <key>StandardOutPath</key>
-    <string>/Users/ccnas/DEVELOPMENT/workbench/logs/agent-daemon.out.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/ccnas/DEVELOPMENT/workbench/logs/agent-daemon.err.log</string>
-</dict>
-</plist>
-```
-
-Load/unload:
-```bash
-launchctl load ~/Library/LaunchAgents/com.workbench.agent-daemon.plist
-launchctl unload ~/Library/LaunchAgents/com.workbench.agent-daemon.plist
-```
-
-## Module C: Execution Pipeline
-
-### Lifecycle of a Single Task
+Single client component file containing all sub-components.
 
 ```
-1. Create worktree
-   git worktree add .worktrees/task-<id> -b task/<short-desc> main
-
-2. Invoke Claude Code
-   cd .worktrees/task-<id>
-   claude -p "<task prompt>" \
-     --dangerously-skip-permissions \
-     --output-format stream-json \
-     --verbose
-
-3. Stream output
-   - Parse stream-json lines and write to DB/log file
-   - Check for cancellation flag periodically
-
-4. On agent completion — rebase onto main
-   git checkout main && git pull
-   git checkout task/<short-desc>
-   git rebase main
-
-5. Conflict resolution (if rebase fails)
-   - "Unstaged changes" error → commit or stash first
-   - Merge conflicts:
-     a. git status to identify conflicting files
-     b. Read both versions, understand intentions
-     c. Manually resolve (invoke claude for assistance)
-     d. git add <resolved-files>
-     e. git rebase --continue
-   - Repeat until rebase completes
-
-6. Run tests
-   npm test (or equivalent)
-   - If tests fail:
-     a. Analyze the failure output
-     b. Fix the bugs (invoke claude again if needed)
-     c. Rerun tests until all pass
-     d. git commit -m "fix: <description>"
-   - Do NOT give up easily — exhaust resolution attempts
-
-7. Mark as waiting_for_review
-   - Status set to 'waiting_for_review'
-   - User reviews the branch in the UI
-
-8. On user approval → merge
-   git checkout main
-   git merge task/<short-desc>
-   git worktree remove .worktrees/task-<id>
-   git branch -d task/<short-desc>
-
-9. Knowledge accumulation
-   - Update REFLECTION.md with lessons learned
-   - Update PROGRESS.md and DETAILED_PROGRESS.md
-   - Update CLAUDE.md files (with user approval):
-     - Working agent CLAUDE.md: instructions for code-writing agents
-     - Task-dividing agent CLAUDE.md: instructions for decomposition LLM
-   - Commit knowledge updates
-
-10. Release global lock
+┌─────────────────────────────────────────────────────────┐
+│  Agent                                        [Config]  │
+├─────────────────────────────────────────────────────────┤
+│  ┌───────────────────────────────────────┐              │
+│  │ Describe what you want to build...    │ [Decompose]  │
+│  │                                       │ [Direct]     │
+│  └───────────────────────────────────────┘              │
+├─────────────────────────────────────────────────────────┤
+│  Task Board (3x2 grid)                                  │
+│                                                         │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │
+│  │ Waiting      │ │ Developing   │ │ Waiting      │    │
+│  │ for Dev      │ │              │ │ for Review   │    │
+│  │  task-4 [⤢]  │ │  task-3 [⤢]  │ │  task-2 [⤢]  │    │
+│  └──────────────┘ └──────────────┘ └──────────────┘    │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │
+│  │ Finished     │ │ Failed       │ │ Cancelled    │    │
+│  │  task-1 [⤢]  │ │              │ │              │    │
+│  └──────────────┘ └──────────────┘ └──────────────┘    │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Worktree Management
+### Sub-components
 
-- Worktrees are created under `/Users/ccnas/DEVELOPMENT/workbench/.worktrees/`
-- Branch naming: `task/<short-description>` (derived from task title)
-- On cancellation or failure: worktree is removed, branch deleted
-- `.worktrees/` directory is gitignored
+- **PromptInput** — textarea + Decompose/Direct buttons. After decomposing, shows editable sub-task list with Confirm All / Cancel.
+- **TaskBoard** — 3x2 grid of status columns, each with a colored dot header. Cards show title, time-ago, and enlarge button.
+- **TaskCard** — colored left border per status, title, timestamp.
+- **TaskDetailModal** — full-screen overlay with: header (title, status, ID, time), prompt display, error message (if failed), streaming output viewer (dark terminal-style, auto-scrolling), footer with Cancel/Delete buttons and branch/commit info. Polls output every 3s while task is `developing`.
+- **ConfigPanel** — modal with provider dropdown, model input, API key input (password field), base URL input, Save button.
 
-### Claude Code Invocation
+### Polling
 
-```bash
-claude -p "<prompt>" \
-  --dangerously-skip-permissions \
-  --output-format stream-json \
-  --verbose
-```
+The main page polls `GET /api/agent/tasks` every 5 seconds. The detail modal additionally polls task output every 3 seconds while the task status is `developing`.
 
-The prompt includes:
-- The specific sub-task description
-- Context from the working agent's CLAUDE.md
-- Relevant file paths or module references
+## API Reference
 
-Output is streamed as JSON lines, parsed by the daemon, and stored for the UI to display.
+| Method | Route | Purpose |
+|--------|-------|---------|
+| GET | `/api/agent/tasks` | List all tasks (optional `?status=` filter) |
+| POST | `/api/agent/tasks` | Create task (`{title, prompt, parent_objective?}`) |
+| GET | `/api/agent/tasks/:id` | Get single task detail |
+| PUT | `/api/agent/tasks/:id` | Update task (cancel, status change) |
+| DELETE | `/api/agent/tasks/:id` | Delete task and its output |
+| GET | `/api/agent/tasks/:id/output` | Get task output (`?limit=&offset=`) |
+| POST | `/api/agent/decompose` | LLM decomposes prompt into sub-tasks |
+| GET | `/api/agent/config` | Read config (API key masked) |
+| PUT | `/api/agent/config` | Update config (partial updates supported) |
 
-### CLAUDE.md Files (Two Separate Files)
+## Common Pitfalls
 
-1. **Working Agent CLAUDE.md** — Instructions for the Claude Code agent executing tasks in worktrees. Contains:
-   - Coding conventions, file structure, testing requirements
-   - Known pitfalls from REFLECTION.md
-   - Project-specific patterns
-
-2. **Task-Dividing Agent CLAUDE.md** — Instructions/system prompt for the LLM performing task decomposition. Contains:
-   - How to break objectives into atomic sub-tasks
-   - What constitutes a good sub-task (scoped, testable, independent)
-   - Project structure knowledge for accurate scoping
-
-Both files are updated during knowledge accumulation (step 9), but **CLAUDE.md updates require user approval** before being committed.
-
-## Database Schema
-
-Added to `data/workbench.db` (extends existing schema in `src/lib/db.ts`):
-
-### `agent_tasks`
-
-```sql
-CREATE TABLE IF NOT EXISTS agent_tasks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
-  prompt TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'waiting_for_dev'
-    CHECK (status IN (
-      'waiting_for_dev', 'developing', 'waiting_for_review',
-      'finished', 'failed', 'cancelled'
-    )),
-  parent_objective TEXT,          -- original user prompt that generated this task
-  branch_name TEXT,               -- e.g., 'task/add-login-button'
-  worktree_path TEXT,             -- e.g., '.worktrees/task-7'
-  error_message TEXT,             -- populated on failure
-  commit_id TEXT,                 -- final merge commit SHA
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  started_at TEXT,
-  completed_at TEXT
-);
-```
-
-### `agent_task_output`
-
-```sql
-CREATE TABLE IF NOT EXISTS agent_task_output (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  task_id INTEGER NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
-  timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-  type TEXT NOT NULL,              -- 'stdout', 'stderr', 'system', 'assistant', 'tool'
-  content TEXT NOT NULL
-);
-```
-
-### `agent_lock`
-
-```sql
-CREATE TABLE IF NOT EXISTS agent_lock (
-  id INTEGER PRIMARY KEY CHECK (id = 1),   -- singleton row
-  locked INTEGER NOT NULL DEFAULT 0,
-  task_id INTEGER REFERENCES agent_tasks(id),
-  locked_at TEXT
-);
-```
-
-## Key Files (Planned)
-
-| File | Purpose |
-|------|---------|
-| `src/app/agent/page.tsx` | Agent UI — prompt input, task board, detail view |
-| `src/app/api/agent/tasks/route.ts` | Task list + create |
-| `src/app/api/agent/tasks/[id]/route.ts` | Task detail, update, delete |
-| `src/app/api/agent/tasks/[id]/output/route.ts` | Stream/poll task execution output |
-| `src/app/api/agent/decompose/route.ts` | LLM task decomposition |
-| `src/app/api/agent/config/route.ts` | Agent config CRUD |
-| `src/lib/agent-db.ts` | Agent-specific DB operations (or extend db.ts) |
-| `scripts/agent-daemon.py` | Polling daemon (Module B + C) |
-| `scripts/agent-executor.py` | Execution pipeline logic (Module C), imported by daemon |
-| `data/agent-config.json` | LLM provider/model/API key config (gitignored) |
-| `data/agent-working-claude.md` | CLAUDE.md for the working agent |
-| `data/agent-decompose-claude.md` | CLAUDE.md for the task-dividing agent |
-| `logs/agent-daemon.out.log` | Daemon stdout log |
-| `logs/agent-daemon.err.log` | Daemon stderr log |
-| `~/Library/LaunchAgents/com.workbench.agent-daemon.plist` | launchd plist |
-
-## Error Handling Philosophy
-
-**Do not give up easily.** The system must be resilient:
-
-- **Rebase conflicts**: Resolve iteratively — read both sides, merge manually, continue rebase, repeat until done.
-- **Test failures**: Analyze, fix, rerun — loop until all tests pass, commit each fix.
-- **Agent errors**: Retry with additional context before marking as failed.
-- Only mark `failed` after genuinely exhausting resolution attempts.
-
-## Future Considerations
-
-- Parallel agent execution (multiple worktrees, multiple locks)
-- Task priority / reordering
-- Agent output search / filtering in the UI
-- Integration with the Forest section (auto-generate knowledge trees from completed tasks)
-- Webhook/notification support when tasks complete
+- **Python module naming**: Importable Python files must use underscores (`agent_executor.py`), not hyphens. The daemon (`agent-daemon.py`) can use hyphens because it's run directly, not imported.
+- **REPO_ROOT path depth**: The executor is at `workbench/scripts/agent_executor.py` — 3 levels below the git root, not 2. Use `dirname(dirname(dirname(__file__)))`.
+- **Route exports**: Next.js route files (`route.ts`) can only export HTTP handlers. Shared logic must go in `src/lib/` modules (this is why `agent-config.ts` was extracted).
+- **System Python version**: macOS system Python is 3.9. Use `from __future__ import annotations` for modern type hints, or use `Optional[X]`/`Union[X, Y]`.
+- **API key masking**: `GET /api/agent/config` masks the key. The UI never prefills the password field — it shows the masked value as a placeholder. Only send a new key when the user explicitly types one.
+- **Stale lock recovery**: If the daemon crashes mid-execution, the lock may remain held. The daemon clears locks older than 30 minutes on startup and marks the associated task as `failed`.
