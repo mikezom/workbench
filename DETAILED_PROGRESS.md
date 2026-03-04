@@ -766,3 +766,24 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 
 **Changes:**
 - `workbench/scripts/agent_executor.py` — Added `symlink_node_modules()` function that creates a symlink from `<worktree>/workbench/node_modules` to the main checkout's `node_modules`. Called as Step 1c in `execute_task()` after CLAUDE.md injection. Handles existing dirs/stale symlinks gracefully.
+
+---
+
+## 2026-03-04 — Agent Skill-Based Phased Pipeline
+
+### Task 1: Add vitest and create TDD pipeline for agents
+
+**Commit:** `49866e8`
+
+**Problem:** The working agent received a flat CLAUDE.md with no behavioral structure — it decided work order, testing, and committing on its own. Needed a deterministic phased pipeline enforced by skill files, and a test framework for the TDD loop.
+
+**Changes:**
+- `workbench/package.json` — Added `vitest ^3.0.0` to devDependencies, added `test` and `test:watch` scripts.
+- `workbench/vitest.config.ts` — New vitest config with node environment, globals, `@` alias, co-located test pattern (`src/**/*.test.ts`), passWithNoTests.
+- `workbench/data/agent-skills/agent-understand-task.md` — Phase 1: read docs, assess clarity, ask questions or proceed.
+- `workbench/data/agent-skills/agent-write-failing-test.md` — Phase 2 (RED): write meaningful failing tests before implementation.
+- `workbench/data/agent-skills/agent-implement-minimal.md` — Phase 3 (GREEN): minimum code to pass tests.
+- `workbench/data/agent-skills/agent-verify-green.md` — Phase 4: full test suite + build, loop back or continue.
+- `workbench/data/agent-skills/agent-commit.md` — Phase 5: focused commit, no docs files.
+- `workbench/data/agent-skills/agent-reflection-after-work.md` — Phase 6: update PROGRESS/REFLECTION, separate commit, DONE.
+- `workbench/data/agent-working-claude.md` — Rewritten as pipeline skeleton with condensed project context and phase entry point routing.

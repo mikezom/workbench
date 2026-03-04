@@ -135,6 +135,11 @@ Full spec: `docs/agent-section.md`
 - [x] Create task-dividing agent CLAUDE.md (`data/agent-decompose-claude.md`)
 - [ ] Knowledge accumulation updates both files (deferred)
 
+#### 5h: Skill-Based Phased Pipeline
+- [x] Add vitest test framework (config, scripts)
+- [x] Create 6 agent skill files (understand, write-test, implement, verify, commit, reflection)
+- [x] Rewrite agent-working-claude.md as pipeline skeleton with phase routing
+
 #### 5g: Auto-finish & Clarification Questions
 - [x] Add `agent_task_questions` table and CRUD functions
 - [x] Add GET/POST /api/agent/tasks/[id]/questions API route
@@ -162,4 +167,4 @@ Full spec: `docs/agent-section.md`
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | Not started | |
-| 5 - Agent | In progress | Phase 5a–5g complete (knowledge accumulation deferred) |
+| 5 - Agent | In progress | Phase 5a–5h complete (knowledge accumulation deferred) |
