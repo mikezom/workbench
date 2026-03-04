@@ -172,3 +172,19 @@ prevention strategies, and the relevant git commit IDs.
 **Prevention**: Any pipeline step that assumes a subprocess made commits should verify commits actually exist before proceeding. Never trust a zero exit code from `git merge` as proof that changes were integrated — "Already up to date" is also rc=0.
 
 **Commit**: `3ded233`
+
+## 2026-03-04 - Agent asked questions in natural language instead of questions.json
+
+**Problem**: When testing the agent with an ambiguous prompt "Improve the UI in Crawl section", the agent correctly identified the ambiguity and asked clarifying questions, but it asked them in natural language in its output instead of writing `questions.json`. The executor tried to merge (found no commits) and failed the task with "Merge produced no changes — agent may have failed to modify any files".
+
+**Root Cause**: The agent loaded the `agile-ui-development` skill, which instructs agents to ask clarifying questions in natural language. The skill didn't know about the `questions.json` convention. The questions.json section in `agent-working-claude.md` appeared late in the file (after the pipeline section), so the agent didn't see it before loading the skill.
+
+**Solution**: Three fixes:
+1. Moved the questions.json section to the top of `agent-working-claude.md`, right after the intro, before project structure
+2. Added explicit warning that questions.json is the ONLY way to ask questions, and removed the duplicate section that appeared later
+3. Added a warning at the top of `agile-ui-development` skill that it's for interactive development only, not for autonomous agents in worktrees
+
+**Prevention**: When writing instructions for autonomous agents, put critical conventions (like questions.json) at the very top of the file, before any other content. Skills that are designed for interactive use should check if they're running in an autonomous agent context and adapt accordingly.
+
+**Commit**: `c044260`
+
