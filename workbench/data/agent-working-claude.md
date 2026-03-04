@@ -1,6 +1,6 @@
 # Workbench Project — Agent Instructions
 
-You are an autonomous coding agent executing a task in an isolated git worktree of the Workbench project.
+You are an autonomous coding agent executing a task in an isolated git worktree of the Workbench project. You follow a strict phased pipeline — execute one phase at a time, do NOT skip ahead.
 
 ## Project Structure
 
@@ -19,12 +19,18 @@ You are an autonomous coding agent executing a task in an isolated git worktree 
 │   │       ├── study-log/     # Study log queries
 │   │       └── import/anki/   # Anki .apkg import
 │   ├── src/components/        # Shared UI components
-│   ├── src/lib/               # Utilities: db.ts, agent-config.ts, anki-import.ts
-│   ├── data/                  # SQLite DB and config files
+│   ├── src/lib/               # Utilities: db.ts, agent-db.ts, agent-config.ts, anki-import.ts
+│   ├── data/                  # SQLite DB, config files, agent skills
+│   │   └── agent-skills/      # Pipeline phase skill files
 │   └── scripts/               # Python daemon and executor
 ├── PROGRESS.md                # Task tracking
+├── DETAILED_PROGRESS.md       # Session-level progress log
 ├── REFLECTION.md              # Mistake log
-└── docs/                      # Documentation and plans
+└── docs/                      # Section documentation and plans
+    ├── forest-section.md
+    ├── study-section.md
+    ├── agent-section.md
+    └── plans/
 ```
 
 ## Tech Stack
@@ -32,6 +38,7 @@ You are an autonomous coding agent executing a task in an isolated git worktree 
 - **Framework**: Next.js (App Router) with TypeScript
 - **Styling**: Tailwind CSS
 - **Storage**: SQLite via `better-sqlite3` at `workbench/data/workbench.db`
+- **Testing**: Vitest (`cd workbench && npx vitest run --reporter=verbose`)
 - **FSRS**: `ts-fsrs` library for spaced repetition scheduling
 - **Node.js**: v20
 
@@ -43,18 +50,14 @@ You are an autonomous coding agent executing a task in an isolated git worktree 
 - Shared config utilities go in `src/lib/` (e.g., `agent-config.ts`)
 - Use `better-sqlite3` for all DB operations. Wrap multi-statement mutations in `db.transaction()`.
 - Use Tailwind CSS for all styling. No CSS modules or styled-components.
+- Co-locate tests: `src/lib/db.test.ts` next to `src/lib/db.ts`
 
 ## Git Workflow
 
 You are already on a task branch. Commit directly to this branch.
 - Do NOT create new branches
 - Do NOT switch branches
-- Commit with clear, descriptive messages
-- Keep commits focused — one logical change per commit
-
-## Build Validation
-
-Your changes MUST pass `npm run build` (run from `workbench/`). Fix any type errors or build failures before considering your task complete.
+- Commit format: `<type>: <description>` (feat, fix, refactor, test, docs, chore)
 
 ## Known Pitfalls
 
@@ -66,14 +69,7 @@ Your changes MUST pass `npm run build` (run from `workbench/`). Fix any type err
 
 ## Asking Clarification Questions
 
-If you encounter unclear requirements or multiple valid approaches, you can ask the user for clarification instead of guessing.
-
-**How to ask:**
-
-1. Write a `questions.json` file to the repository root (the directory you're working in)
-2. Then stop — do not continue working until you receive answers
-
-**File format:**
+If you encounter unclear requirements or multiple valid approaches, write `questions.json` to the repository root and STOP.
 
 ```json
 [
@@ -81,25 +77,51 @@ If you encounter unclear requirements or multiple valid approaches, you can ask 
     "id": "q1",
     "question": "Which authentication method should I use?",
     "options": ["JWT tokens", "Session cookies", "OAuth2"]
-  },
-  {
-    "id": "q2",
-    "question": "Should the API return paginated results?",
-    "options": ["Yes, with cursor pagination", "Yes, with offset pagination", "No, return all results"]
   }
 ]
 ```
 
-**Rules:**
-- Each question must have a unique `id` (e.g., "q1", "q2")
-- Each question must have 2-4 `options`
-- Write all your questions at once — you will get all answers together
-- After writing `questions.json`, stop immediately. Do not write any code or make any changes.
-- If you receive previous Q&A context in your prompt, use those answers and do not re-ask the same questions
+Rules:
+- Each question must have a unique `id` and 2-4 `options`
+- Write all questions at once
+- After writing `questions.json`, stop immediately — do not write any code
 
 ## What NOT to Do
 
-- Do not modify `CLAUDE.md` files, `PROGRESS.md`, or `REFLECTION.md`
+- Do not modify `CLAUDE.md` files or `agent-working-claude.md`
+- Do not modify `PROGRESS.md`, `DETAILED_PROGRESS.md`, or `REFLECTION.md` — except in Phase 6 (reflection)
 - Do not install new npm packages unless the task explicitly requires it
 - Do not refactor code unrelated to your task
 - Do not add comments, docstrings, or type annotations to code you didn't change
+
+---
+
+## Pipeline
+
+**Iron Law: Execute one phase at a time. Do NOT skip ahead. Do NOT combine phases.**
+
+Each phase is a skill file in `workbench/data/agent-skills/`. Read the skill file, execute its instructions completely, then follow its NEXT directive.
+
+### Entry Point
+
+Determine your starting phase:
+
+1. **If your prompt contains "Previous Clarification Q&A"**: Phase 1 (understand) is already done. Skip directly to Phase 2.
+   → Read and execute `workbench/data/agent-skills/agent-write-failing-test.md`
+
+2. **Otherwise**: Start at Phase 1.
+   → Read and execute `workbench/data/agent-skills/agent-understand-task.md`
+
+### Pipeline Overview (for reference only — follow the skill files)
+
+```
+Phase 1: Understand Task     → agent-understand-task.md
+Phase 2: Write Failing Test  → agent-write-failing-test.md      (RED)
+Phase 3: Implement Minimal   → agent-implement-minimal.md       (GREEN)
+Phase 4: Verify Green        → agent-verify-green.md
+  ↳ incomplete? → back to Phase 2 (TDD loop)
+  ↳ complete?   → Phase 5
+Phase 5: Commit              → agent-commit.md
+Phase 6: Reflection          → agent-reflection-after-work.md
+  → DONE
+```
