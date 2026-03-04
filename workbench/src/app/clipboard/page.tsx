@@ -19,7 +19,9 @@ export default function ClipboardPage() {
   const [editLanguage, setEditLanguage] = useState("");
   const [displayCount, setDisplayCount] = useState(10);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
+  const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchItems = useCallback(async () => {
     const res = await fetch("/api/clipboard");
@@ -68,13 +70,29 @@ export default function ClipboardPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this snippet?")) return;
+    if (confirmDeleteId === id) {
+      // Second click - actually delete
+      await fetch(`/api/clipboard/${id}`, {
+        method: "DELETE",
+      });
 
-    await fetch(`/api/clipboard/${id}`, {
-      method: "DELETE",
-    });
+      setConfirmDeleteId(null);
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+      fetchItems();
+    } else {
+      // First click - enter confirm mode
+      setConfirmDeleteId(id);
 
-    fetchItems();
+      // Auto-cancel after 3 seconds
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+      confirmTimeoutRef.current = setTimeout(() => {
+        setConfirmDeleteId(null);
+      }, 3000);
+    }
   };
 
   const handleCopy = async (content: string, id: string) => {
@@ -128,7 +146,12 @@ export default function ClipboardPage() {
       observer.observe(listEndRef.current);
     }
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (confirmTimeoutRef.current) {
+        clearTimeout(confirmTimeoutRef.current);
+      }
+    };
   }, [displayCount, items.length]);
 
   const displayedItems = items.slice(0, displayCount);
@@ -233,9 +256,13 @@ export default function ClipboardPage() {
                       </button>
                       <button
                         onClick={() => handleDelete(item.id)}
-                        className="px-3 py-1.5 border border-neutral-300 dark:border-neutral-700 rounded text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        className={`px-3 py-1.5 border rounded text-sm transition-all duration-300 ${
+                          confirmDeleteId === item.id
+                            ? "bg-red-600 dark:bg-red-600 border-red-600 dark:border-red-600 text-white dark:text-white"
+                            : "border-neutral-300 dark:border-neutral-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        }`}
                       >
-                        Delete
+                        {confirmDeleteId === item.id ? "Confirm?" : "Delete"}
                       </button>
                     </div>
                   </div>
