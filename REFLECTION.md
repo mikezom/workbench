@@ -158,3 +158,17 @@ prevention strategies, and the relevant git commit IDs.
 **Prevention**: When extending polling conditions in useEffect to cover additional statuses, always check all places where polling is stopped (interval cleanup in callbacks, not just the setup condition). Search for `clearInterval(pollRef` to find all polling termination points.
 
 **Commit**: `e1f3723`
+
+## 2026-03-04 - Agent changes lost because executor didn't verify commits
+
+**Problem**: An agent task reported "Execution complete — task merged and finished" but the actual file change never appeared on `main`. After restarting the dev server, the old content was still visible.
+
+**Root Cause**: The Claude CLI agent edited the file but never committed it. The executor pipeline didn't check for uncommitted changes after Claude finished. The rebase was a no-op (no commits on the branch), the build passed (working tree had the edit), and `git merge` returned "Already up to date" (rc=0). The executor treated rc=0 as success, reported a commit SHA that was actually the pre-existing HEAD, and cleaned up the worktree — destroying the uncommitted edit.
+
+**Solution**: Two fixes in `agent_executor.py`:
+1. Added `commit_uncommitted_changes()` — called after `invoke_claude()` in both `execute_task` and `resume_task`. Detects uncommitted changes (excluding injected CLAUDE.md) and auto-commits them.
+2. Added no-op merge detection in `merge_into_main()` — compares HEAD before/after merge. If unchanged, returns None instead of the stale SHA, which the callers now treat as a RuntimeError.
+
+**Prevention**: Any pipeline step that assumes a subprocess made commits should verify commits actually exist before proceeding. Never trust a zero exit code from `git merge` as proof that changes were integrated — "Already up to date" is also rc=0.
+
+**Commit**: `3ded233`
