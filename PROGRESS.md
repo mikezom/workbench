@@ -166,6 +166,18 @@ Full spec: `docs/agent-section.md`
 - [x] Update working agent CLAUDE.md with questions.json convention
 - [x] Update agent-section.md documentation
 
+#### 5i: Decompose Feature (CLI-based)
+- [x] Create 3 decompose agent skills (understand-task, breakdown-task, reflection)
+- [x] Add decompose columns to agent_tasks table (parent_task_id, task_type, decompose_breakdown, etc.)
+- [x] Create decompose migration script and API route
+- [x] Add 4 decompose execution functions to agent_executor.py
+- [x] Add 4 decompose polling functions to agent-daemon.py
+- [x] Create 7 decompose API routes (create, get, answers, approve, reject, subtasks, comment)
+- [x] Implement DecomposeModal component with auto-detection and high-priority popup
+- [x] Create DECOMPOSE_REFLECTION.md for decompose agent learning
+- [x] Rewrite agent-decompose-claude.md as pipeline with phase routing
+- [x] Fix build errors (remove orphaned JSX, add status colors)
+
 ## Status
 
 | Phase | Status | Notes |
@@ -186,4 +198,4 @@ Full spec: `docs/agent-section.md`
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | Not started | |
-| 5 - Agent | In progress | Phase 5a–5h complete (knowledge accumulation deferred) |
+| 5 - Agent | Complete (backend) | Phase 5a–5i complete (knowledge accumulation deferred); decompose feature build fixes `856a7bf` |

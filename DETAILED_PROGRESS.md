@@ -868,3 +868,36 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 
 **Changes:**
 - `workbench/src/app/clipboard/page.tsx` — Replaced confirm() dialog with two-step button confirmation. Added `confirmDeleteId` state and `confirmTimeoutRef` to track confirmation state. Modified `handleDelete()` to require two clicks: first click fills button with red and shows "Confirm?", second click deletes. Auto-cancels after 3 seconds. Added cleanup for timeout on component unmount.
+
+---
+
+## 2026-03-04 — Decompose Feature Build Fixes
+
+### Task 1: Fix build errors in decompose feature UI
+
+**Commit:** `856a7bf`
+
+**Problem:** The decompose feature implementation was complete but had build errors preventing compilation. The agent page had orphaned JSX code from incomplete removal of old decomposed tasks preview, and TypeScript errors from missing decompose status colors in STATUS_COLORS and STATUS_DOT constants.
+
+**Changes:**
+- `workbench/src/app/agent/page.tsx` — Removed orphaned JSX code (lines 225-274) from old decomposed tasks preview that was left behind when simplifying PromptInput component. Added 8 decompose status colors to STATUS_COLORS constant (purple/blue/indigo/green variants). Added 8 decompose status colors to STATUS_DOT constant. Updated AgentTaskStatus type to include decompose statuses. Updated AgentTask interface to include decompose fields (parent_task_id, task_type, decompose_breakdown, decompose_user_comment, user_task_comment). Removed unused DecomposedTask interface and decomposed state from PromptInput.
+- `DECOMPOSE_STATUS.md` — Created status document summarizing build fixes, current state, and next steps for testing the decompose feature.
+- `DECOMPOSE_IMPLEMENTATION.md` — Comprehensive implementation summary documenting all 6 phases of decompose feature (skills, database schema, executor, daemon, API routes, critical UI), three-phase workflow, architecture highlights, and testing instructions.
+- `DECOMPOSE_REFLECTION.md` — Created separate reflection file for decompose agent to track decomposition patterns and lessons learned independently from worker agent reflection.
+- `workbench/data/agent-decompose-claude.md` — Rewritten as pipeline skeleton with phase routing logic based on context (similar to agent-working-claude.md).
+- `workbench/scripts/agent_executor.py` — Added 4 decompose execution functions (execute_decompose_task, resume_decompose_task, retry_decompose_breakdown, execute_decompose_reflection) and helper functions for file management.
+- `workbench/scripts/agent-daemon.py` — Added 4 polling functions for decompose task states and integrated decompose handling into main polling loop.
+- `workbench/src/lib/agent-db.ts` — Updated schema with decompose support (added parent_task_id, task_type, decompose_breakdown, decompose_user_comment, user_task_comment columns and 8 new decompose statuses). Added helper functions: getSubTasks, areAllSubTasksCommented, getDecomposeTasksReadyForReflection.
+- `workbench/src/lib/migrate-decompose.ts` — Created migration script for adding decompose columns to agent_tasks table.
+- `workbench/src/app/api/agent/decompose/route.ts` — Updated to create decompose task instead of SDK call.
+- `workbench/src/app/api/agent/decompose/[id]/route.ts` — New route to get decompose task details (questions, breakdown, status).
+- `workbench/src/app/api/agent/decompose/[id]/answers/route.ts` — New route to submit answers to decompose questions.
+- `workbench/src/app/api/agent/decompose/[id]/approve/route.ts` — New route to approve breakdown and create sub-tasks.
+- `workbench/src/app/api/agent/decompose/[id]/reject/route.ts` — New route to reject breakdown with comments.
+- `workbench/src/app/api/agent/decompose/[id]/subtasks/route.ts` — New route to get all sub-tasks for a decompose task.
+- `workbench/src/app/api/agent/migrate-decompose/route.ts` — New route to run decompose migration.
+- `workbench/src/app/api/agent/tasks/[id]/comment/route.ts` — New route to add user comment to completed task for reflection phase.
+- `REFLECTION.md` — Updated with lessons learned from decompose implementation.
+- Deleted `workbench/data/agent-skills/` directory — Skills moved to `~/.claude/skills/` as per new architecture.
+
+**Summary**: Fixed build errors in decompose feature by removing orphaned JSX code and adding missing status colors. The decompose feature replaces SDK-based task decomposition with Claude Code CLI-based autonomous decomposition using a three-phase workflow (Planning/Clarification → User Confirmation/Delegation → Review/Reflection). Build now succeeds. Dev server needs restart to test the feature end-to-end.
