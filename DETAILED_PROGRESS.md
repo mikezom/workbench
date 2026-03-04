@@ -823,3 +823,35 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 - `workbench/package.json` — Added happy-dom dev dependency
 
 **Summary**: Implemented a dark/light theme toggle button positioned at the bottom of the navigation sidebar. The theme preference is persisted in localStorage and applied via Tailwind's class-based dark mode. Updated test environment to support browser APIs (localStorage, document).
+
+---
+
+## 2026-03-04 — Dark Mode Color Fixes
+
+### Task 1: Fix dark mode to use true neutral grays
+
+**Commit:** `b07fb19`
+
+**Problem:** Dark mode was displaying blue-tinted grays instead of true neutral grays across all sections. The global CSS was using `prefers-color-scheme` media query instead of Tailwind's class-based dark mode, and individual components were using `gray-*` colors which have a blue tint.
+
+**Changes:**
+- `workbench/src/app/globals.css` — Replaced CSS variables with Tailwind dark mode classes (`dark:bg-neutral-950`) to respond to manual theme toggle instead of system preference.
+- `workbench/src/app/layout.tsx` — Added `bg-white dark:bg-neutral-900` to main element to ensure full-page background coverage.
+- `workbench/src/components/page-container.tsx` — Changed from `dark:bg-gray-900` to `dark:bg-neutral-900` and updated text colors to use neutral palette.
+- `workbench/src/app/agent/page.tsx` — Changed from `dark:bg-gray-900` to `dark:bg-neutral-900` for consistent true gray background.
+- `workbench/src/app/forest/page.tsx` — Changed from `dark:bg-gray-900` to `dark:bg-neutral-900` and updated "Forest" label to `dark:text-neutral-100` (white) for better contrast.
+- `workbench/src/app/study/page.tsx` — Changed from `dark:bg-gray-900` to `dark:bg-neutral-900` and updated "Start Review" button to transparent background with themed outline (`border-neutral-900` in light mode, `border-neutral-400` in dark mode).
+
+---
+
+## 2026-03-04 — Clipboard Section Implementation
+
+### Task 1: Implement clipboard UI with CRUD and infinite scroll
+
+**Commit:** `c003b10`
+
+**Problem:** The clipboard section had a complete backend (database layer, API routes, tests) but only a placeholder UI. Needed a full-featured snippet manager with create/edit/delete functionality, copy to clipboard, and infinite scroll pagination.
+
+**Changes:**
+- `workbench/src/app/clipboard/page.tsx` — Implemented complete UI with create form (textarea + optional language input), card-based snippet list, inline editing mode, copy to clipboard with feedback, delete with confirmation, and infinite scroll using IntersectionObserver (loads 10 items at a time).
+- `docs/clipboard-section.md` — Created comprehensive technical documentation including database schema, API reference, UI layout diagram, data flow diagrams, feature descriptions, common pitfalls, and future enhancement notes.
