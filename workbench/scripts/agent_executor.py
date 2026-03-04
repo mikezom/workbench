@@ -218,6 +218,30 @@ def cleanup_worktree(
         )
 
 
+def symlink_node_modules(repo_root: str, worktree_path: str) -> None:
+    """Symlink node_modules from the main checkout into the worktree.
+
+    Avoids a full ``npm install`` in every worktree by reusing the
+    already-installed modules from the main workbench/ directory.
+    """
+    src = os.path.join(repo_root, "workbench", "node_modules")
+    dst = os.path.join(worktree_path, "workbench", "node_modules")
+
+    if not os.path.isdir(src):
+        log.warning("Main node_modules not found at %s — skipping symlink", src)
+        return
+
+    # Remove existing node_modules in the worktree (if any) before linking
+    if os.path.isdir(dst) and not os.path.islink(dst):
+        shutil.rmtree(dst)
+        log.info("Removed existing node_modules dir at %s", dst)
+    elif os.path.islink(dst):
+        os.remove(dst)
+
+    os.symlink(src, dst)
+    log.info("Symlinked node_modules: %s -> %s", dst, src)
+
+
 def inject_claude_md(worktree_path: str) -> None:
     """Copy the working agent CLAUDE.md into the worktree root.
 
@@ -783,6 +807,9 @@ def execute_task(conn: sqlite3.Connection, task: dict) -> None:
 
         # Step 1b: Inject working agent CLAUDE.md
         inject_claude_md(worktree_path)
+
+        # Step 1c: Symlink node_modules from main checkout
+        symlink_node_modules(REPO_ROOT, worktree_path)
 
         # Step 2: Invoke Claude Code
         invoke_claude(worktree_path, prompt, conn, task_id)
