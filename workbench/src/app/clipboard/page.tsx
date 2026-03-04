@@ -78,9 +78,28 @@ export default function ClipboardPage() {
   };
 
   const handleCopy = async (content: string, id: string) => {
-    await navigator.clipboard.writeText(content);
-    setCopyFeedback(id);
-    setTimeout(() => setCopyFeedback(null), 2000);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(content);
+        setCopyFeedback(id);
+        setTimeout(() => setCopyFeedback(null), 2000);
+      } else {
+        // Fallback for browsers without Clipboard API
+        const textarea = document.createElement("textarea");
+        textarea.value = content;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        setCopyFeedback(id);
+        setTimeout(() => setCopyFeedback(null), 2000);
+      }
+    } catch (err) {
+      console.error("Failed to copy:", err);
+      alert("Failed to copy to clipboard. Please copy manually.");
+    }
   };
 
   const startEdit = (item: ClipboardItem) => {
