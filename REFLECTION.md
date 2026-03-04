@@ -188,3 +188,15 @@ prevention strategies, and the relevant git commit IDs.
 
 **Commit**: `c044260`
 
+## 2026-03-04 - Duplicate branch names caused task failures
+
+**Problem**: When a user submitted a task with a title similar to a previous task (e.g., "Improve the UI"), the executor would try to create a branch with the same name (e.g., `task/improve-the-ui`) and fail immediately with "branch already exists" error, even though the worktree path was unique.
+
+**Root Cause**: The `create_worktree()` function used `git worktree add -b <branch>` which creates a new branch. If a branch with that name already existed (from a previous task), the command would fail. The function didn't handle this case and would raise a RuntimeError immediately.
+
+**Solution**: Added duplicate branch name handling in `create_worktree()`. When the initial branch creation fails with "already exists" in the error message, the function now retries with the task ID appended as a suffix (e.g., `task/improve-the-ui-8`). This ensures each task gets a unique branch name even if the title slug is identical.
+
+**Prevention**: When creating resources that must be unique (branches, files, directories), always have a fallback strategy using a guaranteed-unique identifier (like task ID, timestamp, or UUID) if the preferred name is already taken.
+
+**Commit**: `5e83e98`
+
