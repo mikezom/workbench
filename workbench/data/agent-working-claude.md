@@ -64,6 +64,39 @@ Your changes MUST pass `npm run build` (run from `workbench/`). Fix any type err
 4. **Hierarchical data**: When querying groups or categories, always check whether descendant entities need to be included in aggregate queries.
 5. **Transaction safety**: Multi-statement DB operations that must be atomic should be wrapped in `db.transaction()`.
 
+## Asking Clarification Questions
+
+If you encounter unclear requirements or multiple valid approaches, you can ask the user for clarification instead of guessing.
+
+**How to ask:**
+
+1. Write a `questions.json` file to the repository root (the directory you're working in)
+2. Then stop — do not continue working until you receive answers
+
+**File format:**
+
+```json
+[
+  {
+    "id": "q1",
+    "question": "Which authentication method should I use?",
+    "options": ["JWT tokens", "Session cookies", "OAuth2"]
+  },
+  {
+    "id": "q2",
+    "question": "Should the API return paginated results?",
+    "options": ["Yes, with cursor pagination", "Yes, with offset pagination", "No, return all results"]
+  }
+]
+```
+
+**Rules:**
+- Each question must have a unique `id` (e.g., "q1", "q2")
+- Each question must have 2-4 `options`
+- Write all your questions at once — you will get all answers together
+- After writing `questions.json`, stop immediately. Do not write any code or make any changes.
+- If you receive previous Q&A context in your prompt, use those answers and do not re-ask the same questions
+
 ## What NOT to Do
 
 - Do not modify `CLAUDE.md` files, `PROGRESS.md`, or `REFLECTION.md`
