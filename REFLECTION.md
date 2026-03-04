@@ -239,3 +239,23 @@ prevention strategies, and the relevant git commit IDs.
 **Prevention**: Always follow the exact git workflow sequence from CLAUDE.md: (1) checkout main, (2) create task branch, (3) make changes and commit on task branch, (4) checkout main, (5) merge task branch, (6) delete task branch. This applies even when continuing work from a previous session with uncommitted changes - create the task branch before committing.
 
 **Commit**: `856a7bf`
+
+## 2026-03-04 - Database CHECK constraint not updated when adding new enum values
+
+**Problem**: The decompose button failed with "CHECK constraint failed: status IN (...)" error. When creating a decompose task, the code tried to set status to 'decompose_understanding', but the database CHECK constraint only included the original 6 worker statuses, not the 8 new decompose statuses.
+
+**Root Cause**: When the decompose feature was added in Phase 5i, new columns (parent_task_id, task_type, decompose_breakdown, etc.) were added to agent_tasks using ALTER TABLE ADD COLUMN. The code in agent-db.ts was updated to include decompose statuses in the CHECK constraint, but SQLite doesn't allow modifying existing CHECK constraints. The database schema remained unchanged while the code expected the new statuses to be valid.
+
+**Solution**: Created a migration script that:
+1. Creates a new table with the updated CHECK constraint (including all 14 statuses)
+2. Copies all existing data from the old table
+3. Drops the old table
+4. Renames the new table to agent_tasks
+
+**Prevention**: When adding new enum values to a CHECK constraint in SQLite:
+- Remember that ALTER TABLE cannot modify CHECK constraints
+- Always create a migration script that recreates the table
+- Verify the actual database schema matches the code schema after making changes
+- Test the constraint by attempting to insert a record with the new enum value
+
+**Commit**: `8577fe8`
