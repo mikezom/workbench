@@ -87,6 +87,10 @@ class CancelledError(Exception):
     """Raised when a task is cancelled mid-execution."""
 
 
+class QuestionsAsked(Exception):
+    """Raised when the agent wrote questions.json and needs user input."""
+
+
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
@@ -636,14 +640,124 @@ def run_build(
 
 
 # ---------------------------------------------------------------------------
+# Merge into main
+# ---------------------------------------------------------------------------
+
+
+def merge_into_main(
+    repo_root: str,
+    worktree_path: str,
+    branch_name: str,
+    conn: sqlite3.Connection,
+    task_id: int,
+) -> str | None:
+    """Merge the task branch into main and clean up.
+
+    Returns the merge commit SHA on success, or None if merge fails.
+    Cleans up the worktree and branch after merging.
+    """
+    append_output(conn, task_id, "system", f"Merging {branch_name} into main...")
+
+    # Checkout main in the repo root
+    result = _run_git(["checkout", "main"], cwd=repo_root)
+    if result.returncode != 0:
+        log.error("Failed to checkout main: %s", result.stderr.strip())
+        append_output(conn, task_id, "system",
+            f"Failed to checkout main: {result.stderr.strip()}")
+        return None
+
+    # Merge the task branch
+    result = _run_git(["merge", branch_name], cwd=repo_root)
+    if result.returncode != 0:
+        log.error("Failed to merge %s into main: %s", branch_name, result.stderr.strip())
+        append_output(conn, task_id, "system",
+            f"Merge failed: {result.stderr.strip()}")
+        _run_git(["merge", "--abort"], cwd=repo_root)
+        return None
+
+    # Get the merge commit SHA
+    result = _run_git(["rev-parse", "HEAD"], cwd=repo_root)
+    commit_sha = result.stdout.strip() if result.returncode == 0 else None
+
+    append_output(conn, task_id, "system",
+        f"Merged into main (commit: {commit_sha[:7] if commit_sha else 'unknown'})")
+
+    # Clean up worktree and branch
+    cleanup_worktree(repo_root, worktree_path, branch_name)
+    append_output(conn, task_id, "system", "Cleaned up worktree and branch.")
+
+    return commit_sha
+
+
+# ---------------------------------------------------------------------------
+# Questions detection
+# ---------------------------------------------------------------------------
+
+QUESTIONS_FILE = "questions.json"
+
+
+def check_questions(worktree_path: str) -> list[dict] | None:
+    """Check for a questions.json file in the worktree root.
+
+    Returns parsed questions list if found and valid, None otherwise.
+    Validates that each question has id, question, and options (2-4 items).
+    """
+    qpath = os.path.join(worktree_path, QUESTIONS_FILE)
+    if not os.path.isfile(qpath):
+        return None
+
+    try:
+        with open(qpath) as f:
+            questions = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        log.warning("Failed to parse %s: %s", qpath, e)
+        return None
+
+    if not isinstance(questions, list) or len(questions) == 0:
+        log.warning("questions.json is empty or not a list")
+        return None
+
+    # Validate structure
+    validated = []
+    for i, q in enumerate(questions):
+        if not isinstance(q, dict):
+            log.warning("Question %d is not a dict — skipping", i)
+            continue
+        qid = q.get("id", f"q{i+1}")
+        question = q.get("question", "")
+        options = q.get("options", [])
+        if not question or not isinstance(options, list) or len(options) < 2:
+            log.warning("Question %d has invalid structure — skipping", i)
+            continue
+        validated.append({"id": str(qid), "question": question, "options": options})
+
+    return validated if validated else None
+
+
+def save_questions_to_db(
+    conn: sqlite3.Connection, task_id: int, questions: list[dict]
+) -> None:
+    """Store parsed questions in the agent_task_questions table."""
+    for q in questions:
+        conn.execute(
+            "INSERT INTO agent_task_questions (task_id, question_id, question, options) "
+            "VALUES (?, ?, ?, ?)",
+            (task_id, q["id"], q["question"], json.dumps(q["options"])),
+        )
+    conn.commit()
+    log.info("Saved %d questions for task %d", len(questions), task_id)
+
+
+# ---------------------------------------------------------------------------
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
 
 def execute_task(conn: sqlite3.Connection, task: dict) -> None:
-    """Execute a full task lifecycle: worktree → Claude → rebase → build.
+    """Execute a full task lifecycle: worktree -> Claude -> rebase -> build -> merge.
 
-    On success: returns normally (caller sets status to 'waiting_for_review').
+    On success: merges into main, cleans up, returns normally.
+    On questions: stores questions, raises QuestionsAsked (worktree preserved).
     On cancel: cleans up worktree, raises CancelledError.
     On failure: preserves worktree for debugging, raises the original exception.
     """
@@ -673,15 +787,34 @@ def execute_task(conn: sqlite3.Connection, task: dict) -> None:
         # Step 2: Invoke Claude Code
         invoke_claude(worktree_path, prompt, conn, task_id)
 
+        # Step 2b: Check for clarification questions
+        questions = check_questions(worktree_path)
+        if questions:
+            append_output(conn, task_id, "system",
+                f"Agent asked {len(questions)} clarification question(s) — awaiting user answers")
+            save_questions_to_db(conn, task_id, questions)
+            raise QuestionsAsked(f"Task {task_id} has {len(questions)} questions")
+
         # Step 3: Rebase onto main
         rebase_onto_main(REPO_ROOT, worktree_path, branch_name, conn, task_id)
 
         # Step 4: Run build validation
         run_build(worktree_path, conn, task_id)
 
+        # Step 5: Merge into main and clean up
+        commit_sha = merge_into_main(
+            REPO_ROOT, worktree_path, branch_name, conn, task_id
+        )
+        if commit_sha:
+            conn.execute(
+                "UPDATE agent_tasks SET commit_id = ? WHERE id = ?",
+                (commit_sha, task_id),
+            )
+            conn.commit()
+
         append_output(conn, task_id, "system",
-            "Execution complete — task ready for review")
-        log.info("Task %d execution complete", task_id)
+            "Execution complete — task merged and finished")
+        log.info("Task %d execution complete, merged into main", task_id)
 
     except CancelledError:
         append_output(conn, task_id, "system", "Task cancelled — cleaning up")
@@ -689,9 +822,123 @@ def execute_task(conn: sqlite3.Connection, task: dict) -> None:
             cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
         raise
 
+    except QuestionsAsked:
+        # Preserve worktree, don't clean up — will resume after answers
+        raise
+
     except Exception:
         # Preserve worktree on failure for debugging
         if worktree_path:
             append_output(conn, task_id, "system",
                 f"Task failed — worktree preserved at {worktree_path} for debugging")
+        raise
+
+
+def resume_task(conn: sqlite3.Connection, task: dict) -> None:
+    """Resume a task after the user answered clarification questions.
+
+    Reads answered questions from DB, formats them as context, re-invokes
+    Claude CLI, then continues the pipeline (rebase -> build -> merge).
+    Can raise QuestionsAsked again if Claude asks more questions.
+    """
+    task_id = task["id"]
+    worktree_path = task["worktree_path"]
+    branch_name = task["branch_name"]
+
+    if not worktree_path or not branch_name:
+        raise RuntimeError(
+            f"Task {task_id} has no worktree_path or branch_name — cannot resume"
+        )
+
+    if not os.path.isdir(worktree_path):
+        raise RuntimeError(
+            f"Worktree {worktree_path} does not exist — cannot resume"
+        )
+
+    try:
+        # Step 1: Read answered questions
+        rows = conn.execute(
+            "SELECT question_id, question, answer FROM agent_task_questions "
+            "WHERE task_id = ? ORDER BY id ASC",
+            (task_id,),
+        ).fetchall()
+
+        qa_lines = []
+        for row in rows:
+            qa_lines.append(f"Q: {row['question']}\nA: {row['answer']}")
+        qa_context = "\n\n".join(qa_lines)
+
+        # Step 2: Delete questions.json from worktree
+        qpath = os.path.join(worktree_path, QUESTIONS_FILE)
+        if os.path.isfile(qpath):
+            os.remove(qpath)
+
+        # Step 3: Build resumed prompt
+        original_prompt = task["prompt"]
+        resumed_prompt = (
+            f"{original_prompt}\n\n"
+            f"---\n\n"
+            f"## Previous Clarification Q&A\n\n"
+            f"You previously asked clarification questions. Here are the user's answers:\n\n"
+            f"{qa_context}\n\n"
+            f"Continue with the task using these answers. Do not ask the same questions again."
+        )
+
+        append_output(conn, task_id, "system",
+            f"Resuming task with {len(rows)} answered question(s)...")
+
+        # Step 4: Re-inject CLAUDE.md (in case worktree was modified)
+        inject_claude_md(worktree_path)
+
+        # Step 5: Re-invoke Claude Code
+        invoke_claude(worktree_path, resumed_prompt, conn, task_id)
+
+        # Step 6: Check for new questions
+        questions = check_questions(worktree_path)
+        if questions:
+            append_output(conn, task_id, "system",
+                f"Agent asked {len(questions)} more question(s) — awaiting user answers")
+            # Clear old questions and save new ones
+            conn.execute(
+                "DELETE FROM agent_task_questions WHERE task_id = ?",
+                (task_id,),
+            )
+            save_questions_to_db(conn, task_id, questions)
+            raise QuestionsAsked(f"Task {task_id} has {len(questions)} new questions")
+
+        # Step 7: Rebase onto main
+        rebase_onto_main(REPO_ROOT, worktree_path, branch_name, conn, task_id)
+
+        # Step 8: Run build validation
+        run_build(worktree_path, conn, task_id)
+
+        # Step 9: Merge into main and clean up
+        commit_sha = merge_into_main(
+            REPO_ROOT, worktree_path, branch_name, conn, task_id
+        )
+        if commit_sha:
+            conn.execute(
+                "UPDATE agent_tasks SET commit_id = ? WHERE id = ?",
+                (commit_sha, task_id),
+            )
+            conn.commit()
+
+        append_output(conn, task_id, "system",
+            "Resumed task complete — merged and finished")
+        log.info("Resumed task %d complete, merged into main", task_id)
+
+    except CancelledError:
+        append_output(conn, task_id, "system", "Task cancelled — cleaning up")
+        if worktree_path and branch_name:
+            cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+        raise
+
+    except QuestionsAsked:
+        # Preserve worktree — will resume after more answers
+        raise
+
+    except Exception:
+        if worktree_path:
+            append_output(conn, task_id, "system",
+                f"Resumed task failed — worktree preserved at {worktree_path}")
         raise
