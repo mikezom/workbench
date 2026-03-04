@@ -910,7 +910,7 @@ export default function AgentPage() {
   }, [fetchTasks]);
 
   return (
-    <div className="flex flex-col h-full p-4 overflow-hidden">
+    <div className="flex flex-col h-full p-4 overflow-hidden bg-white dark:bg-gray-900">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h1 className="text-lg font-bold">Agent</h1>

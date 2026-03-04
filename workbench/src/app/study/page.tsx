@@ -1089,7 +1089,7 @@ export default function StudyPage() {
   ];
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-white dark:bg-gray-900">
       {/* Sidebar */}
       <div className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col overflow-y-auto">
         <h1 className="text-lg font-bold mb-4">Study</h1>
