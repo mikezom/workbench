@@ -436,7 +436,7 @@ function TaskDetailModal({
       const data = await res.json();
       setCurrentTask(data);
       // Stop polling if task is no longer active
-      if (data.status !== "developing" && pollRef.current) {
+      if (data.status !== "developing" && data.status !== "waiting_for_review" && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
       }
