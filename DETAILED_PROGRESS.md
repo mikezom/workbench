@@ -787,3 +787,19 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 - `workbench/data/agent-skills/agent-commit.md` — Phase 5: focused commit, no docs files.
 - `workbench/data/agent-skills/agent-reflection-after-work.md` — Phase 6: update PROGRESS/REFLECTION, separate commit, DONE.
 - `workbench/data/agent-working-claude.md` — Rewritten as pipeline skeleton with condensed project context and phase entry point routing.
+
+---
+
+## 2026-03-04 — Utility Function: Date Formatting
+
+### Add formatDate utility to src/lib/
+
+**Date**: 2026-03-04
+
+**Commit**: `8750d38`
+
+**Files changed**:
+- `workbench/src/lib/date-utils.ts` — New utility file with `formatDate()` function
+- `workbench/src/lib/date-utils.test.ts` — Test suite with 5 test cases
+
+**Summary**: Created a utility function that formats Date objects as YYYY-MM-DD strings with proper zero-padding for single-digit months and days. Uses local time. Includes comprehensive tests covering edge cases (year boundaries, leap years).
