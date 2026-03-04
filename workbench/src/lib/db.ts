@@ -3,6 +3,7 @@ import { existsSync, readFileSync, renameSync } from "fs";
 import path from "path";
 import { fsrs, Rating, type Grade, type Card as FSRSCard } from "ts-fsrs";
 import { initAgentSchema } from "./agent-db";
+import { initClipboardSchema } from "./clipboard-db";
 
 const f = fsrs();
 
@@ -23,6 +24,7 @@ export function getDb(): Database.Database {
 
   initSchema(_db);
   initAgentSchema(_db);
+  initClipboardSchema(_db);
   return _db;
 }
 

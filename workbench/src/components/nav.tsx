@@ -9,6 +9,7 @@ const sections = [
   { href: "/forest", label: "Forest" },
   { href: "/study", label: "Study" },
   { href: "/crawl", label: "Crawl" },
+  { href: "/clipboard", label: "Clipboard" },
 ];
 
 export default function Nav() {
