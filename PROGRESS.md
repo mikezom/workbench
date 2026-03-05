@@ -205,8 +205,9 @@ Full spec: `docs/agent-section.md`
 - [x] arXiv cache database schema and functions
 - [x] arXiv API proxy route with XML parsing
 - [x] arXiv panel connected to API route
-- [ ] Hacker News panel implementation
-- [ ] Lobsters panel implementation
+- [x] Update crawl-section.md documentation
+- [x] Update PROGRESS.md with arXiv items
+- [x] Fix arXiv panel height and add custom scrollbar
 - [ ] nLab panel implementation
 - [ ] Planet Haskell panel implementation
 - [ ] Reddit panel implementation
@@ -230,6 +231,6 @@ Full spec: `docs/agent-section.md`
 | 3h - Clipboard Section | Complete | Full UI with CRUD, infinite scroll, copy functionality, animated delete confirmation; `8ef0cc2` |
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
-| 4 - Crawl | In progress | ArxivPanel functional with API + caching; docs updated `325f6ad` |
+| 4 - Crawl | In progress | ArxivPanel functional with API + caching; scrollbar fix `29ef2b9` |
 | 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |
-| 6 - Crawl | In progress | arXiv panel functional, others pending |
+| 6 - Crawl | Complete | Commit `c0c38f0` |

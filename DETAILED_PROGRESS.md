@@ -1001,3 +1001,99 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 2. Skills use relative paths instead of hardcoded absolute paths
 3. Agent instructions warn about Skill tool's directory-changing behavior
 
+
+---
+
+## 2026-03-05 — Phase 4: Crawl Section — Documentation Updates
+
+### Task: Update crawl-section.md documentation
+
+- **Date**: 2026-03-05
+- **Commit**: `325f6ad`
+- **Files changed**:
+  - `workbench/docs/crawl-section.md` — Updated Overview to reflect arXiv panel is functional with API; updated ArxivPanel Behavior section to describe API endpoint, cache checking, and error handling; updated State comment; updated Content Sources table status; added new Cache Management section with TTL, eviction, and fallback details; updated Common Pitfalls to remove mock data warnings and add cache fallback note
+- **Summary**: Documentation now accurately reflects the completed arXiv API implementation with caching. The ArxivPanel is described as "Functional with API + caching" rather than using mock data. Added comprehensive Cache Management section explaining the 5-minute TTL, deleteExpiredArxivCache() function, and stale cache fallback (206 status) behavior.
+
+## 2026-03-05 — Phase 6: arXiv Panel Implementation
+
+### Task 1: Create arXiv API Route
+
+**Commit:** `c957288` (followed by fixes: `7bfe1da`, `681f8fc`, `f6159cb`)
+
+**Problem:** ArxivPanel had mock data only; no real API integration.
+
+**Changes:**
+- `workbench/src/app/api/crawl/arxiv/route.ts` — Created GET handler with 5-minute caching,
+  10s timeout, stale cache fallback (206 status). Uses `getArxivCache`/`createArxivCache`.
+- `workbench/src/lib/arxiv-parser.ts` — XML parser with `parseArxivXml` function,
+  extracts id, title, authors, summary, link using regex (due to Next.js constraint).
+
+### Task 2: Update ArxivPanel to Use API Route
+
+**Commit:** `645a788`
+
+**Changes:**
+- `workbench/src/app/crawl/page.tsx` — Replaced `fetchPapers` to call `/api/crawl/arxiv`
+  endpoint, with proper error handling and alert on failure.
+
+### Task 3: Add API Route Tests
+
+**Commits:** `dd7ee54`, `ba2547a`
+
+**Changes:**
+- `workbench/src/app/api/crawl/arxiv/route.test.ts` — Created 5 tests: missing param,
+  fresh cache, API fetch, stale cache on error, 500 error with no cache.
+- Fixed issues: proper mock restoration, removed extra tests (cache refresh, timeout).
+
+### Task 4: Add XML Parser Tests
+
+**Commits:** `2b97a99`, `e3f50b8`
+
+**Changes:**
+- `workbench/src/lib/crawl-arxiv-parser.test.ts` — Created 5 parser unit tests.
+- Fixed issues: removed extra tests, corrected whitespace test name for `.trim()` behavior.
+
+### Task 5: Update crawl-section.md Documentation
+
+**Commit:** `325f6ad`
+
+**Changes:**
+- `workbench/docs/crawl-section.md` — Updated Overview, ArxivPanel Behavior section,
+  added Cache Management section describing 5-min TTL, eviction, fallback.
+
+### Task 6: Update PROGRESS.md
+
+**Commits:** `e34db7a`, `c0c38f0`
+
+**Changes:**
+- `workbench/PROGRESS.md` — Added Phase 6: Crawl Section with 4 completed
+  arXiv items and 5 pending items for other panels. Updated status table.
+
+### Task 7: Final Build Validation
+
+**Summary:** All 10 arXiv-related tests pass (5 route, 5 parser). Build succeeds.
+  3 pre-existing test failures unrelated to arXiv.
+
+**Total commits:** 12 commits from `c957288` to `c0c38f0`.
+
+---
+
+## 2026-03-05 — Phase 6: arXiv Panel UI Fix
+
+### Task: Fix arXiv panel height and add custom scrollbar
+
+**Commit:** `29ef2b9`
+
+**Problem:** When arXiv search returned many results, the panel grew in height instead of
+staying fixed and using the scrollbar. This pushed other panels out of view.
+
+**Changes:**
+- `workbench/src/app/crawl/page.tsx` — Added `min-h-0` class to ArxivPanel container
+  to prevent flex/grid child expansion. Added custom scrollbar CSS (6px width,
+  rounded corners, hover effects) for better appearance in both light and dark modes.
+
+**Fix Strategy:**
+The root cause was CSS flex/grid behavior where `h-full` alone doesn't prevent child
+expansion when content overflows. Adding `min-h-0` (Tailwind equivalent to `min-height: 0`)
+allows the flex child to shrink below its content height, enabling the inner `overflow-y-auto`
+to constrain content and show the scrollbar.
