@@ -272,7 +272,7 @@ function Jin10Panel() {
             )}
             <div className="flex items-center justify-between text-xs">
               <span className="text-neutral-500 dark:text-neutral-400">
-                {new Date(item.timestamp).toLocaleString()}
+                {item.timestamp} GMT+8
               </span>
               {item.link && (
                 <a
