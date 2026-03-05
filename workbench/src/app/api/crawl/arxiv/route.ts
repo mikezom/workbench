@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getArxivCache, createArxivCache } from "@/lib/crawl-db";
-import { parseArxivXml, ArxivPaper } from "@/lib/arxiv-parser";
+import { parseArxivXml } from "@/lib/arxiv-parser";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -9,21 +9,6 @@ import { parseArxivXml, ArxivPaper } from "@/lib/arxiv-parser";
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const ARXIV_API_URL = "http://export.arxiv.org/api/query";
 const FETCH_TIMEOUT_MS = 10 * 1000; // 10 seconds
-
-/**
- * Convert arXiv XML paper to ArxivPaper type.
- * This is a passthrough function that validates the structure.
- */
-function toArxivPaper(paper: ArxivPaper): ArxivPaper {
-  return {
-    id: paper.id,
-    published: paper.published,
-    title: paper.title,
-    summary: paper.summary,
-    authors: paper.authors,
-    link: paper.link,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // GET Handler
@@ -75,7 +60,7 @@ export async function GET(req: NextRequest) {
     }
 
     const xml = await response.text();
-    const papers = parseArxivXml(xml).map(toArxivPaper);
+    const papers = parseArxivXml(xml);
 
     // Cache the results
     createArxivCache({ query, results: papers });

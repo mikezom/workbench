@@ -29,16 +29,17 @@ export function parseArxivXml(xml: string): ArxivPaper[] {
   for (const entry of entries) {
     const idMatch = entry.match(/<id>([^<]+)<\/id>/);
     const publishedMatch = entry.match(/<published>([^<]+)<\/published>/);
-    const titleMatch = entry.match(/<title>([^<]*)<\/title>/);
-    const summaryMatch = entry.match(/<summary>([^<]*)<\/summary>/);
+    const titleMatch = entry.match(/<title>([\s\S]*?)<\/title>/);
+    const summaryMatch = entry.match(/<summary>([\s\S]*?)<\/summary>/);
     const linkMatch = entry.match(/<link[^>]*href="([^"]+)"[^>]*\/>/);
 
     // Extract authors
-    const authorRegex = /<name>([^<]+)<\/name>/g;
+    const authorRegex = /<author>([\s\S]*?)<\/author>/g;
     const authors: string[] = [];
     let authorMatch;
     while ((authorMatch = authorRegex.exec(entry)) !== null) {
-      authors.push(authorMatch[1]);
+      const nameMatch = authorMatch[1].match(/<name>([^<]+)<\/name>/);
+      if (nameMatch) authors.push(nameMatch[1]);
     }
 
     if (idMatch && titleMatch) {
