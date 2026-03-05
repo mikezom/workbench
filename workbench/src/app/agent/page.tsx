@@ -351,6 +351,17 @@ function TaskBoard({
 /*  TaskDetailModal                                                    */
 /* ------------------------------------------------------------------ */
 
+const ACTIVE_STATUSES: AgentTaskStatus[] = [
+  "developing",
+  "waiting_for_review",
+  "decompose_understanding",
+  "decompose_breaking_down",
+  "decompose_waiting_for_answers",
+  "decompose_waiting_for_approval",
+  "decompose_waiting_for_completion",
+  "decompose_reflecting",
+];
+
 function TaskDetailModal({
   task,
   onClose,
@@ -367,9 +378,19 @@ function TaskDetailModal({
   const [currentTask, setCurrentTask] = useState(task);
   const outputEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Worker questions
   const [questions, setQuestions] = useState<AgentTaskQuestion[]>([]);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
   const [submittingAnswers, setSubmittingAnswers] = useState(false);
+  // Decompose state
+  const [decomposeQuestions, setDecomposeQuestions] = useState<Array<{ id: string; question: string; options: string[]; answer: string | null }>>([]);
+  const [decomposeAnswers, setDecomposeAnswers] = useState<Record<string, string>>({});
+  const [breakdown, setBreakdown] = useState<Array<{ title: string; prompt: string }> | null>(null);
+  const [subTasks, setSubTasks] = useState<AgentTask[]>([]);
+  const [rejectComment, setRejectComment] = useState("");
+  const [decomposeError, setDecomposeError] = useState<string | null>(null);
+
+  const isDecompose = currentTask.task_type === "decompose";
 
   // Fetch task output
   const fetchOutput = useCallback(async () => {
@@ -392,8 +413,7 @@ function TaskDetailModal({
       if (!res.ok) return;
       const data = await res.json();
       setCurrentTask(data);
-      // Stop polling if task is no longer active
-      if (data.status !== "developing" && data.status !== "waiting_for_review" && pollRef.current) {
+      if (!ACTIVE_STATUSES.includes(data.status) && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
       }
@@ -402,7 +422,7 @@ function TaskDetailModal({
     }
   }, [task.id]);
 
-  // Fetch questions for waiting_for_review tasks
+  // Fetch questions for waiting_for_review worker tasks
   const fetchQuestions = useCallback(async () => {
     if (currentTask.status !== "waiting_for_review") return;
     try {
@@ -410,7 +430,6 @@ function TaskDetailModal({
       if (!res.ok) return;
       const data: AgentTaskQuestion[] = await res.json();
       setQuestions(data);
-      // Pre-fill already answered questions
       const existing: Record<string, string> = {};
       for (const q of data) {
         if (q.answer) existing[q.question_id] = q.answer;
@@ -423,24 +442,62 @@ function TaskDetailModal({
     }
   }, [task.id, currentTask.status]);
 
-  // Initial load + polling for active tasks
+  // Fetch decompose details (questions + breakdown)
+  const fetchDecomposeDetails = useCallback(async () => {
+    if (!isDecompose) return;
+    if (currentTask.status !== "decompose_waiting_for_answers" && currentTask.status !== "decompose_waiting_for_approval") return;
+    try {
+      const res = await fetch(`/api/agent/decompose/${task.id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setDecomposeQuestions(data.questions || []);
+      setBreakdown(data.breakdown || null);
+      const initialAnswers: Record<string, string> = {};
+      data.questions?.forEach((q: { id: string; answer: string | null }) => {
+        if (q.answer) initialAnswers[q.id] = q.answer;
+      });
+      setDecomposeAnswers((prev) => ({ ...initialAnswers, ...prev }));
+    } catch {
+      // ignore
+    }
+  }, [task.id, isDecompose, currentTask.status]);
+
+  // Fetch sub-tasks for decompose tasks
+  const fetchSubTasks = useCallback(async () => {
+    if (!isDecompose) return;
+    if (currentTask.status !== "decompose_waiting_for_completion" && currentTask.status !== "decompose_reflecting") return;
+    try {
+      const res = await fetch(`/api/agent/decompose/${task.id}/subtasks`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setSubTasks(data.sub_tasks || []);
+    } catch {
+      // ignore
+    }
+  }, [task.id, isDecompose, currentTask.status]);
+
+  // Initial load + polling
   useEffect(() => {
     fetchOutput();
     fetchTask();
     fetchQuestions();
+    fetchDecomposeDetails();
+    fetchSubTasks();
 
-    if (task.status === "developing" || task.status === "waiting_for_review") {
+    if (ACTIVE_STATUSES.includes(task.status)) {
       pollRef.current = setInterval(() => {
         fetchOutput();
         fetchTask();
         fetchQuestions();
+        fetchDecomposeDetails();
+        fetchSubTasks();
       }, 3000);
     }
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [fetchOutput, fetchTask, fetchQuestions, task.status]);
+  }, [fetchOutput, fetchTask, fetchQuestions, fetchDecomposeDetails, fetchSubTasks, task.status]);
 
   // Auto-scroll to bottom when output updates
   useEffect(() => {
@@ -478,6 +535,7 @@ function TaskDetailModal({
     }
   };
 
+  // Worker question submission
   const handleSubmitAnswers = async () => {
     const unanswered = questions.filter((q) => !q.answer && !selectedAnswers[q.question_id]);
     if (unanswered.length > 0) return;
@@ -500,6 +558,92 @@ function TaskDetailModal({
     }
   };
 
+  // Decompose question submission
+  const handleSubmitDecomposeAnswers = async () => {
+    setSubmittingAnswers(true);
+    setDecomposeError(null);
+    try {
+      const res = await fetch(`/api/agent/decompose/${task.id}/answers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: decomposeAnswers }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setDecomposeError(data.error || "Failed to submit answers");
+        return;
+      }
+      onTaskUpdated();
+    } catch {
+      setDecomposeError("Failed to connect to server");
+    } finally {
+      setSubmittingAnswers(false);
+    }
+  };
+
+  // Breakdown approval
+  const handleApproveBreakdown = async () => {
+    setSubmittingAnswers(true);
+    setDecomposeError(null);
+    try {
+      const res = await fetch(`/api/agent/decompose/${task.id}/approve`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setDecomposeError(data.error || "Failed to approve breakdown");
+        return;
+      }
+      onTaskUpdated();
+    } catch {
+      setDecomposeError("Failed to connect to server");
+    } finally {
+      setSubmittingAnswers(false);
+    }
+  };
+
+  // Breakdown rejection
+  const handleRejectBreakdown = async () => {
+    if (!rejectComment.trim()) {
+      setDecomposeError("Please provide feedback on what needs to change");
+      return;
+    }
+    setSubmittingAnswers(true);
+    setDecomposeError(null);
+    try {
+      const res = await fetch(`/api/agent/decompose/${task.id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: rejectComment.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setDecomposeError(data.error || "Failed to reject breakdown");
+        return;
+      }
+      setRejectComment("");
+      onTaskUpdated();
+    } catch {
+      setDecomposeError("Failed to connect to server");
+    } finally {
+      setSubmittingAnswers(false);
+    }
+  };
+
+  // Sub-task commenting
+  const handleCommentSubTask = async (taskId: number, taskComment: string) => {
+    try {
+      const res = await fetch(`/api/agent/tasks/${taskId}/comment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: taskComment }),
+      });
+      if (res.ok) fetchSubTasks();
+    } catch {
+      // ignore
+    }
+  };
+
   const outputTypeColor: Record<string, string> = {
     stdout: "text-neutral-300 dark:text-neutral-400",
     stderr: "text-red-400 dark:text-red-400",
@@ -508,7 +652,13 @@ function TaskDetailModal({
     tool: "text-purple-400 dark:text-purple-400",
   };
 
-  const canCancel = currentTask.status === "waiting_for_dev" || currentTask.status === "developing";
+  const canCancel =
+    currentTask.status === "waiting_for_dev" ||
+    currentTask.status === "developing" ||
+    currentTask.status === "decompose_understanding" ||
+    currentTask.status === "decompose_breaking_down";
+
+  const allDecomposeQuestionsAnswered = decomposeQuestions.length > 0 && decomposeQuestions.every((q) => decomposeAnswers[q.id]);
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -525,6 +675,9 @@ function TaskDetailModal({
               <span className="text-xs text-neutral-500">{currentTask.status.replace(/_/g, " ")}</span>
               <span className="text-xs text-neutral-400">#{currentTask.id}</span>
               <span className="text-xs text-neutral-400">{timeAgo(currentTask.created_at)}</span>
+              {isDecompose && (
+                <span className="text-xs text-purple-500 dark:text-purple-400 font-medium">decompose</span>
+              )}
             </div>
           </div>
           <button
@@ -553,7 +706,14 @@ function TaskDetailModal({
           </div>
         )}
 
-        {/* Clarification Questions */}
+        {/* Decompose error */}
+        {decomposeError && (
+          <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
+            <p className="text-sm text-red-700 dark:text-red-300">{decomposeError}</p>
+          </div>
+        )}
+
+        {/* Worker Clarification Questions */}
         {currentTask.status === "waiting_for_review" && questions.length > 0 && (
           <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 bg-purple-50 dark:bg-purple-900/10">
             <p className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">
@@ -616,6 +776,157 @@ function TaskDetailModal({
               >
                 {submittingAnswers ? "Submitting..." : "Submit Answers"}
               </button>
+            )}
+          </div>
+        )}
+
+        {/* Decompose Questions Phase */}
+        {currentTask.status === "decompose_waiting_for_answers" && decomposeQuestions.length > 0 && (
+          <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 bg-purple-50 dark:bg-purple-900/10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">
+              Clarification Questions
+            </p>
+            {decomposeQuestions.every((q) => q.answer) ? (
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                All questions answered — waiting for agent to process...
+              </p>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {decomposeQuestions.filter((q) => !q.answer).map((q) => (
+                    <div key={q.id} className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
+                      <p className="text-sm font-medium mb-2">{q.question}</p>
+                      <div className="space-y-1.5">
+                        {q.options.map((option) => (
+                          <label
+                            key={option}
+                            className={`flex items-center gap-2 px-3 py-2 rounded border cursor-pointer text-sm transition-colors ${
+                              decomposeAnswers[q.id] === option
+                                ? "border-purple-500 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200"
+                                : "border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`decompose-${q.id}`}
+                              value={option}
+                              checked={decomposeAnswers[q.id] === option}
+                              onChange={() => setDecomposeAnswers((prev) => ({ ...prev, [q.id]: option }))}
+                              className="accent-purple-600"
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={handleSubmitDecomposeAnswers}
+                  disabled={!allDecomposeQuestionsAnswered || submittingAnswers}
+                  className="mt-3 px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded disabled:opacity-50"
+                >
+                  {submittingAnswers ? "Submitting..." : "Submit Answers"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Decompose Breakdown Approval Phase */}
+        {currentTask.status === "decompose_waiting_for_approval" && breakdown && (
+          <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 bg-purple-50 dark:bg-purple-900/10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">
+              Proposed Breakdown ({breakdown.length} tasks)
+            </p>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {breakdown.map((subTask, i) => (
+                <div key={i} className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
+                  <p className="font-medium text-sm">{i + 1}. {subTask.title}</p>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                    {subTask.prompt.slice(0, 200)}{subTask.prompt.length > 200 ? "..." : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <textarea
+              value={rejectComment}
+              onChange={(e) => setRejectComment(e.target.value)}
+              placeholder="Optional: Provide feedback if rejecting..."
+              rows={2}
+              className="mt-3 w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800 resize-none"
+            />
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={handleRejectBreakdown}
+                disabled={submittingAnswers}
+                className="flex-1 px-4 py-2 text-sm border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {submittingAnswers ? "Rejecting..." : "Reject & Revise"}
+              </button>
+              <button
+                onClick={handleApproveBreakdown}
+                disabled={submittingAnswers}
+                className="flex-1 px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
+              >
+                {submittingAnswers ? "Approving..." : "Approve & Create Tasks"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Decompose Sub-tasks Progress */}
+        {(currentTask.status === "decompose_waiting_for_completion" || currentTask.status === "decompose_reflecting") && subTasks.length > 0 && (
+          <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 bg-purple-50 dark:bg-purple-900/10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">
+              Sub-tasks Progress
+            </p>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {subTasks.map((st) => (
+                <div key={st.id} className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{st.title}</p>
+                      <p className="text-xs text-neutral-500 mt-0.5">
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${STATUS_DOT[st.status]}`} />
+                        {st.status.replace(/_/g, " ")}
+                      </p>
+                    </div>
+                    {(st.status === "finished" || st.status === "failed") && !st.user_task_comment && (
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          onClick={() => handleCommentSubTask(st.id, "Good")}
+                          className="px-2 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded"
+                        >
+                          Good
+                        </button>
+                        <button
+                          onClick={() => {
+                            const feedback = prompt("What went wrong?");
+                            if (feedback) handleCommentSubTask(st.id, feedback);
+                          }}
+                          className="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
+                        >
+                          Issue
+                        </button>
+                      </div>
+                    )}
+                    {st.user_task_comment && (
+                      <span className="text-xs text-green-600 shrink-0">&#x2713; Commented</span>
+                    )}
+                  </div>
+                  {st.user_task_comment && (
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-2 italic">
+                      Comment: {st.user_task_comment}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            {currentTask.status === "decompose_reflecting" && (
+              <p className="text-sm text-purple-600 dark:text-purple-400 mt-2">
+                Reflecting on results...
+              </p>
             )}
           </div>
         )}
@@ -846,331 +1157,6 @@ function ConfigPanel({ onClose }: { onClose: () => void }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  DecomposeModal - High Priority Popup                              */
-/* ------------------------------------------------------------------ */
-
-function DecomposeModal({
-  task,
-  onClose,
-  onTaskUpdated,
-}: {
-  task: AgentTask;
-  onClose: () => void;
-  onTaskUpdated: () => void;
-}) {
-  const [questions, setQuestions] = useState<Array<{ id: string; question: string; options: string[]; answer: string | null }>>([]);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [breakdown, setBreakdown] = useState<Array<{ title: string; prompt: string }> | null>(null);
-  const [subTasks, setSubTasks] = useState<AgentTask[]>([]);
-  const [comment, setComment] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch decompose task details
-  useEffect(() => {
-    const fetchDetails = async () => {
-      try {
-        const res = await fetch(`/api/agent/decompose/${task.id}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setQuestions(data.questions || []);
-        setBreakdown(data.breakdown || null);
-
-        // Initialize answers for unanswered questions
-        const initialAnswers: Record<string, string> = {};
-        data.questions?.forEach((q: { id: string; answer: string | null }) => {
-          if (q.answer) {
-            initialAnswers[q.id] = q.answer;
-          }
-        });
-        setAnswers(initialAnswers);
-      } catch {
-        setError("Failed to load decompose details");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDetails();
-  }, [task.id]);
-
-  // Fetch sub-tasks if in waiting_for_completion or reflecting
-  useEffect(() => {
-    if (task.status === "decompose_waiting_for_completion" || task.status === "decompose_reflecting") {
-      const fetchSubTasks = async () => {
-        try {
-          const res = await fetch(`/api/agent/decompose/${task.id}/subtasks`);
-          if (!res.ok) return;
-          const data = await res.json();
-          setSubTasks(data.sub_tasks || []);
-        } catch {
-          // ignore
-        }
-      };
-      fetchSubTasks();
-      const interval = setInterval(fetchSubTasks, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [task.id, task.status]);
-
-  const handleSubmitAnswers = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/agent/decompose/${task.id}/answers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Failed to submit answers");
-        return;
-      }
-      onTaskUpdated();
-    } catch {
-      setError("Failed to connect to server");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleApprove = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/agent/decompose/${task.id}/approve`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Failed to approve breakdown");
-        return;
-      }
-      onTaskUpdated();
-      onClose();
-    } catch {
-      setError("Failed to connect to server");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleReject = async () => {
-    if (!comment.trim()) {
-      setError("Please provide feedback on what needs to change");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/agent/decompose/${task.id}/reject`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment: comment.trim() }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Failed to reject breakdown");
-        return;
-      }
-      setComment("");
-      onTaskUpdated();
-    } catch {
-      setError("Failed to connect to server");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleCommentTask = async (taskId: number, taskComment: string) => {
-    try {
-      const res = await fetch(`/api/agent/tasks/${taskId}/comment`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment: taskComment }),
-      });
-      if (!res.ok) return;
-      // Refresh sub-tasks
-      const subRes = await fetch(`/api/agent/decompose/${task.id}/subtasks`);
-      if (subRes.ok) {
-        const data = await subRes.json();
-        setSubTasks(data.sub_tasks || []);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const allQuestionsAnswered = questions.length > 0 && questions.every((q) => answers[q.id]);
-
-  return (
-    <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-4">
-      <div
-        className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col border-4 border-purple-500"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-700 bg-purple-50 dark:bg-purple-900/20">
-          <div>
-            <h2 className="text-lg font-semibold">Decompose Task</h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{task.title}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 text-xl leading-none"
-          >
-            &times;
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {loading && <p className="text-neutral-500 text-sm">Loading...</p>}
-
-          {error && (
-            <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 rounded text-sm">
-              {error}
-            </div>
-          )}
-
-          {/* Questions Phase */}
-          {task.status === "decompose_waiting_for_answers" && questions.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="font-semibold">Clarification Questions</h3>
-              {questions.map((q) => (
-                <div key={q.id} className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
-                  <p className="text-sm font-medium mb-2">{q.question}</p>
-                  <div className="space-y-1">
-                    {q.options.map((option) => (
-                      <label key={option} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          name={q.id}
-                          value={option}
-                          checked={answers[q.id] === option}
-                          onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
-                          className="text-purple-600"
-                        />
-                        {option}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              <button
-                onClick={handleSubmitAnswers}
-                disabled={!allQuestionsAnswered || submitting}
-                className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded disabled:opacity-50"
-              >
-                {submitting ? "Submitting..." : "Submit Answers"}
-              </button>
-            </div>
-          )}
-
-          {/* Breakdown Approval Phase */}
-          {task.status === "decompose_waiting_for_approval" && breakdown && (
-            <div className="space-y-4">
-              <h3 className="font-semibold">Proposed Breakdown ({breakdown.length} tasks)</h3>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {breakdown.map((subTask, i) => (
-                  <div key={i} className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
-                    <p className="font-medium text-sm">{i + 1}. {subTask.title}</p>
-                    <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">{subTask.prompt.slice(0, 200)}...</p>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-2">
-                <textarea
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Optional: Provide feedback if rejecting..."
-                  rows={3}
-                  className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800 resize-none"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleReject}
-                    disabled={submitting}
-                    className="flex-1 px-4 py-2 border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
-                  >
-                    {submitting ? "Rejecting..." : "Reject & Revise"}
-                  </button>
-                  <button
-                    onClick={handleApprove}
-                    disabled={submitting}
-                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded disabled:opacity-50"
-                  >
-                    {submitting ? "Approving..." : "Approve & Create Tasks"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Sub-tasks Completion Phase */}
-          {(task.status === "decompose_waiting_for_completion" || task.status === "decompose_reflecting") && (
-            <div className="space-y-4">
-              <h3 className="font-semibold">Sub-tasks Progress</h3>
-              <div className="space-y-2">
-                {subTasks.map((subTask) => (
-                  <div key={subTask.id} className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{subTask.title}</p>
-                        <p className="text-xs text-neutral-500 mt-1">Status: {subTask.status}</p>
-                      </div>
-                      {(subTask.status === "finished" || subTask.status === "failed") && !subTask.user_task_comment && (
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleCommentTask(subTask.id, "Good")}
-                            className="px-2 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded"
-                          >
-                            Good
-                          </button>
-                          <button
-                            onClick={() => {
-                              const feedback = prompt("What went wrong?");
-                              if (feedback) handleCommentTask(subTask.id, feedback);
-                            }}
-                            className="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
-                          >
-                            Issue
-                          </button>
-                        </div>
-                      )}
-                      {subTask.user_task_comment && (
-                        <span className="text-xs text-green-600">✓ Commented</span>
-                      )}
-                    </div>
-                    {subTask.user_task_comment && (
-                      <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-2 italic">
-                        Comment: {subTask.user_task_comment}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {task.status === "decompose_reflecting" && (
-                <p className="text-sm text-purple-600 dark:text-purple-400">
-                  Reflecting on results...
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Status Display */}
-          {!loading && (
-            <div className="text-xs text-neutral-500 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-700 pt-3">
-              Current status: {task.status}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Main AgentPage                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -1179,7 +1165,6 @@ export default function AgentPage() {
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<AgentTask | null>(null);
   const [showConfig, setShowConfig] = useState(false);
-  const [decomposeTask, setDecomposeTask] = useState<AgentTask | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchTasks = useCallback(async () => {
@@ -1188,20 +1173,6 @@ export default function AgentPage() {
       if (!res.ok) return;
       const data = await res.json();
       setTasks(data);
-
-      // Auto-detect decompose tasks that need attention
-      const activeDecompose = data.find((t: AgentTask) =>
-        t.task_type === "decompose" &&
-        (t.status === "decompose_waiting_for_answers" ||
-         t.status === "decompose_waiting_for_approval" ||
-         t.status === "decompose_waiting_for_completion" ||
-         t.status === "decompose_reflecting")
-      );
-      if (activeDecompose) {
-        setDecomposeTask(activeDecompose);
-      } else {
-        setDecomposeTask(null);
-      }
     } catch {
       // ignore
     } finally {
@@ -1238,7 +1209,7 @@ export default function AgentPage() {
       {loading ? (
         <p className="text-neutral-500 text-sm">Loading tasks...</p>
       ) : (
-        <TaskBoard tasks={tasks.filter(t => t.task_type !== "decompose")} onSelectTask={setSelectedTask} />
+        <TaskBoard tasks={tasks} onSelectTask={setSelectedTask} />
       )}
 
       {/* Modals */}
@@ -1250,13 +1221,6 @@ export default function AgentPage() {
         />
       )}
       {showConfig && <ConfigPanel onClose={() => setShowConfig(false)} />}
-      {decomposeTask && (
-        <DecomposeModal
-          task={decomposeTask}
-          onClose={() => setDecomposeTask(null)}
-          onTaskUpdated={fetchTasks}
-        />
-      )}
     </div>
   );
 }
