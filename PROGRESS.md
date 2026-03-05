@@ -200,6 +200,17 @@ Full spec: `docs/agent-section.md`
 - [x] Change absolute paths to relative paths in agent-reflection-after-work skill
 - [x] Add "Git Safety in Worktrees" section to agent-working-claude.md
 
+### Phase 6: Crawl Section
+- [x] arXiv panel with search UI (mock data)
+- [x] arXiv cache database schema and functions
+- [x] arXiv API proxy route with XML parsing
+- [x] arXiv panel connected to API route
+- [ ] Hacker News panel implementation
+- [ ] Lobsters panel implementation
+- [ ] nLab panel implementation
+- [ ] Planet Haskell panel implementation
+- [ ] Reddit panel implementation
+
 ## Status
 
 | Phase | Status | Notes |
@@ -221,3 +232,4 @@ Full spec: `docs/agent-section.md`
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | In progress | ArxivPanel functional with API + caching; docs updated `325f6ad` |
 | 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |
+| 6 - Crawl | In progress | arXiv panel functional, others pending |
