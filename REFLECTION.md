@@ -259,3 +259,20 @@ prevention strategies, and the relevant git commit IDs.
 - Test the constraint by attempting to insert a record with the new enum value
 
 **Commit**: `8577fe8`
+
+---
+
+## 2026-03-05 - [SERIOUS] Decompose CLAUDE.md committed to main, leaked into worker worktrees
+
+**Problem**: Worker agent worktrees contained decompose-agent instructions in their CLAUDE.md instead of working-agent instructions. The decompose agent also ran directly in the repo root, leaving artifact files that could interfere with other operations.
+
+**Root Cause**: The decompose agent's `inject_decompose_claude_md()` wrote `CLAUDE.md` to the repo root temporarily. A previous agent session (commit `fd726bb`) auto-committed this file while it was injected, permanently embedding decompose instructions into `main`. Every subsequent `git worktree add ... main` inherited this polluted CLAUDE.md.
+
+**Solution**: Removed CLAUDE.md from git tracking (`git rm --cached`), added it to `.gitignore` since both agent types inject it dynamically. Moved all four decompose functions to run in isolated worktrees instead of the repo root. Unified the inject function with an `agent_type` parameter.
+
+**Prevention**:
+- Never run agents directly in the repo root — always use isolated worktrees
+- Dynamically injected files (CLAUDE.md, questions.json) must be in `.gitignore` to prevent accidental commits
+- Auto-commit logic should have a blocklist of files that must never be committed (CLAUDE.md, decompose output JSONs)
+
+**Commit**: `2c70c8d`

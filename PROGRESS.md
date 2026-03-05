@@ -178,6 +178,14 @@ Full spec: `docs/agent-section.md`
 - [x] Rewrite agent-decompose-claude.md as pipeline with phase routing
 - [x] Fix build errors (remove orphaned JSX, add status colors)
 
+#### 5j: Agent Pipeline Fixes
+- [x] Untrack CLAUDE.md from git (was polluted with decompose instructions by previous agent)
+- [x] Add CLAUDE.md to .gitignore (injected dynamically at runtime)
+- [x] Unify inject_claude_md(path, agent_type) replacing separate decompose-specific functions
+- [x] Move decompose agent from repo root to isolated worktrees (same lifecycle as workers)
+- [x] Remove dead code (cleanup_decompose_files, remove_claude_md, inject_decompose_claude_md)
+- [x] Delete unneeded DECOMPOSE_IMPLEMENTATION.md and DECOMPOSE_STATUS.md
+
 ## Status
 
 | Phase | Status | Notes |
@@ -198,4 +206,4 @@ Full spec: `docs/agent-section.md`
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | Not started | |
-| 5 - Agent | Complete (backend) | Phase 5a–5i complete (knowledge accumulation deferred); decompose feature build fixes `856a7bf` |
+| 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); pipeline fix `2c70c8d` |

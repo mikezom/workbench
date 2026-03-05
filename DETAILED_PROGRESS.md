@@ -901,3 +901,31 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 - Deleted `workbench/data/agent-skills/` directory — Skills moved to `~/.claude/skills/` as per new architecture.
 
 **Summary**: Fixed build errors in decompose feature by removing orphaned JSX code and adding missing status colors. The decompose feature replaces SDK-based task decomposition with Claude Code CLI-based autonomous decomposition using a three-phase workflow (Planning/Clarification → User Confirmation/Delegation → Review/Reflection). Build now succeeds. Dev server needs restart to test the feature end-to-end.
+
+---
+
+## 2026-03-05 — Crawl Section Panel Layout
+
+### Change crawl panel grid to 3 columns per row
+
+- **Date**: 2026-03-05
+- **Commit**: `df1144a`
+- **Files changed**: `workbench/src/app/crawl/page.tsx`
+- **Summary**: Changed the crawl section panel grid from `grid-cols-1` to `grid-cols-3` to match the agent section's 3-panel-per-row layout. Panels now display as a 3x2 grid (arXiv, Hacker News, Lobsters / nLab, Planet Haskell, Reddit).
+
+---
+
+## 2026-03-05 — Agent Pipeline Fix: Isolate Decompose in Worktrees
+
+### Task 1: Untrack CLAUDE.md and isolate decompose agent in worktrees
+
+**Commit:** `2c70c8d`
+
+**Problem:** A previous agent committed decompose-agent instructions as CLAUDE.md to main (commit `fd726bb`). This caused decompose documents to leak into every worker worktree created from main. The decompose agent also ran directly in the repo root, risking file pollution.
+
+**Changes:**
+- `.gitignore` — Added `CLAUDE.md` to ignore list (injected dynamically at runtime by both agent types).
+- `CLAUDE.md` — Removed from git tracking via `git rm --cached`.
+- `workbench/scripts/agent_executor.py` — Unified `inject_claude_md(path, agent_type)` replacing separate `inject_decompose_claude_md` / `remove_decompose_claude_md`. Moved all four decompose functions (`execute_decompose_task`, `resume_decompose_task`, `retry_decompose_breakdown`, `execute_decompose_reflection`) from running in `REPO_ROOT` to isolated worktrees with proper create/cleanup lifecycle. Removed dead code: `cleanup_decompose_files`, `remove_claude_md`.
+- `DECOMPOSE_IMPLEMENTATION.md` — Deleted (unneeded).
+- `DECOMPOSE_STATUS.md` — Deleted (unneeded).
