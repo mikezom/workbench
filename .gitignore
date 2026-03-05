@@ -24,6 +24,9 @@ __MACOSX/
 # forest static output (derived from forest.zip, regeneratable)
 /workbench/public/forest/
 
+# uploads directory
+workbench/public/uploads
+
 # forest.zip (binary)
 forest.zip
 
