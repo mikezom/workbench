@@ -107,6 +107,9 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [ ] Define hardcoded sources config (HN, ArXiv, Lobste.rs, nLab, Planet Haskell)
 - [x] arXiv API proxy route (`/api/crawl/arxiv`) with XML parsing
 - [x] Add arXiv cache database table (`arxiv_cache` in SQLite)
+- [x] Update ArxivPanel to use API route with caching
+- [x] Add API route and XML parser tests
+- [x] Update crawl-section.md documentation
 - [ ] Build backend API for fetching and parsing web content (remaining sources)
 - [ ] Create source list UI showing available sources
 - [ ] Build reader-friendly content display
@@ -216,5 +219,5 @@ Full spec: `docs/agent-section.md`
 | 3h - Clipboard Section | Complete | Full UI with CRUD, infinite scroll, copy functionality, animated delete confirmation; `8ef0cc2` |
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
-| 4 - Crawl | In progress | arXiv API proxy route added |
+| 4 - Crawl | In progress | ArxivPanel functional with API + caching; docs updated `325f6ad` |
 | 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |
