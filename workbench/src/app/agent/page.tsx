@@ -228,12 +228,11 @@ function PromptInput({
 
   return (
     <div className="border-b border-neutral-200 dark:border-neutral-700 pb-4 mb-4">
-      <div className="flex gap-2 items-start">
+      <div className="flex gap-2 items-stretch">
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Describe what you want to build or fix..."
-          rows={2}
           className="flex-1 border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800 resize-none"
           onKeyDown={(e) => {
             if (e.key === "Enter" && e.metaKey) handleDecompose();
