@@ -103,6 +103,12 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [x] Create clipboard-section.md documentation
 - [x] Replace confirm() dialog with animated two-step button confirmation
 
+### Phase 3i: Test Database Isolation
+- [x] Design solution for test database isolation (prevent tests from wiping production data)
+- [x] Modify getDb() to detect test environment and use in-memory SQLite database
+- [x] Verify all database tests pass with in-memory database
+- [x] Confirm production database remains intact during test runs
+
 ### Phase 4: Crawl Section
 - [ ] Define hardcoded sources config (HN, ArXiv, Lobste.rs, nLab, Planet Haskell)
 - [x] arXiv API proxy route (`/api/crawl/arxiv`) with XML parsing
@@ -230,6 +236,7 @@ Full spec: `docs/agent-section.md`
 | 3f - Study Scroll & Review Info | Complete | Scroll isolation, review info display, zero-cards congrats; `b6a65fa` |
 | 3g - Dark Mode Color Fixes | Complete | True neutral grays across all sections, themed button outline; `b07fb19` |
 | 3h - Clipboard Section | Complete | Full UI with CRUD, infinite scroll, copy functionality, animated delete confirmation; `8ef0cc2` |
+| 3i - Test Database Isolation | Complete | In-memory database for tests, production data protected; `49f926a` |
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | In progress | ArxivPanel functional with API + caching; scrollbar fix `29ef2b9` |

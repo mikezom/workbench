@@ -1113,3 +1113,33 @@ Recent papers were not automatically shown when the page loaded.
   (all CS papers), added `useEffect` hook to auto-fetch on component mount, imported
   `useEffect` from React, updated placeholder text.
 
+---
+
+## 2026-03-05 — Test Database Isolation
+
+### Task 1: Prevent tests from wiping production database
+
+**Commits:** `6d23905`, `be426e9`, `49f926a`
+
+**Problem:** Tests used `beforeEach()` hooks with `DELETE FROM` statements that operated
+on the production database at `data/workbench.db`, wiping real data when running tests.
+
+**Solution:** Modified `getDb()` to automatically detect test environment and use in-memory
+SQLite database (`:memory:`), providing complete isolation between tests and production data.
+
+**Changes:**
+- `docs/plans/2026-03-05-test-database-isolation-design.md` — Created design document
+  explaining the problem, solution approach (automatic environment detection), database
+  lifecycle (shared in-memory database with `beforeEach()` cleanup), and edge cases.
+- `docs/plans/2026-03-05-test-database-isolation.md` — Created implementation plan with
+  step-by-step tasks for modifying `getDb()` and verification testing.
+- `workbench/src/lib/db.ts` — Modified `getDb()` function (lines 21-23) to detect test
+  environment via `process.env.VITEST === 'true' || process.env.NODE_ENV === 'test'`
+  and use `:memory:` database path instead of file path when in test mode. All other
+  initialization logic unchanged.
+
+**Verification:**
+- All database tests pass (home-db: 12 tests, clipboard-db: 9 tests, crawl-db: 10 tests)
+- Production database at `data/workbench.db` verified intact (4.1M, not modified during tests)
+- Full test suite: 95/97 passing (2 pre-existing CSS failures unrelated to database work)
+
