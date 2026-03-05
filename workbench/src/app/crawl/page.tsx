@@ -124,6 +124,116 @@ function ArxivPanel() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  HackerNewsPanel                                                    */
+/* ------------------------------------------------------------------ */
+
+function HackerNewsPanel() {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full">
+      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-orange-500" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Hacker News
+        </span>
+      </div>
+      <div className="flex-1 p-3">
+        <p className="text-xs text-neutral-300 dark:text-neutral-600 text-center py-4">
+          Coming soon
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  LobstersPanel                                                      */
+/* ------------------------------------------------------------------ */
+
+function LobstersPanel() {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full">
+      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-red-500" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Lobsters
+        </span>
+      </div>
+      <div className="flex-1 p-3">
+        <p className="text-xs text-neutral-300 dark:text-neutral-600 text-center py-4">
+          Coming soon
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  NLabPanel                                                          */
+/* ------------------------------------------------------------------ */
+
+function NLabPanel() {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full">
+      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-green-500" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          nLab
+        </span>
+      </div>
+      <div className="flex-1 p-3">
+        <p className="text-xs text-neutral-300 dark:text-neutral-600 text-center py-4">
+          Coming soon
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PlanetHaskellPanel                                                 */
+/* ------------------------------------------------------------------ */
+
+function PlanetHaskellPanel() {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full">
+      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-purple-500" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Planet Haskell
+        </span>
+      </div>
+      <div className="flex-1 p-3">
+        <p className="text-xs text-neutral-300 dark:text-neutral-600 text-center py-4">
+          Coming soon
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  RedditPanel                                                        */
+/* ------------------------------------------------------------------ */
+
+function RedditPanel() {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full">
+      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-blue-400" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Reddit
+        </span>
+      </div>
+      <div className="flex-1 p-3">
+        <p className="text-xs text-neutral-300 dark:text-neutral-600 text-center py-4">
+          Coming soon
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -138,6 +248,11 @@ export default function CrawlPage() {
       {/* Panel Grid */}
       <div className="grid grid-cols-1 gap-3 flex-1 min-h-0">
         <ArxivPanel />
+        <HackerNewsPanel />
+        <LobstersPanel />
+        <NLabPanel />
+        <PlanetHaskellPanel />
+        <RedditPanel />
       </div>
     </div>
   );
