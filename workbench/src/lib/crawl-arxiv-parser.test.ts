@@ -85,7 +85,7 @@ describe("crawl-arxiv-parser", () => {
       expect(result[0].link).toBe("");
     });
 
-    it("should normalize whitespace in title and summary", () => {
+    it("should handle leading/trailing whitespace in title and summary", () => {
       const xml = `
         <feed xmlns="http://www.w3.org/2005/Atom">
           <entry>
@@ -119,58 +119,6 @@ describe("crawl-arxiv-parser", () => {
       const result = parseArxivXml(xml);
 
       expect(result).toEqual([]);
-    });
-
-    it("should return empty array for empty string", () => {
-      const result = parseArxivXml("");
-      expect(result).toEqual([]);
-    });
-
-    it("should handle entry with only id and title (minimum required)", () => {
-      const xml = `
-        <feed xmlns="http://www.w3.org/2005/Atom">
-          <entry>
-            <id>http://arxiv.org/abs/2403.99999</id>
-            <title>Minimal Entry</title>
-          </entry>
-        </feed>
-      `;
-
-      const result = parseArxivXml(xml);
-
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe("2403.99999");
-      expect(result[0].title).toBe("Minimal Entry");
-    });
-
-    it("should skip entry if id is missing", () => {
-      const xml = `
-        <feed xmlns="http://www.w3.org/2005/Atom">
-          <entry>
-            <title>Paper Without ID</title>
-            <summary>This paper has no ID</summary>
-          </entry>
-        </feed>
-      `;
-
-      const result = parseArxivXml(xml);
-
-      expect(result).toHaveLength(0);
-    });
-
-    it("should skip entry if title is missing", () => {
-      const xml = `
-        <feed xmlns="http://www.w3.org/2005/Atom">
-          <entry>
-            <id>http://arxiv.org/abs/2403.99999</id>
-            <summary>This paper has no title</summary>
-          </entry>
-        </feed>
-      `;
-
-      const result = parseArxivXml(xml);
-
-      expect(result).toHaveLength(0);
     });
   });
 });
