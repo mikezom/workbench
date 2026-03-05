@@ -720,7 +720,7 @@ function ConfigPanel({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-700">
-          <h2 className="text-lg font-semibold">Agent Config</h2>
+          <h2 className="text-lg font-semibold">Agent Config (Deprecated)</h2>
           <button
             onClick={onClose}
             className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 text-xl leading-none"
@@ -730,6 +730,18 @@ function ConfigPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-4 space-y-3">
+          {/* Deprecation Notice */}
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded p-3 text-sm">
+            <p className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">⚠️ Deprecated</p>
+            <p className="text-yellow-700 dark:text-yellow-300">
+              This config is no longer used. Both working and decompose agents use Claude Code CLI directly,
+              which handles authentication via your local Claude CLI configuration.
+            </p>
+            <p className="text-yellow-700 dark:text-yellow-300 mt-2">
+              Configure your Claude CLI with: <code className="bg-yellow-100 dark:bg-yellow-900/40 px-1 rounded">claude auth login</code>
+            </p>
+          </div>
+
           {loading ? (
             <p className="text-neutral-500 text-sm">Loading...</p>
           ) : (

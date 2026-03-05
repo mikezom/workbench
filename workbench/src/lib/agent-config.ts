@@ -1,6 +1,18 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import path from "path";
 
+/**
+ * DEPRECATED: This config file is no longer used by the agent system.
+ *
+ * Both working agents and decompose agents use Claude Code CLI directly,
+ * which handles authentication via the local Claude CLI configuration.
+ *
+ * This file and its API routes are kept for reference only and may be
+ * removed in future versions.
+ *
+ * To configure Claude CLI authentication, use: `claude auth login`
+ */
+
 const CONFIG_PATH = path.join(process.cwd(), "data", "agent-config.json");
 
 export interface AgentConfig {

@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAgentConfig, saveAgentConfig } from "@/lib/agent-config";
 
+/**
+ * DEPRECATED: This config API is no longer used by the agent system.
+ *
+ * Both working agents and decompose agents use Claude Code CLI directly,
+ * which handles authentication via the local Claude CLI configuration.
+ *
+ * These routes are kept for reference only and may be removed in future versions.
+ */
+
 function maskKey(key: string): string {
   if (!key || key.length < 8) return key ? "***" : "";
   return key.slice(0, 7) + "..." + key.slice(-4);

@@ -303,9 +303,16 @@ Two separate instruction files for the two agent roles:
    - Good prompt anatomy (files to modify, behavior, architecture fit, expected outcome)
    - Output format specification (JSON array)
 
-## Config
+## Config (DEPRECATED)
 
-Stored at `data/agent-config.json` (gitignored):
+**⚠️ This config system is deprecated and no longer used.**
+
+Both working agents and decompose agents use Claude Code CLI directly, which handles authentication via the local Claude CLI configuration (`claude auth login`).
+
+The config file at `data/agent-config.json`, the config API routes (`/api/agent/config`), and the Config panel in the UI are kept for reference only and may be removed in future versions.
+
+<details>
+<summary>Legacy config format (for reference)</summary>
 
 ```json
 {
@@ -318,9 +325,11 @@ Stored at `data/agent-config.json` (gitignored):
 }
 ```
 
-Default provider is Anthropic. Also supports OpenAI-compatible APIs (OpenAI, OpenRouter, etc.).
+Default provider was Anthropic. Also supported OpenAI-compatible APIs (OpenAI, OpenRouter, etc.).
 
-The config API (`GET /api/agent/config`) masks the API key in responses (`sk-ant-...1234`).
+The config API (`GET /api/agent/config`) masked the API key in responses (`sk-ant-...1234`).
+
+</details>
 
 ## UI Layout (`agent/page.tsx`)
 
