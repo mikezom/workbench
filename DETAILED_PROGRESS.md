@@ -4,6 +4,134 @@ Detailed log of completed work per session, with commit IDs and file changes.
 
 ---
 
+## 2026-03-06 — Jin10 News Panel Implementation
+
+### Task 1: Database schema and types
+
+**Commit:** `db527f7`
+
+**Problem:** Need database infrastructure to cache Jin10 news items with 5-minute TTL and support CRUD operations.
+
+**Changes:**
+- `workbench/src/lib/crawl-db.ts` — Added Jin10NewsItem, DbJin10Cache, and Jin10CacheJson interfaces. Added jin10_cache table schema to initCrawlSchema(). Added createJin10Cache(), getJin10Cache(), getJin10CacheById(), and deleteExpiredJin10Cache() functions.
+
+---
+
+### Task 2: HTML parser (initial)
+
+**Commit:** `5e9c7d6`
+
+**Problem:** Need parser to extract news items from Jin10 HTML, initially using generic regex patterns.
+
+**Changes:**
+- `workbench/src/lib/jin10-parser.ts` — Created parseJin10Html() function with generic regex patterns for news items, titles, timestamps, summaries, and links. Added stripHtml() helper function.
+
+---
+
+### Task 3: API route with caching
+
+**Commit:** `970fbf8`
+
+**Problem:** Need API endpoint to fetch Jin10 news with cache-first strategy, 5-minute TTL, and stale cache fallback.
+
+**Changes:**
+- `workbench/src/app/api/crawl/jin10/route.ts` — Created GET handler with cache checking, fetch with 10-second timeout, parser integration, cache storage, and stale cache fallback on errors.
+
+---
+
+### Task 4: UI component
+
+**Commit:** `129f095`
+
+**Problem:** Replace HackerNewsPanel stub with functional Jin10Panel showing real news with auto-fetch and manual refresh.
+
+**Changes:**
+- `workbench/src/app/crawl/page.tsx` — Added Jin10NewsItem interface. Replaced HackerNewsPanel with Jin10Panel component featuring state management, fetchNews function, auto-fetch on mount, orange dot header, refresh button, scrollable news list with custom scrollbar, and flexible layout for optional summaries and links. Updated panel grid to use Jin10Panel.
+
+---
+
+### Task 5: Parser refinement attempt
+
+**Commit:** `8d01df4`
+
+**Problem:** Initial parser used placeholder patterns that didn't match actual Jin10 HTML structure.
+
+**Changes:**
+- `workbench/src/lib/jin10-parser.ts` — Updated regex patterns to match jin-flash-item-container, item-time, and flash-text classes based on analysis of real HTML structure.
+
+---
+
+### Task 6: Error handling enhancement
+
+**Commit:** `cbced89`
+
+**Problem:** Parser needed better error logging for debugging when no items are extracted.
+
+**Changes:**
+- `workbench/src/lib/jin10-parser.ts` — Added console.warn when no items extracted. Added HTML length to error logging.
+
+---
+
+### Task 7: Documentation
+
+**Commit:** `515d733`
+
+**Problem:** Need documentation for Jin10Panel features, architecture, cache strategy, and error handling.
+
+**Changes:**
+- `docs/crawl-section.md` — Updated overview to reflect Jin10 as functional panel. Added Jin10 to key files table and content sources table with yellow indicator. Added Jin10 News Panel section with features, architecture, cache strategy, and error handling documentation.
+
+---
+
+### Task 8: Test updates
+
+**Commit:** `7da5d62`
+
+**Problem:** Tests were checking for "Hacker News" which no longer exists after replacing with Jin10Panel.
+
+**Changes:**
+- `workbench/src/app/crawl/page.test.tsx` — Updated test to check for "JIN10 NEWS" instead of "Hacker News".
+- `workbench/src/app/api/crawl/arxiv/route.test.ts` — Minor test adjustments.
+
+---
+
+### Task 9: Mock data fallback
+
+**Commit:** `06fb674`
+
+**Problem:** Jin10.com is JavaScript-rendered SPA, server-side HTML scraping cannot extract news items from skeleton HTML.
+
+**Changes:**
+- `workbench/src/lib/jin10-parser.ts` — Replaced regex parsing with mock financial news data. Added detailed comment explaining SPA limitation and possible solutions (headless browser, API, RSS). Added formatTime() helper for proper timestamp calculation.
+
+---
+
+### Task 10: Puppeteer integration
+
+**Commit:** `99cf7f9`
+
+**Problem:** Mock data doesn't provide real news. Need headless browser to render JavaScript and extract actual content.
+
+**Changes:**
+- `workbench/package.json` — Added puppeteer dependency.
+- `workbench/package-lock.json` — Installed puppeteer and 89 dependencies.
+- `workbench/src/lib/jin10-scraper.ts` — Created scrapeJin10News() function using Puppeteer to launch headless browser, navigate to jin10.com, wait for content, extract news items via page.evaluate(), and return structured data.
+- `workbench/src/app/api/crawl/jin10/route.ts` — Replaced HTML fetch/parse with Puppeteer scraper. Increased timeout to 30 seconds. Added Promise.race for timeout handling.
+- `docs/plans/2026-03-05-jin10-news-panel-implementation.md` — Added implementation plan document.
+
+---
+
+### Task 11: Timestamp display fix
+
+**Commit:** `d350740`
+
+**Problem:** Timestamps are HH:MM:SS format in GMT+8 timezone without dates, but UI was trying to parse them as full Date objects causing "Invalid Date" display.
+
+**Changes:**
+- `workbench/src/app/crawl/page.tsx` — Changed timestamp display from `new Date(item.timestamp).toLocaleString()` to `{item.timestamp} GMT+8` to show raw time-of-day with timezone indicator.
+
+---
+
 ## 2026-03-02 — Phase 3b: Study UI & Bug Fixes
 
 ### Task 1: Cascading group delete

@@ -215,6 +215,9 @@ Full spec: `docs/agent-section.md`
 - [x] Update PROGRESS.md with arXiv items
 - [x] Fix arXiv panel height and add custom scrollbar
 - [x] Auto-fetch recent papers on mount with sort by submitted date
+- [x] Jin10 News panel implementation (database, parser, API, UI)
+- [x] Jin10 Puppeteer scraper for JavaScript-rendered content
+- [x] Jin10 timestamp display fix (GMT+8 time-of-day)
 - [ ] nLab panel implementation
 - [ ] Planet Haskell panel implementation
 - [ ] Reddit panel implementation
@@ -241,4 +244,4 @@ Full spec: `docs/agent-section.md`
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | In progress | ArxivPanel functional with API + caching; scrollbar fix `29ef2b9` |
 | 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |
-| 6 - Crawl | Complete | Commit `c0c38f0`; auto-fetch recent papers `54e0f39` |
+| 6 - Crawl | In progress | ArxivPanel + Jin10Panel functional; Jin10 with Puppeteer scraper `d350740` |

@@ -297,3 +297,18 @@ prevention strategies, and the relevant git commit IDs.
 - The "Shell cwd was reset" message indicates the command ran in the wrong directory — this is a symptom, not a fix
 
 **Commit:** `2b2b7f6`
+
+---
+
+## 2026-03-06 - HTML parsing failed for JavaScript-rendered SPA
+
+**Problem**: Initial Jin10 parser implementation returned empty arrays. The API endpoint worked but no news items were extracted from the HTML. Testing revealed the parser patterns didn't match any content.
+
+**Root Cause**: Jin10.com is a JavaScript-rendered Single Page Application (SPA). The initial HTML response only contains a skeleton `<div id="app">` element. The actual news content is loaded dynamically via JavaScript after the page loads in the browser. Server-side HTML scraping with fetch() cannot access this dynamically rendered content.
+
+**Solution**: Installed Puppeteer and created `jin10-scraper.ts` which launches a headless Chrome browser, navigates to jin10.com, waits for JavaScript to render the content, then extracts news items from the fully-rendered DOM using `page.evaluate()`. Updated the API route to use the Puppeteer scraper instead of HTML parsing.
+
+**Prevention**: Before implementing HTML scraping for a website, verify the content is present in the initial HTML response. Use `curl` or `fetch()` to check if the target elements exist in the raw HTML. If the HTML only contains a skeleton (like `<div id="app">`) or minimal content, the site is likely JavaScript-rendered and requires a headless browser (Puppeteer/Playwright) or API access instead of simple HTML parsing.
+
+**Commit**: `99cf7f9`
+
