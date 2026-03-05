@@ -52,9 +52,14 @@ export function parseJin10Html(html: string): Jin10NewsItem[] {
       }
     }
 
+    if (items.length === 0) {
+      console.warn("Jin10 parser: No items extracted from HTML");
+    }
+
     return items;
   } catch (error) {
     console.error("Error parsing Jin10 HTML:", error);
+    console.error("HTML length:", html.length);
     return [];
   }
 }
