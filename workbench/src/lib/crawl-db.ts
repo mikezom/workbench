@@ -36,6 +36,21 @@ export function initCrawlSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_jin10_cache_timestamp
       ON jin10_cache(timestamp);
+
+    CREATE TABLE IF NOT EXISTS solidot_cache (
+      id          TEXT PRIMARY KEY,
+      query       TEXT NOT NULL,
+      results     TEXT NOT NULL,
+      result_count INTEGER NOT NULL,
+      timestamp   INTEGER NOT NULL,
+      created_at  TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_solidot_cache_query
+      ON solidot_cache(query);
+
+    CREATE INDEX IF NOT EXISTS idx_solidot_cache_timestamp
+      ON solidot_cache(timestamp);
   `);
 }
 
@@ -103,6 +118,47 @@ export interface Jin10CacheJson {
 }
 
 function toJin10CacheJson(row: DbJin10Cache): Jin10CacheJson {
+  return {
+    id: row.id,
+    query: row.query,
+    results: JSON.parse(row.results),
+    result_count: row.result_count,
+    timestamp: row.timestamp,
+    created_at: row.created_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// SOLIDOT Types
+// ---------------------------------------------------------------------------
+
+export interface SolidotNewsItem {
+  id: string;
+  title: string;
+  link: string;
+  timestamp: string;
+  summary?: string;
+}
+
+export interface DbSolidotCache {
+  id: string;
+  query: string;
+  results: string;
+  result_count: number;
+  timestamp: number;
+  created_at: string;
+}
+
+export interface SolidotCacheJson {
+  id: string;
+  query: string;
+  results: SolidotNewsItem[];
+  result_count: number;
+  timestamp: number;
+  created_at: string;
+}
+
+function toSolidotCacheJson(row: DbSolidotCache): SolidotCacheJson {
   return {
     id: row.id,
     query: row.query,
@@ -224,6 +280,57 @@ export function deleteExpiredJin10Cache(beforeTimestamp: number): number {
   const db = getDb();
   const result = db
     .prepare("DELETE FROM jin10_cache WHERE timestamp < ?")
+    .run(beforeTimestamp);
+  return result.changes;
+}
+
+// ---------------------------------------------------------------------------
+// SOLIDOT Queries
+// ---------------------------------------------------------------------------
+
+export function createSolidotCache(data: {
+  results: SolidotNewsItem[];
+}): SolidotCacheJson {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date();
+  const timestamp = now.getTime();
+  const created_at = now.toISOString();
+  const query = "latest"; // Always use "latest" for SOLIDOT
+  const resultsJson = JSON.stringify(data.results);
+  const result_count = data.results.length;
+
+  db.prepare(
+    `INSERT INTO solidot_cache (id, query, results, result_count, timestamp, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, query, resultsJson, result_count, timestamp, created_at);
+
+  return getSolidotCacheById(id)!;
+}
+
+export function getSolidotCache(): SolidotCacheJson | undefined {
+  const db = getDb();
+  const query = "latest";
+  const row = db
+    .prepare(
+      "SELECT * FROM solidot_cache WHERE query = ? ORDER BY timestamp DESC LIMIT 1"
+    )
+    .get(query) as DbSolidotCache | undefined;
+  return row ? toSolidotCacheJson(row) : undefined;
+}
+
+function getSolidotCacheById(id: string): SolidotCacheJson | undefined {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM solidot_cache WHERE id = ?")
+    .get(id) as DbSolidotCache | undefined;
+  return row ? toSolidotCacheJson(row) : undefined;
+}
+
+export function deleteExpiredSolidotCache(beforeTimestamp: number): number {
+  const db = getDb();
+  const result = db
+    .prepare("DELETE FROM solidot_cache WHERE timestamp < ?")
     .run(beforeTimestamp);
   return result.changes;
 }
