@@ -18,7 +18,10 @@ let _db: Database.Database | null = null;
 export function getDb(): Database.Database {
   if (_db) return _db;
 
-  const dbPath = path.join(process.cwd(), "data", "workbench.db");
+  // Use in-memory database for tests
+  const isTest = process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+  const dbPath = isTest ? ':memory:' : path.join(process.cwd(), "data", "workbench.db");
+
   _db = new Database(dbPath);
 
   _db.pragma("journal_mode = WAL");
