@@ -4,19 +4,19 @@
 
 The Crawl section is a multi-source content aggregator dashboard. It displays panels for various technical content sources (arXiv, Hacker News, Lobsters, nLab, Planet Haskell, Reddit) in a grid layout. Currently, only the arXiv panel has a search UI with mock data — the remaining five panels are placeholder stubs showing "Coming soon."
 
-There are no API routes, no database tables, and no backend logic for the Crawl section yet. All state is client-side. A `crawls.json` file exists in `data/` but is empty (`[]`).
+The arXiv panel has backend support via an API proxy route and database caching. Other sources are not yet implemented.
 
 ## Architecture
 
 ```
 UI (crawl/page.tsx — single client component)
-  ↓ (future)
-API Routes (not yet implemented)
-  ↓ (future)
-External APIs (arXiv, HN, Lobsters, nLab, Planet Haskell, Reddit)
+  ↓
+API Routes (arXiv proxy implemented)
+  ↓
+Database Cache (arxiv_cache table in SQLite)
+  ↓
+External APIs (arXiv API implemented, others pending)
 ```
-
-Currently everything is self-contained in the page component with no backend calls.
 
 ## Key Files
 
@@ -24,9 +24,10 @@ Currently everything is self-contained in the page component with no backend cal
 |------|---------|
 | `src/app/crawl/page.tsx` | Entire Crawl UI — all panel sub-components in one file |
 | `src/app/crawl/page.test.tsx` | Static tests verifying 6 panels exist with correct titles |
+| `src/app/api/crawl/arxiv/route.ts` | arXiv API proxy — fetches and parses search results |
+| `src/lib/crawl-db.ts` | Database operations for arXiv cache |
+| `src/lib/crawl-db.test.ts` | Tests for arXiv cache CRUD operations |
 | `data/crawls.json` | Empty JSON array — unused placeholder for future persistence |
-
-No API routes. No lib utilities. No shared components beyond the page itself.
 
 ## Content Sources (Panels)
 
