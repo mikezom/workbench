@@ -16,7 +16,7 @@ describe("CrawlPage", () => {
     const gridSection = pageContent.match(/<div className="grid[^>]*>([\s\S]*?)<\/div>/);
     expect(gridSection).toBeTruthy();
 
-    // Count panel component usages (e.g., <ArxivPanel />, <HackerNewsPanel />, etc.)
+    // Count panel component usages (e.g., <ArxivPanel />, <Jin10Panel />, etc.)
     const panelUsages = gridSection![1].match(/<\w+Panel\s*\/>/g);
     expect(panelUsages).toBeTruthy();
     expect(panelUsages!.length).toBe(6);
@@ -25,7 +25,7 @@ describe("CrawlPage", () => {
   it("should have panel titles for all 6 sources", () => {
     // Verify panel titles exist in the code
     expect(pageContent).toContain("arXiv");
-    expect(pageContent).toContain("Hacker News");
+    expect(pageContent).toContain("JIN10 NEWS");
     expect(pageContent).toContain("Lobsters");
     expect(pageContent).toContain("nLab");
     expect(pageContent).toContain("Planet Haskell");
