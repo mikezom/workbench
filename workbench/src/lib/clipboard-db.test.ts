@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   createClipboardItem,
   getAllClipboardItems,
@@ -6,8 +6,13 @@ import {
   updateClipboardItem,
   deleteClipboardItem,
 } from "./clipboard-db";
+import { getDb } from "./db";
 
 describe("clipboard-db", () => {
+  beforeEach(() => {
+    const db = getDb();
+    db.exec("DELETE FROM clipboard_items");
+  });
   describe("createClipboardItem", () => {
     it("should create a clipboard item with content", () => {
       const item = createClipboardItem({

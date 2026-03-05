@@ -2,73 +2,81 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { PUT, DELETE } from "./route";
 import { POST } from "../route";
 import { NextRequest } from "next/server";
+import { getDb } from "@/lib/db";
 
-let testItemId: string;
+describe("clipboard [id] API routes", () => {
+  let testItemId: string;
 
-beforeEach(async () => {
-  // Create a test item before each test
-  const createRequest = new NextRequest("http://localhost:3000/api/clipboard", {
-    method: "POST",
-    body: JSON.stringify({ content: "test item" }),
-  });
-  const createResponse = await POST(createRequest);
-  const created = await createResponse.json();
-  testItemId = created.id;
-});
+  beforeEach(async () => {
+    // Clear table first
+    const db = getDb();
+    db.exec("DELETE FROM clipboard_items");
 
-describe("PUT /api/clipboard/[id]", () => {
-  it("should update a clipboard item", async () => {
-    const request = new NextRequest(
-      `http://localhost:3000/api/clipboard/${testItemId}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({ content: "updated" }),
-      }
-    );
-
-    const response = await PUT(request, { params: { id: testItemId } });
-    expect(response.status).toBe(200);
-
-    const updated = await response.json();
-    expect(updated.content).toBe("updated");
+    // Create a test item before each test
+    const createRequest = new NextRequest("http://localhost:3000/api/clipboard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "test item" }),
+    });
+    const createResponse = await POST(createRequest);
+    const created = await createResponse.json();
+    testItemId = created.id;
   });
 
-  it("should return 404 for non-existent id", async () => {
-    const request = new NextRequest(
-      "http://localhost:3000/api/clipboard/non-existent",
-      {
-        method: "PUT",
-        body: JSON.stringify({ content: "test" }),
-      }
-    );
+  describe("PUT /api/clipboard/[id]", () => {
+    it("should update a clipboard item", async () => {
+      const request = new NextRequest(
+        `http://localhost:3000/api/clipboard/${testItemId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ content: "updated" }),
+        }
+      );
 
-    const response = await PUT(request, { params: { id: "non-existent" } });
-    expect(response.status).toBe(404);
+      const response = await PUT(request, { params: { id: testItemId } });
+      expect(response.status).toBe(200);
+
+      const updated = await response.json();
+      expect(updated.content).toBe("updated");
+    });
+
+    it("should return 404 for non-existent id", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/clipboard/non-existent",
+        {
+          method: "PUT",
+          body: JSON.stringify({ content: "test" }),
+        }
+      );
+
+      const response = await PUT(request, { params: { id: "non-existent" } });
+      expect(response.status).toBe(404);
+    });
   });
-});
 
-describe("DELETE /api/clipboard/[id]", () => {
-  it("should delete a clipboard item", async () => {
-    const request = new NextRequest(
-      `http://localhost:3000/api/clipboard/${testItemId}`,
-      {
-        method: "DELETE",
-      }
-    );
+  describe("DELETE /api/clipboard/[id]", () => {
+    it("should delete a clipboard item", async () => {
+      const request = new NextRequest(
+        `http://localhost:3000/api/clipboard/${testItemId}`,
+        {
+          method: "DELETE",
+        }
+      );
 
-    const response = await DELETE(request, { params: { id: testItemId } });
-    expect(response.status).toBe(204);
-  });
+      const response = await DELETE(request, { params: { id: testItemId } });
+      expect(response.status).toBe(204);
+    });
 
-  it("should return 404 for non-existent id", async () => {
-    const request = new NextRequest(
-      "http://localhost:3000/api/clipboard/non-existent",
-      {
-        method: "DELETE",
-      }
-    );
+    it("should return 404 for non-existent id", async () => {
+      const request = new NextRequest(
+        "http://localhost:3000/api/clipboard/non-existent",
+        {
+          method: "DELETE",
+        }
+      );
 
-    const response = await DELETE(request, { params: { id: "non-existent" } });
-    expect(response.status).toBe(404);
+      const response = await DELETE(request, { params: { id: "non-existent" } });
+      expect(response.status).toBe(404);
+    });
   });
 });
