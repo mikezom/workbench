@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Crawl section is a multi-source content aggregator dashboard. It displays panels for various technical content sources (arXiv, Hacker News, Lobsters, nLab, Planet Haskell, Reddit) in a grid layout. Currently, only the arXiv panel has a search UI with mock data — the remaining five panels are placeholder stubs showing "Coming soon."
+The Crawl section is a multi-source content aggregator dashboard. It displays panels for various technical content sources (arXiv, Hacker News, Lobsters, nLab, Planet Haskell, Reddit) in a grid layout. Currently, only the arXiv panel is fully functional with API integration and caching — the remaining five panels are placeholder stubs showing "Coming soon."
 
 The arXiv panel has backend support via an API proxy route and database caching. Other sources are not yet implemented.
 
@@ -33,7 +33,7 @@ External APIs (arXiv API implemented, others pending)
 
 | Panel | Color Indicator | Status | External Source |
 |-------|----------------|--------|----------------|
-| ArxivPanel | Blue | Search UI + mock data | arXiv API (`export.arxiv.org/api/query`) |
+| ArxivPanel | Blue | Functional with API + caching | arXiv API (`export.arxiv.org/api/query`) |
 | HackerNewsPanel | Orange | Stub ("Coming soon") | HN API (`hacker-news.firebaseio.com`) |
 | LobstersPanel | Red | Stub ("Coming soon") | Lobsters (`lobste.rs`) |
 | NLabPanel | Green | Stub ("Coming soon") | nLab (`ncatlab.org`) |
@@ -87,7 +87,7 @@ interface ArxivPaper {
 
 ### State
 
-- `papers: ArxivPaper[]` — search results (currently mock data)
+- `papers: ArxivPaper[]` — search results
 - `loading: boolean` — fetch in progress
 - `query: string` — search query, defaults to `"cat:cs.AI"`
 
@@ -95,10 +95,33 @@ interface ArxivPaper {
 
 1. User enters a query (default: `cat:cs.AI`)
 2. Clicks "Search" button
-3. `fetchPapers()` sets loading state, populates with one mock paper
-4. Papers render as cards with title, authors, summary (3-line clamp), date, and "View on arXiv" link
+3. `fetchPapers()` fetches from `/api/crawl/arxiv?q=...`
+4. API route checks SQLite cache (5-minute TTL)
+5. If no fresh cache: proxies to arXiv API, parses XML response, caches results
+6. Papers render as cards with title, authors, summary (3-line clamp), date, and "View on arXiv" link
+7. On error: shows stale cached results if available (206 status), otherwise alerts user
 
-The `fetchPapers` function currently returns hardcoded mock data. The actual arXiv API integration is not yet implemented.
+Caching reduces API calls and provides fallback on network errors. The arXiv API is called directly from the server to avoid CORS issues.
+
+## Cache Management
+
+The arXiv API results are cached in the `arxiv_cache` table with:
+
+- **TTL**: 5 minutes per query
+- **Eviction**: `deleteExpiredArxivCache()` can be called to remove old entries
+- **Fallback**: Stale cache is returned (with 206 status) if API fetch fails
+
+Cache format:
+```typescript
+{
+  id: string;           // UUID
+  query: string;        // Search query (e.g., "cat:cs.AI")
+  results: ArxivPaper[]; // Up to 10 papers
+  result_count: number;
+  timestamp: number;   // Cache creation time (ms)
+  created_at: string;  // ISO date string
+}
+```
 
 ## Tests (`page.test.tsx`)
 
@@ -121,7 +144,6 @@ To make this section functional, each panel would need:
 
 ## Common Pitfalls
 
-- **No backend exists** — all "crawl" functionality is client-side only; don't assume API routes exist
-- **Mock data only** — ArxivPanel's `fetchPapers` returns hardcoded data, not real API responses
+- **Limited functionality** — Only arXiv panel is fully implemented; other panels are stubs
 - **Single-column layout** — panels stack vertically in one column; switching to multi-column grid would need responsive breakpoints
-- **No error handling UI** — the ArxivPanel catches errors but only logs to console; no user-facing error state
+- **Cache-only fallback** — When arXiv API fails, only cached results are shown (with 206 status), no retry mechanism
