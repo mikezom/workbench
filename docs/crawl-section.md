@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Crawl section is a multi-source content aggregator dashboard. It displays panels for various technical content sources (arXiv, Hacker News, Lobsters, nLab, Planet Haskell, Reddit) in a grid layout. Currently, only the arXiv panel is fully functional with API integration and caching — the remaining five panels are placeholder stubs showing "Coming soon."
+The Crawl section is a multi-source content aggregator dashboard. It displays panels for various technical content sources (arXiv, Jin10, Hacker News, Lobsters, nLab, Planet Haskell, Reddit) in a grid layout. Currently, the arXiv and Jin10 panels are fully functional with API integration and caching — the remaining five panels are placeholder stubs showing "Coming soon."
 
-The arXiv panel has backend support via an API proxy route and database caching. Other sources are not yet implemented.
+The arXiv and Jin10 panels have backend support via API proxy routes and database caching. Other sources are not yet implemented.
 
 ## Architecture
 
@@ -25,8 +25,10 @@ External APIs (arXiv API implemented, others pending)
 | `src/app/crawl/page.tsx` | Entire Crawl UI — all panel sub-components in one file |
 | `src/app/crawl/page.test.tsx` | Static tests verifying 6 panels exist with correct titles |
 | `src/app/api/crawl/arxiv/route.ts` | arXiv API proxy — fetches and parses search results |
+| `src/app/api/crawl/jin10/route.ts` | Jin10 API proxy — scrapes and caches financial news |
 | `src/lib/crawl-db.ts` | Database operations for arXiv cache |
 | `src/lib/crawl-db.test.ts` | Tests for arXiv cache CRUD operations |
+| `src/lib/jin10-parser.ts` | HTML parser for Jin10 news content |
 | `data/crawls.json` | Empty JSON array — unused placeholder for future persistence |
 
 ## Content Sources (Panels)
@@ -34,6 +36,7 @@ External APIs (arXiv API implemented, others pending)
 | Panel | Color Indicator | Status | External Source |
 |-------|----------------|--------|----------------|
 | ArxivPanel | Blue | Functional with API + caching | arXiv API (`export.arxiv.org/api/query`) |
+| Jin10Panel | Yellow | Functional with scraping + caching | Jin10 (`www.jin10.com`) |
 | HackerNewsPanel | Orange | Stub ("Coming soon") | HN API (`hacker-news.firebaseio.com`) |
 | LobstersPanel | Red | Stub ("Coming soon") | Lobsters (`lobste.rs`) |
 | NLabPanel | Green | Stub ("Coming soon") | nLab (`ncatlab.org`) |
@@ -102,6 +105,38 @@ interface ArxivPaper {
 7. On error: shows stale cached results if available (206 status), otherwise alerts user
 
 Caching reduces API calls and provides fallback on network errors. The arXiv API is called directly from the server to avoid CORS issues.
+
+## Jin10 News Panel
+
+Displays latest financial and economic news from [JIN10](https://www.jin10.com/).
+
+### Features
+
+- Auto-fetch on mount
+- Manual refresh button
+- 5-minute cache with stale fallback
+- Flexible layout (shows summary when available)
+- Minimal link indicators
+
+### Architecture
+
+- **Parser**: `src/lib/jin10-parser.ts` - HTML scraping with regex
+- **API Route**: `src/app/api/crawl/jin10/route.ts` - Caching proxy
+- **Database**: `jin10_cache` table in SQLite
+- **UI**: `Jin10Panel` component in `src/app/crawl/page.tsx`
+
+### Cache Strategy
+
+- TTL: 5 minutes
+- Stale fallback: Returns old cache if fetch fails
+- Query key: Always "latest" (no search functionality)
+
+### Error Handling
+
+- Network timeout: 10 seconds
+- Fetch failure with cache: Returns 206 with stale data
+- Fetch failure without cache: Returns 500 error
+- Parse failure: Returns empty array
 
 ## Cache Management
 
