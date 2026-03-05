@@ -339,6 +339,9 @@ def main() -> None:
 
     while running:
         try:
+            # Check for stale locks on each poll cycle
+            recover_stale_lock(conn)
+
             if not is_locked(conn):
                 task = get_next_pending_task(conn)
                 if task:
