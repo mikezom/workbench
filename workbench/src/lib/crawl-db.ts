@@ -305,7 +305,11 @@ export function createSolidotCache(data: {
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(id, query, resultsJson, result_count, timestamp, created_at);
 
-  return getSolidotCacheById(id)!;
+  const result = getSolidotCacheById(id);
+  if (!result) {
+    throw new Error(`Failed to retrieve newly created cache entry ${id}`);
+  }
+  return result;
 }
 
 export function getSolidotCache(): SolidotCacheJson | undefined {
