@@ -1097,3 +1097,19 @@ The root cause was CSS flex/grid behavior where `h-full` alone doesn't prevent c
 expansion when content overflows. Adding `min-h-0` (Tailwind equivalent to `min-height: 0`)
 allows the flex child to shrink below its content height, enabling the inner `overflow-y-auto`
 to constrain content and show the scrollbar.
+## 2026-03-05 — arXiv Panel Recent Search Enhancement
+
+### Task 1: arXiv panel searches for most recent entries on mount
+
+**Commit:** `54e0f39`
+
+**Problem:** The arXiv panel required manual search and defaulted to cs.AI category only.
+Recent papers were not automatically shown when the page loaded.
+
+**Changes:**
+- `workbench/src/app/api/crawl/arxiv/route.ts` — Added `sortBy=submittedDate&sortOrder=descending`
+  to API URL to return papers sorted by submission date (most recent first).
+- `workbench/src/app/crawl/page.tsx` — Changed default query from `cat:cs.AI` to `cat:cs.*`
+  (all CS papers), added `useEffect` hook to auto-fetch on component mount, imported
+  `useEffect` from React, updated placeholder text.
+
