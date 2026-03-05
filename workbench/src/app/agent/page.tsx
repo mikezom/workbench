@@ -75,13 +75,41 @@ interface AgentTaskQuestion {
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
-const STATUS_COLUMNS: { status: AgentTaskStatus; label: string }[] = [
-  { status: "waiting_for_dev", label: "Waiting for Dev" },
-  { status: "developing", label: "Developing" },
-  { status: "waiting_for_review", label: "Waiting for Review" },
-  { status: "finished", label: "Finished" },
-  { status: "failed", label: "Failed" },
-  { status: "cancelled", label: "Cancelled" },
+const STATUS_COLUMNS: {
+  status: AgentTaskStatus;
+  label: string;
+  includeStatuses: AgentTaskStatus[];
+}[] = [
+  {
+    status: "waiting_for_dev",
+    label: "Waiting for Dev",
+    includeStatuses: ["waiting_for_dev", "decompose_approved", "decompose_waiting_for_completion"]
+  },
+  {
+    status: "developing",
+    label: "Developing",
+    includeStatuses: ["developing", "decompose_understanding", "decompose_breaking_down", "decompose_reflecting"]
+  },
+  {
+    status: "waiting_for_review",
+    label: "Waiting for Review",
+    includeStatuses: ["waiting_for_review", "decompose_waiting_for_answers", "decompose_waiting_for_approval"]
+  },
+  {
+    status: "finished",
+    label: "Finished",
+    includeStatuses: ["finished", "decompose_complete"]
+  },
+  {
+    status: "failed",
+    label: "Failed",
+    includeStatuses: ["failed"]
+  },
+  {
+    status: "cancelled",
+    label: "Cancelled",
+    includeStatuses: ["cancelled"]
+  },
 ];
 
 const STATUS_COLORS: Record<AgentTaskStatus, string> = {
@@ -284,8 +312,8 @@ function TaskBoard({
 }) {
   return (
     <div className="grid grid-cols-3 gap-3 flex-1 min-h-0">
-      {STATUS_COLUMNS.map(({ status, label }) => {
-        const columnTasks = tasks.filter((t) => t.status === status);
+      {STATUS_COLUMNS.map(({ status, label, includeStatuses }) => {
+        const columnTasks = tasks.filter((t) => includeStatuses.includes(t.status));
         return (
           <div
             key={status}
