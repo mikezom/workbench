@@ -1173,7 +1173,25 @@ def execute_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
         # Step 3: Invoke Claude Code in worktree
         invoke_claude(worktree_path, prompt, conn, task_id)
 
-        # Step 4: Check for questions
+        # Step 4: Check for breakdown first (takes priority over questions)
+        breakdown = check_breakdown(worktree_path)
+        if breakdown:
+            # Breakdown exists - store it and transition to approval
+            conn.execute(
+                "UPDATE agent_tasks SET decompose_breakdown = ? WHERE id = ?",
+                (json.dumps(breakdown), task_id),
+            )
+            conn.commit()
+
+            append_output(conn, task_id, "system",
+                f"Breakdown created with {len(breakdown)} sub-task(s) — awaiting user approval")
+            log.info("Decompose task %d created breakdown with %d sub-tasks", task_id, len(breakdown))
+
+            # Cleanup worktree (breakdown is stored in DB, no code to merge)
+            cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+            return
+
+        # Step 5: Check for questions (only if no breakdown)
         questions = check_decompose_questions(worktree_path)
         if questions:
             append_output(conn, task_id, "system",
@@ -1181,24 +1199,8 @@ def execute_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
             save_questions_to_db(conn, task_id, questions)
             raise QuestionsAsked(f"Decompose task {task_id} has {len(questions)} questions")
 
-        # Step 5: Check for breakdown
-        breakdown = check_breakdown(worktree_path)
-        if not breakdown:
-            raise RuntimeError("Decompose agent did not produce breakdown.json")
-
-        # Step 6: Store breakdown in database
-        conn.execute(
-            "UPDATE agent_tasks SET decompose_breakdown = ? WHERE id = ?",
-            (json.dumps(breakdown), task_id),
-        )
-        conn.commit()
-
-        append_output(conn, task_id, "system",
-            f"Breakdown created with {len(breakdown)} sub-task(s) — awaiting user approval")
-        log.info("Decompose task %d created breakdown with %d sub-tasks", task_id, len(breakdown))
-
-        # Cleanup worktree (breakdown is stored in DB, no code to merge)
-        cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+        # Step 6: Neither breakdown nor questions found
+        raise RuntimeError("Decompose agent did not produce breakdown.json or questions")
 
     except CancelledError:
         append_output(conn, task_id, "system", "Decompose task cancelled")
@@ -1266,7 +1268,26 @@ def resume_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
         # Step 3: Re-invoke Claude Code in worktree
         invoke_claude(worktree_path, resumed_prompt, conn, task_id)
 
-        # Step 4: Check for new questions
+        # Step 4: Check for breakdown first (takes priority over questions)
+        breakdown = check_breakdown(worktree_path)
+        if breakdown:
+            # Breakdown exists - store it and transition to approval
+            conn.execute(
+                "UPDATE agent_tasks SET decompose_breakdown = ? WHERE id = ?",
+                (json.dumps(breakdown), task_id),
+            )
+            conn.commit()
+
+            append_output(conn, task_id, "system",
+                f"Breakdown created with {len(breakdown)} sub-task(s) — awaiting user approval")
+            log.info("Resumed decompose task %d created breakdown with %d sub-tasks",
+                task_id, len(breakdown))
+
+            # Cleanup worktree (breakdown is stored in DB)
+            cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+            return
+
+        # Step 5: Check for new questions (only if no breakdown)
         questions = check_decompose_questions(worktree_path)
         if questions:
             append_output(conn, task_id, "system",
@@ -1279,25 +1300,8 @@ def resume_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
             save_questions_to_db(conn, task_id, questions)
             raise QuestionsAsked(f"Decompose task {task_id} has {len(questions)} new questions")
 
-        # Step 5: Check for breakdown
-        breakdown = check_breakdown(worktree_path)
-        if not breakdown:
-            raise RuntimeError("Decompose agent did not produce breakdown.json")
-
-        # Step 6: Store breakdown
-        conn.execute(
-            "UPDATE agent_tasks SET decompose_breakdown = ? WHERE id = ?",
-            (json.dumps(breakdown), task_id),
-        )
-        conn.commit()
-
-        append_output(conn, task_id, "system",
-            f"Breakdown created with {len(breakdown)} sub-task(s) — awaiting user approval")
-        log.info("Resumed decompose task %d created breakdown with %d sub-tasks",
-            task_id, len(breakdown))
-
-        # Cleanup worktree (breakdown is stored in DB)
-        cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+        # Step 6: Neither breakdown nor questions found
+        raise RuntimeError("Decompose agent did not produce breakdown.json or questions")
 
     except CancelledError:
         append_output(conn, task_id, "system", "Decompose task cancelled")

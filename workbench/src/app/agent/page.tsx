@@ -791,7 +791,7 @@ function TaskDetailModal({
               </p>
             ) : (
               <>
-                <div className="space-y-4">
+                <div className="space-y-4 max-h-96 overflow-y-auto">
                   {decomposeQuestions.filter((q) => !q.answer).map((q) => (
                     <div key={q.id} className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
                       <p className="text-sm font-medium mb-2">{q.question}</p>
