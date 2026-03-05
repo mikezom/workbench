@@ -27,21 +27,21 @@ function ArxivPanel() {
   const fetchPapers = async () => {
     setLoading(true);
     try {
-      // Placeholder - will implement API route later
-      // For now, show mock data
-      const mockPapers: ArxivPaper[] = [
-        {
-          id: "2403.12345",
-          title: "Example Paper on Machine Learning",
-          authors: ["John Doe", "Jane Smith"],
-          summary: "This is a placeholder summary for an arXiv paper. The actual implementation will fetch real papers from the arXiv API.",
-          published: "2024-03-01",
-          link: "https://arxiv.org/abs/2403.12345",
-        },
-      ];
-      setPapers(mockPapers);
+      const response = await fetch(`/api/crawl/arxiv?q=${encodeURIComponent(query)}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || `Failed to fetch papers: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setPapers(data);
     } catch (error) {
       console.error("Failed to fetch papers:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      // Show error in UI by setting papers to empty and showing error state
+      setPapers([]);
+      // Could add error state here in the future
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }
