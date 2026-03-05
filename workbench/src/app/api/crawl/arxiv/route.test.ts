@@ -62,7 +62,7 @@ describe("arXiv API Route", () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       text: () => Promise.resolve(mockArxivXml),
-    }) as any;
+    }) as Partial<Response> & { text: () => Promise<string> };
 
     const request = new Request("http://localhost/api/crawl/arxiv?q=cat:cs.AI");
     const response = await GET(request);
@@ -83,7 +83,14 @@ describe("arXiv API Route", () => {
     const { parseArxivXml } = await import("@/lib/arxiv-parser");
 
     vi.mocked(getArxivCache).mockReturnValue(undefined);
-    vi.mocked(createArxivCache).mockReturnValue({} as any);
+    vi.mocked(createArxivCache).mockReturnValue({
+      id: "new-cache",
+      query: "test",
+      results: [],
+      result_count: 0,
+      timestamp: Date.now(),
+      created_at: new Date().toISOString(),
+    });
     vi.mocked(parseArxivXml).mockReturnValue([
       {
         id: "2401.12345",
@@ -99,7 +106,7 @@ describe("arXiv API Route", () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       text: () => Promise.resolve(mockArxivXml),
-    }) as any;
+    }) as Partial<Response> & { text: () => Promise<string> };
 
     const request = new Request("http://localhost/api/crawl/arxiv?q=test");
     const response = await GET(request);
@@ -136,7 +143,7 @@ describe("arXiv API Route", () => {
     };
     vi.mocked(getArxivCache).mockReturnValue(staleCache);
 
-    global.fetch = vi.fn().mockRejectedValue(new Error("Network error")) as any;
+    global.fetch = vi.fn().mockRejectedValue(new Error("Network error")) as unknown as ReturnType<typeof vi.fn>;
 
     const request = new Request("http://localhost/api/crawl/arxiv?q=test");
     const response = await GET(request);
@@ -155,7 +162,7 @@ describe("arXiv API Route", () => {
     const { getArxivCache } = await import("@/lib/crawl-db");
     vi.mocked(getArxivCache).mockReturnValue(undefined);
 
-    global.fetch = vi.fn().mockRejectedValue(new Error("Network error")) as any;
+    global.fetch = vi.fn().mockRejectedValue(new Error("Network error")) as unknown as ReturnType<typeof vi.fn>;
 
     const request = new Request("http://localhost/api/crawl/arxiv?q=test");
     const response = await GET(request);

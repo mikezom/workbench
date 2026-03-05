@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { getJin10Cache, createJin10Cache } from "@/lib/crawl-db";
-import { parseJin10Html } from "@/lib/jin10-parser";
+import { scrapeJin10News } from "@/lib/jin10-scraper";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const JIN10_URL = "https://www.jin10.com/";
-const FETCH_TIMEOUT_MS = 10 * 1000; // 10 seconds
+const SCRAPE_TIMEOUT_MS = 30 * 1000; // 30 seconds for Puppeteer
 
 // ---------------------------------------------------------------------------
 // GET Handler
@@ -29,26 +28,22 @@ export async function GET() {
     });
   }
 
-  // Fetch from Jin10
+  // Scrape from Jin10 using Puppeteer
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    console.log("Starting Jin10 scrape with Puppeteer...");
 
-    const response = await fetch(JIN10_URL, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "WorkbenchCrawl/1.0",
-      },
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Scrape timeout")), SCRAPE_TIMEOUT_MS);
     });
 
-    clearTimeout(timeoutId);
+    // Race between scraping and timeout
+    const news = await Promise.race([
+      scrapeJin10News(),
+      timeoutPromise,
+    ]);
 
-    if (!response.ok) {
-      throw new Error(`Jin10 returned ${response.status}`);
-    }
-
-    const html = await response.text();
-    const news = parseJin10Html(html);
+    console.log(`Scraped ${news.length} items from Jin10`);
 
     // Cache the results
     try {
@@ -60,22 +55,23 @@ export async function GET() {
 
     return NextResponse.json(news);
   } catch (error) {
-    // On fetch error, return stale cache with status 206 if available
+    // On scrape error, return stale cache with status 206 if available
     if (cached) {
+      console.log("Scrape failed, returning stale cache");
       return NextResponse.json(cached.results, {
         status: 206,
         headers: {
           "X-Cached": "stale",
           "X-Cache-Age": String(now - cached.timestamp),
-          "X-Error": "Failed to fetch from Jin10, serving stale cache",
+          "X-Error": "Failed to scrape from Jin10, serving stale cache",
         },
       });
     }
 
     // On error with no cache, return 500
-    console.error("Error fetching from Jin10:", error);
+    console.error("Error scraping from Jin10:", error);
     return NextResponse.json(
-      { error: "Failed to fetch from Jin10" },
+      { error: "Failed to scrape from Jin10" },
       { status: 500 }
     );
   }
