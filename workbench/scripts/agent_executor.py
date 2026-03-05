@@ -312,22 +312,27 @@ def symlink_node_modules(repo_root: str, worktree_path: str) -> None:
     log.info("Symlinked node_modules: %s -> %s", dst, src)
 
 
-def inject_claude_md(worktree_path: str) -> None:
-    """Copy the working agent CLAUDE.md into the worktree root.
+def inject_claude_md(worktree_path: str, agent_type: str = "working") -> None:
+    """Copy the appropriate agent CLAUDE.md into a worktree root.
 
     Claude Code auto-discovers CLAUDE.md files in the working directory.
-    The source file lives at workbench/data/agent-working-claude.md in the
+    The source file lives at workbench/data/agent-{type}-claude.md in the
     worktree (since the worktree is a checkout of the repo).  We copy it
     to the worktree root so Claude Code finds it.
+
+    Args:
+        worktree_path: Path to the worktree root.
+        agent_type: Either "working" or "decompose".
     """
-    src = os.path.join(worktree_path, "workbench", "data", "agent-working-claude.md")
+    filename = f"agent-{agent_type}-claude.md"
+    src = os.path.join(worktree_path, "workbench", "data", filename)
     dst = os.path.join(worktree_path, "CLAUDE.md")
 
-    if os.path.isfile(src):
-        shutil.copy2(src, dst)
-        log.info("Injected CLAUDE.md into worktree from %s", src)
-    else:
-        log.warning("agent-working-claude.md not found at %s — skipping CLAUDE.md injection", src)
+    if not os.path.isfile(src):
+        raise FileNotFoundError(f"{filename} not found at {src}")
+
+    shutil.copy2(src, dst)
+    log.info("Injected %s CLAUDE.md into worktree from %s", agent_type, src)
 
 
 # ---------------------------------------------------------------------------
@@ -1073,34 +1078,6 @@ def resume_task(conn: sqlite3.Connection, task: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def inject_decompose_claude_md(repo_root: str) -> None:
-    """Inject agent-decompose-claude.md as CLAUDE.md in the repo root.
-
-    Unlike worker agents, decompose agents run in the main repo (no worktree).
-    """
-    source = os.path.join(repo_root, "workbench", "data", "agent-decompose-claude.md")
-    dest = os.path.join(repo_root, "CLAUDE.md")
-
-    if not os.path.isfile(source):
-        raise FileNotFoundError(
-            f"Decompose CLAUDE.md not found at {source}"
-        )
-
-    with open(source, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    with open(dest, "w", encoding="utf-8") as f:
-        f.write(content)
-
-    log.info("Injected decompose CLAUDE.md into %s", dest)
-
-
-def remove_decompose_claude_md(repo_root: str) -> None:
-    """Remove the injected CLAUDE.md from repo root."""
-    dest = os.path.join(repo_root, "CLAUDE.md")
-    if os.path.isfile(dest):
-        os.remove(dest)
-        log.info("Removed decompose CLAUDE.md from %s", dest)
 
 
 def check_decompose_questions(repo_root: str) -> list[dict] | None:
@@ -1161,60 +1138,55 @@ def check_reflection_result(repo_root: str) -> dict | None:
     return None
 
 
-def cleanup_decompose_files(repo_root: str) -> None:
-    """Remove all decompose-related JSON files from repo root."""
-    files_to_remove = [
-        "decompose-questions.json",
-        "breakdown.json",
-        "reflection-complete.json",
-        "reflection-retry.json",
-    ]
-
-    for filename in files_to_remove:
-        path = os.path.join(repo_root, filename)
-        if os.path.isfile(path):
-            os.remove(path)
-            log.debug("Removed %s", filename)
-
-
 def execute_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
     """Execute a decompose task: understand objective and create breakdown.
 
     This handles Phase 1 (understand) and Phase 2 (breakdown).
-    The agent runs in the main repo (no worktree).
+    The agent runs in an isolated worktree, just like worker agents.
 
     On success: stores breakdown, transitions to waiting_for_approval.
-    On questions: stores questions, raises QuestionsAsked.
-    On cancel: cleans up, raises CancelledError.
-    On failure: raises the original exception.
+    On questions: stores questions, raises QuestionsAsked (worktree preserved).
+    On cancel: cleans up worktree, raises CancelledError.
+    On failure: preserves worktree for debugging, raises the original exception.
     """
     task_id = task["id"]
     prompt = task["prompt"]
 
+    worktree_path = None
+    branch_name = None
+
     try:
-        # Step 1: Inject decompose CLAUDE.md
+        # Step 1: Create worktree
         append_output(conn, task_id, "system", "Starting decompose agent...")
-        inject_decompose_claude_md(REPO_ROOT)
+        worktree_path, branch_name = create_worktree(
+            REPO_ROOT, task_id, task.get("title") or f"decompose-{task_id}"
+        )
+        conn.execute(
+            "UPDATE agent_tasks SET branch_name = ?, worktree_path = ? WHERE id = ?",
+            (branch_name, worktree_path, task_id),
+        )
+        conn.commit()
 
-        # Step 2: Invoke Claude Code in main repo
-        invoke_claude(REPO_ROOT, prompt, conn, task_id)
+        # Step 2: Inject decompose CLAUDE.md
+        inject_claude_md(worktree_path, "decompose")
 
-        # Step 3: Check for questions
-        questions = check_decompose_questions(REPO_ROOT)
+        # Step 3: Invoke Claude Code in worktree
+        invoke_claude(worktree_path, prompt, conn, task_id)
+
+        # Step 4: Check for questions
+        questions = check_decompose_questions(worktree_path)
         if questions:
             append_output(conn, task_id, "system",
                 f"Decompose agent asked {len(questions)} clarification question(s)")
             save_questions_to_db(conn, task_id, questions)
-            cleanup_decompose_files(REPO_ROOT)
-            remove_decompose_claude_md(REPO_ROOT)
             raise QuestionsAsked(f"Decompose task {task_id} has {len(questions)} questions")
 
-        # Step 4: Check for breakdown
-        breakdown = check_breakdown(REPO_ROOT)
+        # Step 5: Check for breakdown
+        breakdown = check_breakdown(worktree_path)
         if not breakdown:
             raise RuntimeError("Decompose agent did not produce breakdown.json")
 
-        # Step 5: Store breakdown in database
+        # Step 6: Store breakdown in database
         conn.execute(
             "UPDATE agent_tasks SET decompose_breakdown = ? WHERE id = ?",
             (json.dumps(breakdown), task_id),
@@ -1225,34 +1197,47 @@ def execute_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
             f"Breakdown created with {len(breakdown)} sub-task(s) — awaiting user approval")
         log.info("Decompose task %d created breakdown with %d sub-tasks", task_id, len(breakdown))
 
-        # Cleanup
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        # Cleanup worktree (breakdown is stored in DB, no code to merge)
+        cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
 
     except CancelledError:
         append_output(conn, task_id, "system", "Decompose task cancelled")
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        if worktree_path and branch_name:
+            cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
         raise
 
     except QuestionsAsked:
-        # Questions already saved, files cleaned up
+        # Preserve worktree for resume
         raise
 
     except Exception:
         append_output(conn, task_id, "system", "Decompose task failed")
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        if worktree_path:
+            append_output(conn, task_id, "system",
+                f"Worktree preserved at {worktree_path} for debugging")
         raise
 
 
 def resume_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
     """Resume a decompose task after user answered questions.
 
+    Reuses the existing worktree (preserved when questions were asked).
     Similar to execute_decompose_task but includes Q&A context in prompt.
     """
     task_id = task["id"]
     prompt = task["prompt"]
+    worktree_path = task["worktree_path"]
+    branch_name = task["branch_name"]
+
+    if not worktree_path or not branch_name:
+        raise RuntimeError(
+            f"Decompose task {task_id} has no worktree_path or branch_name — cannot resume"
+        )
+
+    if not os.path.isdir(worktree_path):
+        raise RuntimeError(
+            f"Worktree {worktree_path} does not exist — cannot resume"
+        )
 
     try:
         # Step 1: Build Q&A context
@@ -1275,14 +1260,14 @@ def resume_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
         append_output(conn, task_id, "system",
             f"Resuming decompose task with {len(rows)} answered question(s)...")
 
-        # Step 2: Inject decompose CLAUDE.md
-        inject_decompose_claude_md(REPO_ROOT)
+        # Step 2: Re-inject decompose CLAUDE.md (in case worktree was modified)
+        inject_claude_md(worktree_path, "decompose")
 
-        # Step 3: Re-invoke Claude Code
-        invoke_claude(REPO_ROOT, resumed_prompt, conn, task_id)
+        # Step 3: Re-invoke Claude Code in worktree
+        invoke_claude(worktree_path, resumed_prompt, conn, task_id)
 
         # Step 4: Check for new questions
-        questions = check_decompose_questions(REPO_ROOT)
+        questions = check_decompose_questions(worktree_path)
         if questions:
             append_output(conn, task_id, "system",
                 f"Decompose agent asked {len(questions)} more question(s)")
@@ -1292,12 +1277,10 @@ def resume_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
                 (task_id,),
             )
             save_questions_to_db(conn, task_id, questions)
-            cleanup_decompose_files(REPO_ROOT)
-            remove_decompose_claude_md(REPO_ROOT)
             raise QuestionsAsked(f"Decompose task {task_id} has {len(questions)} new questions")
 
         # Step 5: Check for breakdown
-        breakdown = check_breakdown(REPO_ROOT)
+        breakdown = check_breakdown(worktree_path)
         if not breakdown:
             raise RuntimeError("Decompose agent did not produce breakdown.json")
 
@@ -1313,34 +1296,39 @@ def resume_decompose_task(conn: sqlite3.Connection, task: dict) -> None:
         log.info("Resumed decompose task %d created breakdown with %d sub-tasks",
             task_id, len(breakdown))
 
-        # Cleanup
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        # Cleanup worktree (breakdown is stored in DB)
+        cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
 
     except CancelledError:
         append_output(conn, task_id, "system", "Decompose task cancelled")
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        if worktree_path and branch_name:
+            cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
         raise
 
     except QuestionsAsked:
+        # Preserve worktree for next resume
         raise
 
     except Exception:
         append_output(conn, task_id, "system", "Resumed decompose task failed")
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        if worktree_path:
+            append_output(conn, task_id, "system",
+                f"Worktree preserved at {worktree_path} for debugging")
         raise
 
 
 def retry_decompose_breakdown(conn: sqlite3.Connection, task: dict, user_comment: str) -> None:
     """Retry breakdown creation after user rejection.
 
-    Invokes the decompose agent with the user's rejection comment.
+    Creates a fresh worktree and invokes the decompose agent with the
+    user's rejection comment.
     """
     task_id = task["id"]
     prompt = task["prompt"]
     previous_breakdown = task.get("decompose_breakdown")
+
+    worktree_path = None
+    branch_name = None
 
     try:
         # Build context with rejection feedback
@@ -1360,14 +1348,24 @@ def retry_decompose_breakdown(conn: sqlite3.Connection, task: dict, user_comment
         append_output(conn, task_id, "system",
             "Retrying breakdown with user feedback...")
 
-        # Inject decompose CLAUDE.md
-        inject_decompose_claude_md(REPO_ROOT)
+        # Create fresh worktree
+        worktree_path, branch_name = create_worktree(
+            REPO_ROOT, task_id, task.get("title") or f"decompose-{task_id}"
+        )
+        conn.execute(
+            "UPDATE agent_tasks SET branch_name = ?, worktree_path = ? WHERE id = ?",
+            (branch_name, worktree_path, task_id),
+        )
+        conn.commit()
 
-        # Invoke Claude Code
-        invoke_claude(REPO_ROOT, retry_prompt, conn, task_id)
+        # Inject decompose CLAUDE.md
+        inject_claude_md(worktree_path, "decompose")
+
+        # Invoke Claude Code in worktree
+        invoke_claude(worktree_path, retry_prompt, conn, task_id)
 
         # Check for breakdown
-        breakdown = check_breakdown(REPO_ROOT)
+        breakdown = check_breakdown(worktree_path)
         if not breakdown:
             raise RuntimeError("Decompose agent did not produce revised breakdown.json")
 
@@ -1382,24 +1380,28 @@ def retry_decompose_breakdown(conn: sqlite3.Connection, task: dict, user_comment
             f"Revised breakdown created with {len(breakdown)} sub-task(s)")
         log.info("Decompose task %d created revised breakdown", task_id)
 
-        # Cleanup
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        # Cleanup worktree
+        cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
 
     except Exception:
         append_output(conn, task_id, "system", "Breakdown retry failed")
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        if worktree_path:
+            append_output(conn, task_id, "system",
+                f"Worktree preserved at {worktree_path} for debugging")
         raise
 
 
 def execute_decompose_reflection(conn: sqlite3.Connection, task: dict) -> None:
     """Execute decompose reflection phase.
 
-    Reviews all completed sub-tasks and determines if objective was achieved.
-    Either completes the decompose task or loops back to Phase 1.
+    Creates a fresh worktree, reviews all completed sub-tasks, and determines
+    if the objective was achieved. Either completes the decompose task or
+    loops back to Phase 1.
     """
     task_id = task["id"]
+
+    worktree_path = None
+    branch_name = None
 
     try:
         # Step 1: Gather sub-task results
@@ -1430,14 +1432,24 @@ def execute_decompose_reflection(conn: sqlite3.Connection, task: dict) -> None:
         append_output(conn, task_id, "system",
             f"Starting reflection on {len(sub_tasks)} completed sub-task(s)...")
 
-        # Step 2: Inject decompose CLAUDE.md
-        inject_decompose_claude_md(REPO_ROOT)
+        # Step 2: Create fresh worktree
+        worktree_path, branch_name = create_worktree(
+            REPO_ROOT, task_id, task.get("title") or f"decompose-{task_id}"
+        )
+        conn.execute(
+            "UPDATE agent_tasks SET branch_name = ?, worktree_path = ? WHERE id = ?",
+            (branch_name, worktree_path, task_id),
+        )
+        conn.commit()
 
-        # Step 3: Invoke Claude Code with reflection context
-        invoke_claude(REPO_ROOT, results_context, conn, task_id)
+        # Step 3: Inject decompose CLAUDE.md
+        inject_claude_md(worktree_path, "decompose")
 
-        # Step 4: Check reflection result
-        result = check_reflection_result(REPO_ROOT)
+        # Step 4: Invoke Claude Code with reflection context
+        invoke_claude(worktree_path, results_context, conn, task_id)
+
+        # Step 5: Check reflection result
+        result = check_reflection_result(worktree_path)
         if not result:
             raise RuntimeError("Decompose agent did not produce reflection result")
 
@@ -1461,13 +1473,13 @@ def execute_decompose_reflection(conn: sqlite3.Connection, task: dict) -> None:
             )
             conn.commit()
 
-        # Cleanup
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        # Cleanup worktree
+        cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
 
     except Exception:
         append_output(conn, task_id, "system", "Reflection failed")
-        cleanup_decompose_files(REPO_ROOT)
-        remove_decompose_claude_md(REPO_ROOT)
+        if worktree_path:
+            append_output(conn, task_id, "system",
+                f"Worktree preserved at {worktree_path} for debugging")
         raise
 
