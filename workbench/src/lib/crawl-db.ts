@@ -21,6 +21,21 @@ export function initCrawlSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_arxiv_cache_timestamp
       ON arxiv_cache(timestamp);
+
+    CREATE TABLE IF NOT EXISTS jin10_cache (
+      id          TEXT PRIMARY KEY,
+      query       TEXT NOT NULL,
+      results     TEXT NOT NULL,
+      result_count INTEGER NOT NULL,
+      timestamp   INTEGER NOT NULL,
+      created_at  TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_jin10_cache_query
+      ON jin10_cache(query);
+
+    CREATE INDEX IF NOT EXISTS idx_jin10_cache_timestamp
+      ON jin10_cache(timestamp);
   `);
 }
 
@@ -47,6 +62,47 @@ export interface ArxivCacheJson {
 }
 
 function toArxivCacheJson(row: DbArxivCache): ArxivCacheJson {
+  return {
+    id: row.id,
+    query: row.query,
+    results: JSON.parse(row.results),
+    result_count: row.result_count,
+    timestamp: row.timestamp,
+    created_at: row.created_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Jin10 Types
+// ---------------------------------------------------------------------------
+
+export interface Jin10NewsItem {
+  id: string;
+  title: string;
+  timestamp: string;
+  summary?: string;
+  link?: string;
+}
+
+export interface DbJin10Cache {
+  id: string;
+  query: string;
+  results: string;
+  result_count: number;
+  timestamp: number;
+  created_at: string;
+}
+
+export interface Jin10CacheJson {
+  id: string;
+  query: string;
+  results: Jin10NewsItem[];
+  result_count: number;
+  timestamp: number;
+  created_at: string;
+}
+
+function toJin10CacheJson(row: DbJin10Cache): Jin10CacheJson {
   return {
     id: row.id,
     query: row.query,
@@ -117,6 +173,57 @@ export function deleteExpiredArxivCache(beforeTimestamp: number): number {
   const db = getDb();
   const result = db
     .prepare("DELETE FROM arxiv_cache WHERE timestamp < ?")
+    .run(beforeTimestamp);
+  return result.changes;
+}
+
+// ---------------------------------------------------------------------------
+// Jin10 Queries
+// ---------------------------------------------------------------------------
+
+export function createJin10Cache(data: {
+  results: Jin10NewsItem[];
+}): Jin10CacheJson {
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date();
+  const timestamp = now.getTime();
+  const created_at = now.toISOString();
+  const query = "latest"; // Always use "latest" for Jin10
+  const resultsJson = JSON.stringify(data.results);
+  const result_count = data.results.length;
+
+  db.prepare(
+    `INSERT INTO jin10_cache (id, query, results, result_count, timestamp, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, query, resultsJson, result_count, timestamp, created_at);
+
+  return getJin10CacheById(id)!;
+}
+
+export function getJin10Cache(): Jin10CacheJson | undefined {
+  const db = getDb();
+  const query = "latest";
+  const row = db
+    .prepare(
+      "SELECT * FROM jin10_cache WHERE query = ? ORDER BY timestamp DESC LIMIT 1"
+    )
+    .get(query) as DbJin10Cache | undefined;
+  return row ? toJin10CacheJson(row) : undefined;
+}
+
+function getJin10CacheById(id: string): Jin10CacheJson | undefined {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM jin10_cache WHERE id = ?")
+    .get(id) as DbJin10Cache | undefined;
+  return row ? toJin10CacheJson(row) : undefined;
+}
+
+export function deleteExpiredJin10Cache(beforeTimestamp: number): number {
+  const db = getDb();
+  const result = db
+    .prepare("DELETE FROM jin10_cache WHERE timestamp < ?")
     .run(beforeTimestamp);
   return result.changes;
 }
