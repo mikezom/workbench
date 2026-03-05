@@ -48,7 +48,7 @@ function ArxivPanel() {
   };
 
   return (
-    <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full">
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full min-h-0">
       {/* Panel Header */}
       <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-blue-500" />
@@ -83,7 +83,34 @@ function ArxivPanel() {
       </div>
 
       {/* Papers List */}
-      <div className="flex-1 p-3 space-y-3 overflow-y-auto">
+      <div className="flex-1 p-3 space-y-3 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-neutral-600 scrollbar-track-transparent hover:scrollbar-thumb-neutral-400 dark:hover:scrollbar-thumb-neutral-500">
+        <style>{`
+          .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+          }
+          .scrollbar-thin::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .scrollbar-thin::-webkit-scrollbar-thumb {
+            border-radius: 3px;
+            background-color: rgb(212 212 212);
+          }
+          .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+            background-color: rgb(82 82 82);
+          }
+          .scrollbar-thin:hover::-webkit-scrollbar-thumb {
+            background-color: rgb(163 163 163);
+          }
+          .dark .scrollbar-thin:hover::-webkit-scrollbar-thumb {
+            background-color: rgb(107 107 107);
+          }
+          .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background-color: rgb(120 120 120);
+          }
+          .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background-color: rgb(156 163 175);
+          }
+        `}</style>
         {papers.length === 0 && !loading && (
           <p className="text-xs text-neutral-300 dark:text-neutral-600 text-center py-4">
             Enter a search query and click Search
