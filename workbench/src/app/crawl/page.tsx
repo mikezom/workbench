@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -22,7 +22,7 @@ interface ArxivPaper {
 function ArxivPanel() {
   const [papers, setPapers] = useState<ArxivPaper[]>([]);
   const [loading, setLoading] = useState(false);
-  const [query, setQuery] = useState("cat:cs.AI");
+  const [query, setQuery] = useState("cat:cs.*");
 
   const fetchPapers = async () => {
     setLoading(true);
@@ -47,6 +47,11 @@ function ArxivPanel() {
     }
   };
 
+  // Auto-fetch on mount to show recent papers
+  useEffect(() => {
+    fetchPapers();
+  }, []);
+
   return (
     <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full min-h-0">
       {/* Panel Header */}
@@ -69,7 +74,7 @@ function ArxivPanel() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search query (e.g., cat:cs.AI)"
+            placeholder="Search query (default: all recent CS papers)"
             className="flex-1 px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
           />
           <button

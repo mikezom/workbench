@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const url = `${ARXIV_API_URL}?search_query=${encodeURIComponent(query)}&start=0&max_results=10`;
+    const url = `${ARXIV_API_URL}?search_query=${encodeURIComponent(query)}&start=0&max_results=10&sortBy=submittedDate&sortOrder=descending`;
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
