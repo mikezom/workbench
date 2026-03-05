@@ -105,10 +105,11 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 
 ### Phase 4: Crawl Section
 - [ ] Define hardcoded sources config (HN, ArXiv, Lobste.rs, nLab, Planet Haskell)
-- [ ] Build backend API for fetching and parsing web content
+- [x] arXiv API proxy route (`/api/crawl/arxiv`) with XML parsing
+- [x] Add arXiv cache database table (`arxiv_cache` in SQLite)
+- [ ] Build backend API for fetching and parsing web content (remaining sources)
 - [ ] Create source list UI showing available sources
 - [ ] Build reader-friendly content display
-- [ ] Add crawl result caching in `data/crawls.json`
 
 ### Phase 5: Agent Section
 Full spec: `docs/agent-section.md`
@@ -189,6 +190,13 @@ Full spec: `docs/agent-section.md`
 - [x] Replace DecomposeModal popup with inline decompose interactions in TaskDetailModal
 - [x] Fix answered-questions UI showing form instead of "waiting for agent" message
 
+
+#### 5k: Worktree Git Safety Fix
+- [x] Investigate task-49 failure (agent committed to main instead of task branch)
+- [x] Add branch verification to agent-commit skill (VERIFY BRANCH FIRST step)
+- [x] Change absolute paths to relative paths in agent-reflection-after-work skill
+- [x] Add "Git Safety in Worktrees" section to agent-working-claude.md
+
 ## Status
 
 | Phase | Status | Notes |
@@ -208,5 +216,5 @@ Full spec: `docs/agent-section.md`
 | 3h - Clipboard Section | Complete | Full UI with CRUD, infinite scroll, copy functionality, animated delete confirmation; `8ef0cc2` |
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
-| 4 - Crawl | Not started | |
+| 4 - Crawl | In progress | arXiv API proxy route added |
 | 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |

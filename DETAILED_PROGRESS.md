@@ -946,3 +946,58 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 - `~/.claude/skills/decompose-agent-breakdown-task/skill.md` — Changed `breakdown.json` path from hardcoded absolute to relative (CWD). Updated example prompts to use relative doc paths.
 - `~/.claude/skills/decompose-agent-understand-task/skill.md` — Changed documentation paths (PROGRESS.md, section docs) from hardcoded absolute to relative.
 - `~/.claude/skills/decompose-agent-reflection/skill.md` — Changed `reflection-complete.json`, `reflection-retry.json`, and `DECOMPOSE_REFLECTION.md` paths from hardcoded absolute to relative (CWD).
+
+---
+
+## 2026-03-05 — Phase 4: Crawl Section — arXiv API Proxy Route
+
+### Task: Create arXiv API proxy route
+
+- **Date**: 2026-03-05
+- **Commit**: `7ee89dc`
+- **Files changed**:
+  - `workbench/src/app/api/crawl/arxiv/route.ts` (new) — GET handler that proxies search requests to arXiv API, parses Atom XML, returns normalized ArxivPaper objects
+  - `workbench/src/app/api/crawl/arxiv/route.test.ts` (new) — 5 tests covering query validation, XML parsing, parameter forwarding, error handling, and ID extraction
+- **Summary**: First backend API route for the Crawl section. Proxies queries to `export.arxiv.org/api/query` with sorting by submission date, parses Atom XML response using regex-based extraction, strips whitespace from title/summary, and extracts paper IDs from arXiv URLs. Returns `{ papers: ArxivPaper[] }` on success or `{ papers: [], error: string }` on failure.
+
+---
+
+## 2026-03-05 — Phase 4: Crawl Section — arXiv Cache Database
+
+### Task: Create arXiv cache database table
+
+- **Date**: 2026-03-05
+- **Commit**: `5eceefe`
+- **Files changed**:
+  - `workbench/src/lib/crawl-db.ts` (new) — Database schema and CRUD operations for arxiv_cache table
+  - `workbench/src/lib/crawl-db.test.ts` (new) — 10 tests covering create, get, getAll, delete, and expiration functions
+  - `workbench/src/lib/db.ts` — Added initCrawlSchema() call to database initialization
+- **Summary**: Created arxiv_cache table in SQLite with fields for query (text), results (JSON blob), result_count (integer), timestamp (integer), and created_at. Added indexes on query and timestamp for efficient lookups and cache expiration. Implemented full CRUD operations including deleteExpiredArxivCache() for timestamp-based cache invalidation.
+
+---
+
+## 2026-03-05 — Agent Pipeline Bug Fix: Worktree Git Safety
+
+### Task: Investigate task-49 worktree failure
+
+**Problem:** Task 49 (create arxiv_cache database schema) failed with "Merge produced no changes — agent may have failed to modify any files" even though the implementation was complete and correct.
+
+**Root Cause Investigation:**
+- The agent successfully created files in the worktree
+- When the agent invoked `agent-commit` skill and ran `git status`, the output showed "On branch main" instead of the task branch
+- The Skill tool changes the working directory when loading skills, and the first git command after skill load ran in the main repo instead of the worktree
+- The commit was made directly to `main` instead of `task/create-arxiv-cache-database-schema`
+- When the executor tried to merge, there were no new commits on the task branch
+
+**Commit:** `2b2b7f6`
+
+**Changes:**
+- `~/.claude/skills/agent-commit/skill.md` — Added branch verification as first step, relative path instructions, and final branch check
+- `~/.claude/skills/agent-reflection-after-work/skill.md` — Changed absolute paths to relative paths, added branch verification at multiple points
+- `workbench/data/agent-working-claude.md` — Added "Git Safety in Worktrees" section with 4 safety rules: verify branch before commits, use relative paths for git ops, use relative paths for file edits, verify branch after loading skills
+
+**Fix Strategy:**
+1. Skills now require `git branch --show-current` verification before any commit operations
+2. Skills use relative paths instead of hardcoded absolute paths
+3. Agent instructions warn about Skill tool's directory-changing behavior
+

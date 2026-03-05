@@ -276,3 +276,24 @@ prevention strategies, and the relevant git commit IDs.
 - Auto-commit logic should have a blocklist of files that must never be committed (CLAUDE.md, decompose output JSONs)
 
 **Commit**: `2c70c8d`
+
+---
+
+## 2026-03-05 - [SERIOUS] Agent committed to main instead of task branch due to Skill tool cwd issue
+
+**Problem:** Task 49 (create arxiv_cache database schema) failed with "Merge produced no changes — agent may have failed to modify any files". Investigation revealed the agent had successfully created all implementation files in the worktree, but when it ran `git status` and `git commit`, these commands executed in the main repo instead of the worktree. The commit was made directly to `main`, leaving the task branch with no new commits.
+
+**Root Cause:** The Skill tool changes the working directory when loading skills (to the skill's base directory). The "Shell cwd was reset" message appears in stderr AFTER the command completes, meaning the first git command after skill load runs in the wrong directory. The `agent-commit` and `agent-reflection-after-work` skills used absolute paths like `/Users/ccnas/DEVELOPMENT/workbench/PROGRESS.md` which resolved to the main repo, not the worktree.
+
+**Solution:** Three fixes applied:
+1. **agent-commit skill**: Added "VERIFY BRANCH FIRST" as mandatory first step using `git branch --show-current`. Added Iron Law requiring branch verification. Changed to relative path instructions.
+2. **agent-reflection-after-work skill**: Changed all absolute paths to relative paths. Added branch verification at multiple points (before starting, before committing, after committing).
+3. **agent-working-claude.md**: Added new "⚠️ CRITICAL: Git Safety in Worktrees" section explaining the Skill tool cwd issue and listing 4 safety rules.
+
+**Prevention:**
+- Agent skills must NEVER use absolute paths — always use relative paths from the worktree root
+- Every skill that performs git commits must verify `git branch --show-current` returns a `task/*` branch before proceeding
+- Agent instructions should warn that the first command after skill load may run in a different directory
+- The "Shell cwd was reset" message indicates the command ran in the wrong directory — this is a symptom, not a fix
+
+**Commit:** `2b2b7f6`
