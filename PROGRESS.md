@@ -185,6 +185,9 @@ Full spec: `docs/agent-section.md`
 - [x] Move decompose agent from repo root to isolated worktrees (same lifecycle as workers)
 - [x] Remove dead code (cleanup_decompose_files, remove_claude_md, inject_decompose_claude_md)
 - [x] Delete unneeded DECOMPOSE_IMPLEMENTATION.md and DECOMPOSE_STATUS.md
+- [x] Fix decompose skill/CLAUDE.md paths from hardcoded absolute to worktree-relative
+- [x] Replace DecomposeModal popup with inline decompose interactions in TaskDetailModal
+- [x] Fix answered-questions UI showing form instead of "waiting for agent" message
 
 ## Status
 
@@ -206,4 +209,4 @@ Full spec: `docs/agent-section.md`
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | Not started | |
-| 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); pipeline fix `2c70c8d` |
+| 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |

@@ -929,3 +929,20 @@ no max-turns safety bound, and missing slugify fallback for empty titles.
 - `workbench/scripts/agent_executor.py` — Unified `inject_claude_md(path, agent_type)` replacing separate `inject_decompose_claude_md` / `remove_decompose_claude_md`. Moved all four decompose functions (`execute_decompose_task`, `resume_decompose_task`, `retry_decompose_breakdown`, `execute_decompose_reflection`) from running in `REPO_ROOT` to isolated worktrees with proper create/cleanup lifecycle. Removed dead code: `cleanup_decompose_files`, `remove_claude_md`.
 - `DECOMPOSE_IMPLEMENTATION.md` — Deleted (unneeded).
 - `DECOMPOSE_STATUS.md` — Deleted (unneeded).
+
+---
+
+## 2026-03-05 — Decompose Agent Path Fixes
+
+### Task 1: Fix decompose agent breakdown.json path and answered-questions UI
+
+**Commit:** `bfdbccb`
+
+**Problem:** Decompose agents were moved to worktrees in Phase 5j, but skill files and CLAUDE.md still had hardcoded absolute paths (e.g., `/Users/ccnas/DEVELOPMENT/workbench/breakdown.json`). The executor checks for output files relative to the worktree, so agents wrote them to the wrong location. Additionally, the UI showed answered clarification questions as a form instead of a "waiting for agent" message.
+
+**Changes:**
+- `workbench/data/agent-decompose-claude.md` — Changed project structure comment from hardcoded path to `<repo-root>/`, clarified `decompose-questions.json` should be written to CWD.
+- `workbench/src/app/agent/page.tsx` — Replaced DecomposeModal popup with inline decompose interactions in TaskDetailModal. Added ACTIVE_STATUSES for polling control. Added answered-questions check to show "waiting for agent" message instead of re-showing the form.
+- `~/.claude/skills/decompose-agent-breakdown-task/skill.md` — Changed `breakdown.json` path from hardcoded absolute to relative (CWD). Updated example prompts to use relative doc paths.
+- `~/.claude/skills/decompose-agent-understand-task/skill.md` — Changed documentation paths (PROGRESS.md, section docs) from hardcoded absolute to relative.
+- `~/.claude/skills/decompose-agent-reflection/skill.md` — Changed `reflection-complete.json`, `reflection-retry.json`, and `DECOMPOSE_REFLECTION.md` paths from hardcoded absolute to relative (CWD).
