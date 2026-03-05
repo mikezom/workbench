@@ -87,6 +87,31 @@ You are already on a task branch. Commit directly to this branch.
 - Do NOT switch branches
 - Commit format: `<type>: <description>` (feat, fix, refactor, test, docs, chore)
 
+## ⚠️ CRITICAL: Git Safety in Worktrees
+
+**You are executing in a git worktree.** The Skill tool may temporarily change the working directory when loading skills. This can cause git commands to run in the wrong repository.
+
+**ALWAYS follow these rules:**
+
+1. **Verify branch before ANY git commit operation:**
+   ```bash
+   git branch --show-current
+   ```
+   - Expected output: `task/<something>` (e.g., `task/add-login-feature`)
+   - If output is `main` or `master`: **STOP immediately** — you are in the wrong directory
+   - Do NOT proceed with `git add` or `git commit` until you verify you're on a task branch
+
+2. **Use RELATIVE paths for git operations:**
+   - ✅ Correct: `git add workbench/src/lib/db.ts`
+   - ❌ Wrong: `git add /Users/ccnas/DEVELOPMENT/workbench/workbench/src/lib/db.ts`
+
+3. **Use RELATIVE paths for file edits:**
+   - ✅ Correct: Read/Edit `PROGRESS.md`
+   - ❌ Wrong: Read/Edit `/Users/ccnas/DEVELOPMENT/workbench/PROGRESS.md`
+
+4. **After loading a skill, verify your branch:**
+   The first git command after a skill loads may run in the wrong directory. Always run `git branch --show-current` first.
+
 ## Known Pitfalls
 
 1. **Python module filenames**: Files that need to be imported must use underscores, not hyphens (e.g., `agent_executor.py`, not `agent-executor.py`).
@@ -103,6 +128,7 @@ You are already on a task branch. Commit directly to this branch.
 - Do not refactor code unrelated to your task
 - Do not add comments, docstrings, or type annotations to code you didn't change
 - **Do not ask questions in your output text** — use questions.json (see above)
+- **Do not use absolute paths** — always use relative paths from the worktree root
 
 ---
 
