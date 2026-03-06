@@ -81,10 +81,11 @@ export async function fetchSolidotRSS(): Promise<SolidotNewsItem[]> {
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       console.error("SOLIDOT RSS fetch timeout");
+      throw new Error("RSS fetch timeout");
     } else {
       console.error("Error fetching SOLIDOT RSS:", error);
+      throw error; // Re-throw to allow API route to handle
     }
-    return [];
   }
 }
 

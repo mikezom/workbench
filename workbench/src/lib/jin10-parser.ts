@@ -2,10 +2,9 @@ import { Jin10NewsItem } from "./crawl-db";
 
 /**
  * Parse HTML from jin10.com homepage and extract news items
- * @param html Raw HTML string from jin10.com
  * @returns Array of news items (max 20)
  */
-export function parseJin10Html(html: string): Jin10NewsItem[] {
+export function parseJin10Html(): Jin10NewsItem[] {
   try {
     // NOTE: Jin10.com is a JavaScript-rendered SPA. The initial HTML only contains
     // a skeleton (<div id="app">) and the actual news content is loaded dynamically.
@@ -67,11 +66,4 @@ export function parseJin10Html(html: string): Jin10NewsItem[] {
     console.error("Error in Jin10 parser:", error);
     return [];
   }
-}
-
-/**
- * Strip HTML tags from a string
- */
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
 }
