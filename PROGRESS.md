@@ -263,3 +263,4 @@ Full spec: `docs/agent-section.md`
 | 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |
 | 6 - Crawl | In progress | ArxivPanel + Jin10Panel + SolidotPanel functional; commit `0c2f1be` |
 | 7 - Home Image Migration | Complete | Images moved to data/images/ with API serving; commit `613eca1` |
+| 7h - Home Expand Modal | Complete | ImageModal with expand button, three close methods, responsive layout; commits `dec2e94`-`6426b09` |
