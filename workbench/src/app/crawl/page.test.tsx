@@ -26,7 +26,7 @@ describe("CrawlPage", () => {
     // Verify panel titles exist in the code
     expect(pageContent).toContain("arXiv");
     expect(pageContent).toContain("JIN10 NEWS");
-    expect(pageContent).toContain("Lobsters");
+    expect(pageContent).toContain("SOLIDOT");
     expect(pageContent).toContain("nLab");
     expect(pageContent).toContain("Planet Haskell");
     expect(pageContent).toContain("Reddit");
