@@ -34,24 +34,30 @@ export async function fetchSolidotRSS(): Promise<SolidotNewsItem[]> {
     const xmlDoc = parser.parseFromString(xmlText, "text/xml");
 
     // Check for parse errors
-    const parseError = xmlDoc.querySelector("parsererror");
-    if (parseError) {
-      console.error("XML parse error:", parseError.textContent);
+    const parseErrors = xmlDoc.getElementsByTagName("parsererror");
+    if (parseErrors.length > 0) {
+      console.error("XML parse error:", parseErrors[0].textContent);
       return [];
     }
 
     // Extract items
-    const items = xmlDoc.querySelectorAll("item");
+    const items = xmlDoc.getElementsByTagName("item");
     const newsItems: SolidotNewsItem[] = [];
 
-    items.forEach((item, index) => {
-      if (index >= 20) return; // Limit to 20 items
+    for (let i = 0; i < Math.min(items.length, 20); i++) {
+      const item = items[i];
 
-      const title = item.querySelector("title")?.textContent?.trim();
-      const link = item.querySelector("link")?.textContent?.trim();
-      const pubDate = item.querySelector("pubDate")?.textContent?.trim();
-      const description = item.querySelector("description")?.textContent?.trim();
-      const guid = item.querySelector("guid")?.textContent?.trim();
+      const titleEl = item.getElementsByTagName("title")[0];
+      const linkEl = item.getElementsByTagName("link")[0];
+      const pubDateEl = item.getElementsByTagName("pubDate")[0];
+      const descriptionEl = item.getElementsByTagName("description")[0];
+      const guidEl = item.getElementsByTagName("guid")[0];
+
+      const title = titleEl?.textContent?.trim();
+      const link = linkEl?.textContent?.trim();
+      const pubDate = pubDateEl?.textContent?.trim();
+      const description = descriptionEl?.textContent?.trim();
+      const guid = guidEl?.textContent?.trim();
 
       if (title && link) {
         // Generate ID from link or guid
@@ -68,7 +74,7 @@ export async function fetchSolidotRSS(): Promise<SolidotNewsItem[]> {
           summary: description || undefined,
         });
       }
-    });
+    }
 
     console.log(`Parsed ${newsItems.length} items from SOLIDOT RSS`);
     return newsItems;
