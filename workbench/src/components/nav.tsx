@@ -34,20 +34,21 @@ export default function Nav() {
         Workbench
       </div>
       <div className="flex flex-col gap-1 flex-1 portrait:flex-row portrait:justify-around portrait:gap-0 portrait:flex-none">
-        {sections.map(({ href, label }) => {
+        {sections.map(({ href, label, icon }) => {
           const active =
             href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
-              className={`block px-2 py-1.5 rounded text-sm transition-colors ${
+              className={`block px-2 py-1.5 rounded text-sm transition-colors portrait:flex portrait:flex-col portrait:items-center portrait:gap-1 portrait:py-2 portrait:px-1 portrait:rounded-none ${
                 active
-                  ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 font-medium"
-                  : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50"
+                  ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 font-medium portrait:bg-transparent portrait:border-b-2 portrait:border-blue-500"
+                  : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 portrait:hover:bg-neutral-100/50"
               }`}
             >
-              {label}
+              <span className="portrait:text-xl">{icon}</span>
+              <span className="portrait:text-xs">{label}</span>
             </Link>
           );
         })}
