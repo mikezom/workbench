@@ -232,6 +232,13 @@ Full spec: `docs/agent-section.md`
 - [x] Create home-section.md documentation
 - [x] Fix test isolation and dark mode test expectations
 
+### Phase 7h: Home Expand Modal
+- [x] Create ImageModal component with conditional layout
+- [x] Add expand button to post cards (visible on hover)
+- [x] Implement three close methods (X button, ESC, background click)
+- [x] Add responsive behavior (vertical stack on mobile)
+- [x] Test all interactions and edge cases
+
 ## Status
 
 | Phase | Status | Notes |

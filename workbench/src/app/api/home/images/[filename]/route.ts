@@ -62,14 +62,14 @@ export async function GET(
         "Cache-Control": CACHE_DURATION,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Handle file not found
-    if (error.code === "ENOENT") {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return NextResponse.json({ error: "Image not found" }, { status: 404 });
     }
 
     // Handle permission errors
-    if (error.code === "EACCES") {
+    if ((error as NodeJS.ErrnoException).code === "EACCES") {
       return NextResponse.json(
         { error: "Permission denied" },
         { status: 403 }

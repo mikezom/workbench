@@ -21,11 +21,9 @@ describe("GET /api/home/images/[filename]", { concurrent: false }, () => {
       const files = await fs.readdir(IMAGES_DIR);
       for (const file of files) {
         if (file.startsWith("test-")) {
-          try {
-            await fs.unlink(path.join(IMAGES_DIR, file));
-          } catch (error) {
+          await fs.unlink(path.join(IMAGES_DIR, file)).catch(() => {
             // Ignore errors if file doesn't exist
-          }
+          });
         }
       }
     }
