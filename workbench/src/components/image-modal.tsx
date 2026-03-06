@@ -7,9 +7,11 @@ interface ImageModalProps {
   isOpen: boolean;
   post: HomePost | null;
   onClose: () => void;
+  onEdit: (post: HomePost) => void;
+  onDelete: (id: string) => void;
 }
 
-export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
+export default function ImageModal({ isOpen, post, onClose, onEdit, onDelete }: ImageModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // ESC key handler, focus management, and body scroll lock
@@ -45,13 +47,38 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Post detail modal"
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
-      onClick={handleBackdropClick}
-    >
+    <>
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 3px;
+        }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(0, 0, 0, 0.3);
+        }
+        .dark .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.3);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(0, 0, 0, 0.5);
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.5);
+        }
+      `}</style>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Post detail modal"
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+        onClick={handleBackdropClick}
+      >
       <div className="relative bg-white dark:bg-neutral-800 rounded-lg shadow-2xl overflow-hidden w-[80vw] h-[80vh] max-md:w-[95vw] max-md:h-[90vh]">
         {/* Close button */}
         <button
@@ -68,7 +95,7 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
           // Side-by-side layout for posts with images
           <div className="flex flex-col md:flex-row h-full">
             {/* Image area - 70% on desktop */}
-            <div className="w-full md:w-[70%] overflow-y-auto p-6 flex items-start justify-center scroll-smooth">
+            <div className="w-full md:w-[70%] overflow-y-auto flex items-center justify-center scroll-smooth custom-scrollbar">
               <img
                 src={post.image_url}
                 alt={post.content.substring(0, 100)}
@@ -77,23 +104,68 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
             </div>
 
             {/* Text area - 30% on desktop */}
-            <div className="w-full md:w-[30%] overflow-y-auto p-6 scroll-smooth">
+            <div className="w-full md:w-[30%] overflow-y-auto p-6 scroll-smooth relative">
               <p className="text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap">
                 {post.content}
               </p>
+
+              {/* Floating action buttons */}
+              <div className="absolute bottom-4 right-4 flex gap-2">
+                <button
+                  onClick={() => {
+                    onEdit(post);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md transition-all"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    onDelete(post.id);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md transition-all"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         ) : (
           // Centered text-only layout for posts without images
           <div className="flex items-center justify-center h-full p-6">
-            <div className="max-w-[600px] overflow-y-auto scroll-smooth">
+            <div className="max-w-[600px] overflow-y-auto scroll-smooth relative">
               <p className="text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap">
                 {post.content}
               </p>
+
+              {/* Floating action buttons */}
+              <div className="absolute bottom-4 right-4 flex gap-2">
+                <button
+                  onClick={() => {
+                    onEdit(post);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md transition-all"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    onDelete(post.id);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md transition-all"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
     </div>
+    </>
   );
 }

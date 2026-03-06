@@ -108,9 +108,23 @@ export default function Home() {
     <PageContainer title="Home">
       <button
         onClick={openCreateModal}
-        className="mb-6 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        className="fixed bottom-4 right-4 portrait:bottom-20 w-14 h-14 bg-blue-600 text-white rounded-full hover:bg-blue-700 shadow-lg flex items-center justify-center z-50 transition-all hover:scale-110"
+        aria-label="New Post"
       >
-        New Post
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 4v16m8-8H4"
+          />
+        </svg>
       </button>
 
       <div className="masonry-grid">
@@ -150,20 +164,6 @@ export default function Home() {
             <p className="text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap mb-3">
               {post.content}
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => openEditModal(post)}
-                className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => handleDelete(post.id)}
-                className="text-sm text-red-600 hover:text-red-800 dark:text-red-400"
-              >
-                Delete
-              </button>
-            </div>
           </div>
         ))}
       </div>
@@ -236,6 +236,8 @@ export default function Home() {
         isOpen={expandedPost !== null}
         post={expandedPost}
         onClose={() => setExpandedPost(null)}
+        onEdit={openEditModal}
+        onDelete={handleDelete}
       />
 
       <style jsx>{`
