@@ -30,7 +30,7 @@ export default function Nav() {
 
   return (
     <nav className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 min-h-screen p-4 flex flex-col portrait:w-full portrait:h-auto portrait:min-h-0 portrait:fixed portrait:bottom-0 portrait:left-0 portrait:right-0 portrait:flex-row portrait:border-r-0 portrait:border-t portrait:py-2 portrait:px-0 portrait:z-50">
-      <div className="text-sm font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-3 px-2">
+      <div className="text-sm font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-3 px-2 portrait:hidden">
         Workbench
       </div>
       <div className="flex flex-col gap-1 flex-1">
