@@ -8,21 +8,27 @@ const UPLOADS_DIR = path.join(process.cwd(), "data", "images");
 
 describe("POST /api/home/upload", () => {
   beforeEach(() => {
-    // Clean up uploads directory before each test
+    // Clean up only upload test files before each test
     if (fs.existsSync(UPLOADS_DIR)) {
       const files = fs.readdirSync(UPLOADS_DIR);
       files.forEach((file) => {
-        fs.unlinkSync(path.join(UPLOADS_DIR, file));
+        // Only delete files that don't start with "test-" (which are from other tests)
+        if (!file.startsWith("test-")) {
+          fs.unlinkSync(path.join(UPLOADS_DIR, file));
+        }
       });
     }
   });
 
   afterEach(() => {
-    // Clean up uploads directory after each test
+    // Clean up only upload test files after each test
     if (fs.existsSync(UPLOADS_DIR)) {
       const files = fs.readdirSync(UPLOADS_DIR);
       files.forEach((file) => {
-        fs.unlinkSync(path.join(UPLOADS_DIR, file));
+        // Only delete files that don't start with "test-" (which are from other tests)
+        if (!file.startsWith("test-")) {
+          fs.unlinkSync(path.join(UPLOADS_DIR, file));
+        }
       });
     }
   });

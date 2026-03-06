@@ -1,37 +1,42 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { GET } from "./route";
 import { NextRequest } from "next/server";
-import fs from "fs";
+import fs from "fs/promises";
+import fsSync from "fs";
 import path from "path";
 
 const IMAGES_DIR = path.join(process.cwd(), "data", "images");
 
-describe("GET /api/home/images/[filename]", () => {
-  beforeEach(() => {
+describe("GET /api/home/images/[filename]", { concurrent: false }, () => {
+  beforeEach(async () => {
     // Ensure images directory exists
-    if (!fs.existsSync(IMAGES_DIR)) {
-      fs.mkdirSync(IMAGES_DIR, { recursive: true });
+    if (!fsSync.existsSync(IMAGES_DIR)) {
+      await fs.mkdir(IMAGES_DIR, { recursive: true });
     }
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     // Clean up test images
-    if (fs.existsSync(IMAGES_DIR)) {
-      const files = fs.readdirSync(IMAGES_DIR);
-      files.forEach((file) => {
+    if (fsSync.existsSync(IMAGES_DIR)) {
+      const files = await fs.readdir(IMAGES_DIR);
+      for (const file of files) {
         if (file.startsWith("test-")) {
-          fs.unlinkSync(path.join(IMAGES_DIR, file));
+          try {
+            await fs.unlink(path.join(IMAGES_DIR, file));
+          } catch (error) {
+            // Ignore errors if file doesn't exist
+          }
         }
-      });
+      }
     }
   });
 
   it("returns image with correct content-type for JPEG", async () => {
-    // Create a test JPEG file
-    const testFilename = "test-image.jpg";
+    // Create a test JPEG file with unique name
+    const testFilename = "test-jpeg-only.jpg";
     const testImagePath = path.join(IMAGES_DIR, testFilename);
     const imageBuffer = Buffer.from("fake-jpeg-data");
-    fs.writeFileSync(testImagePath, imageBuffer);
+    await fs.writeFile(testImagePath, imageBuffer);
 
     const request = new NextRequest(
       `http://localhost:3000/api/home/images/${testFilename}`
@@ -64,11 +69,11 @@ describe("GET /api/home/images/[filename]", () => {
   });
 
   it("returns correct content-type for PNG", async () => {
-    // Create a test PNG file
-    const testFilename = "test-image.png";
+    // Create a test PNG file with unique name
+    const testFilename = "test-png-only.png";
     const testImagePath = path.join(IMAGES_DIR, testFilename);
     const imageBuffer = Buffer.from("fake-png-data");
-    fs.writeFileSync(testImagePath, imageBuffer);
+    await fs.writeFile(testImagePath, imageBuffer);
 
     const request = new NextRequest(
       `http://localhost:3000/api/home/images/${testFilename}`
@@ -107,10 +112,10 @@ describe("GET /api/home/images/[filename]", () => {
     ];
 
     for (const format of formats) {
-      const testFilename = `test-image.${format.ext}`;
+      const testFilename = `test-format-${format.ext}.${format.ext}`;
       const testImagePath = path.join(IMAGES_DIR, testFilename);
       const imageBuffer = Buffer.from(`fake-${format.ext}-data`);
-      fs.writeFileSync(testImagePath, imageBuffer);
+      await fs.writeFile(testImagePath, imageBuffer);
 
       const request = new NextRequest(
         `http://localhost:3000/api/home/images/${testFilename}`
@@ -130,7 +135,7 @@ describe("GET /api/home/images/[filename]", () => {
     const testImagePath = path.join(IMAGES_DIR, testFilename);
     // Create a file larger than 10MB (10 * 1024 * 1024 bytes)
     const largeBuffer = Buffer.alloc(11 * 1024 * 1024);
-    fs.writeFileSync(testImagePath, largeBuffer);
+    await fs.writeFile(testImagePath, largeBuffer);
 
     const request = new NextRequest(
       `http://localhost:3000/api/home/images/${testFilename}`

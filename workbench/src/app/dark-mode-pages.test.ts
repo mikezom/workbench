@@ -52,7 +52,7 @@ describe("Dark mode support in section pages", () => {
 
     // Study page has a complex layout with sidebars and main panel
     // The main container should have dark mode background
-    expect(content).toMatch(/bg-white.*dark:bg-gray-900/);
+    expect(content).toMatch(/bg-white.*dark:bg-neutral-900/);
   });
 
   it("agent page should have dark mode variants for main container", () => {
@@ -61,7 +61,7 @@ describe("Dark mode support in section pages", () => {
 
     // Agent page has task board and modals
     // The main container should have dark mode background
-    expect(content).toMatch(/bg-white.*dark:bg-gray-900/);
+    expect(content).toMatch(/bg-white.*dark:bg-neutral-900/);
   });
 
   it("home page should maintain its existing dark mode support", () => {
