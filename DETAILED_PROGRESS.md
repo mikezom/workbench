@@ -1271,3 +1271,85 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 - Production database at `data/workbench.db` verified intact (4.1M, not modified during tests)
 - Full test suite: 95/97 passing (2 pre-existing CSS failures unrelated to database work)
 
+
+---
+
+## 2026-03-06 — SOLIDOT News Panel Implementation
+
+### Task 1: Database schema and functions
+
+**Commits:** `9e37438`, `ae68709`
+
+**Problem:** Need database infrastructure to cache SOLIDOT RSS news items with 60-minute TTL (longer than Jin10's 5 minutes due to slower update frequency).
+
+**Changes:**
+- `workbench/src/lib/crawl-db.ts` — Added solidot_cache table schema to initCrawlSchema() with indexes on query and timestamp. Added SolidotNewsItem, DbSolidotCache, and SolidotCacheJson interfaces. Added createSolidotCache(), getSolidotCache(), getSolidotCacheById(), and deleteExpiredSolidotCache() functions. Fixed unsafe non-null assertion in createSolidotCache() to throw descriptive error if SELECT fails after INSERT.
+
+---
+
+### Task 2: RSS parser
+
+**Commit:** `6ca6f31`
+
+**Problem:** Need RSS parser to fetch and parse SOLIDOT's RSS feed (static XML, no JavaScript rendering required unlike Jin10).
+
+**Changes:**
+- `workbench/src/lib/solidot-parser.ts` — Created fetchSolidotRSS() function with 10-second timeout using AbortController, XML parsing using @xmldom/xmldom DOMParser, extraction of title/link/pubDate/description/guid from RSS items, formatRSSDate() helper to convert RFC 822 dates to "YYYY-MM-DD HH:MM" format, limit to 20 items, and graceful error handling.
+- `workbench/package.json` — Added @xmldom/xmldom dependency (maintained fork of deprecated xmldom package).
+
+---
+
+### Task 3: API route with caching
+
+**Commits:** `b011b2d`, `d4abddb`
+
+**Problem:** Need API endpoint to fetch SOLIDOT news with cache-first strategy, 60-minute TTL, and stale cache fallback. Initial implementation had parser swallowing errors which broke stale fallback.
+
+**Changes:**
+- `workbench/src/app/api/crawl/solidot/route.ts` — Created GET handler with 60-minute cache TTL, cache checking with X-Cached and X-Cache-Age headers, RSS fetch integration, cache storage with error handling, and stale cache fallback (206 status) on fetch failures.
+- `workbench/src/lib/solidot-parser.ts` — Fixed error handling to throw errors for network/fetch failures instead of returning empty array, enabling API route's stale cache fallback to work correctly. AbortError now throws "RSS fetch timeout" error, all other errors are re-thrown.
+- `workbench/src/lib/jin10-parser.ts` — Fixed linting errors (removed unused html parameter and stripHtml function).
+
+---
+
+### Task 4: UI component
+
+**Commit:** `b8fd8fd`
+
+**Problem:** Replace LobstersPanel stub with functional SolidotPanel showing real news with auto-fetch, manual refresh, and dark teal color scheme.
+
+**Changes:**
+- `workbench/src/app/crawl/page.tsx` — Added SolidotNewsItem interface. Replaced LobstersPanel function with SolidotPanel component featuring auto-fetch on mount using useEffect, manual refresh button, dark teal color (RGB 0,77,77) for indicator dot and links, news list displaying title/summary/timestamp/link, loading states, error handling with alerts, custom scrollbar styling, and full dark mode support. Updated main grid to use <SolidotPanel /> instead of <LobstersPanel />.
+
+---
+
+### Task 5: Update tests
+
+**Commit:** `16bf5b8`
+
+**Problem:** Tests still checking for "Lobsters" panel instead of "SOLIDOT".
+
+**Changes:**
+- `workbench/src/app/crawl/page.test.tsx` — Updated panel title test to check for "SOLIDOT" instead of "Lobsters". Component name regex already matches SolidotPanel correctly.
+
+---
+
+### Task 6: Update documentation
+
+**Commit:** `0c2f1be`
+
+**Problem:** Documentation needs to reflect SOLIDOT panel replacing Lobsters panel.
+
+**Changes:**
+- `docs/crawl-section.md` — Updated Content Sources table to replace Lobsters row with SolidotPanel (Dark Teal RGB 0,77,77, Functional with RSS + caching). Added SOLIDOT Panel section with features (auto-fetch, manual refresh, 60-minute cache, full display, RSS-optimized), architecture (parser, API route, database, UI component), cache strategy (60-minute TTL, stale fallback, "latest" query key), and error handling (10-second timeout, 206 stale fallback, 500 error, empty array on parse failure). Updated Key Files table to include solidot-parser.ts and solidot API route.
+
+---
+
+### Task 7: Update PROGRESS.md
+
+**Commit:** `aa9c526`
+
+**Problem:** PROGRESS.md needs to reflect SOLIDOT panel completion.
+
+**Changes:**
+- `PROGRESS.md` — Added "SOLIDOT panel implementation (database, parser, API, UI)" to Phase 6 checklist as completed. Updated Phase 6 status in Status table to show ArxivPanel + Jin10Panel + SolidotPanel as functional with commit hash.

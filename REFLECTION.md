@@ -312,3 +312,43 @@ prevention strategies, and the relevant git commit IDs.
 
 **Commit**: `99cf7f9`
 
+
+## 2026-03-06 - Unsafe non-null assertion in cache creation function
+
+**Problem**: Used non-null assertion operator (`!`) in `createSolidotCache()` when returning the result of `getSolidotCacheById(id)!`. If the INSERT succeeds but the subsequent SELECT fails (database corruption, race condition, or other edge case), this would throw an uncaught error instead of a descriptive one.
+
+**Root Cause**: Followed the existing pattern from ArxivCache and Jin10Cache implementations without questioning the safety of the non-null assertion. Code review caught this issue before it could cause problems.
+
+**Solution**: Replaced `return getSolidotCacheById(id)!;` with explicit error handling:
+```typescript
+const result = getSolidotCacheById(id);
+if (!result) {
+  throw new Error(`Failed to retrieve newly created cache entry ${id}`);
+}
+return result;
+```
+
+**Prevention**: 
+- Never use non-null assertion operator (`!`) when the value could legitimately be undefined in edge cases
+- Always handle undefined cases explicitly with descriptive error messages
+- Code review should flag all uses of `!` operator for scrutiny
+- Consider fixing the same issue in ArxivCache and Jin10Cache implementations for consistency
+
+**Commit**: `ae68709`
+
+## 2026-03-06 - Parser swallowing errors broke stale cache fallback
+
+**Problem**: The SOLIDOT RSS parser caught all errors and returned empty array `[]`. This made it impossible for the API route to distinguish between "no news items" and "fetch failed". The API route's stale cache fallback logic (which relies on catching errors from `fetchSolidotRSS()`) never executed, so stale cache was never served on fetch failures.
+
+**Root Cause**: Implemented overly defensive error handling in the parser without considering how the API route would use it. The parser was designed to "never fail" by returning empty arrays, but this broke the higher-level error handling strategy.
+
+**Solution**: Changed the parser to throw errors for network/fetch failures (timeout, HTTP errors) but still return empty array for parse failures. This allows the API route's try-catch block to properly handle fetch failures and serve stale cache with 206 status.
+
+**Prevention**:
+- When designing error handling, consider the full call stack and how errors will be handled at each level
+- Network/fetch failures should propagate up to allow retry/fallback logic
+- Parse failures can be handled locally with empty results
+- Document error handling strategy in comments: "Throws on network errors, returns [] on parse errors"
+- Test error scenarios during implementation, not just happy path
+
+**Commit**: `d4abddb`
