@@ -223,6 +223,15 @@ Full spec: `docs/agent-section.md`
 - [ ] Planet Haskell panel implementation
 - [ ] Reddit panel implementation
 
+### Phase 7: Home Section Image Storage Migration
+- [x] Create image serving API route at /api/home/images/[filename]
+- [x] Add security validations (path traversal, file size, magic bytes)
+- [x] Update upload route to save to data/images/ instead of public/uploads/
+- [x] Update .gitignore to exclude data/images/
+- [x] Remove old public/uploads/ directory
+- [x] Create home-section.md documentation
+- [x] Fix test isolation and dark mode test expectations
+
 ## Status
 
 | Phase | Status | Notes |
@@ -246,3 +255,4 @@ Full spec: `docs/agent-section.md`
 | 4 - Crawl | In progress | ArxivPanel functional with API + caching; scrollbar fix `29ef2b9` |
 | 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |
 | 6 - Crawl | In progress | ArxivPanel + Jin10Panel + SolidotPanel functional; commit `0c2f1be` |
+| 7 - Home Image Migration | Complete | Images moved to data/images/ with API serving; commit `613eca1` |

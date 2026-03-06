@@ -1353,3 +1353,75 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 
 **Changes:**
 - `PROGRESS.md` — Added "SOLIDOT panel implementation (database, parser, API, UI)" to Phase 6 checklist as completed. Updated Phase 6 status in Status table to show ArxivPanel + Jin10Panel + SolidotPanel as functional with commit hash.
+
+---
+
+## 2026-03-06 — Home Images Migration to Data Folder
+
+### Task 1: Create image serving API route
+
+**Commit:** `ffac3c1`, `4d9c520`
+
+**Problem:** Images stored in public/uploads/ get deleted during development builds. Need API route to serve images from persistent data/images/ directory with proper security and caching.
+
+**Changes:**
+- `workbench/src/app/api/home/images/[filename]/route.ts` — Created GET handler to serve images from data/images/ with path traversal protection, file size validation (10MB limit), async file operations, proper MIME type detection for jpg/jpeg/png/gif/webp, cache headers (1 year immutable), and comprehensive error handling (404/403/413/500).
+- `workbench/src/app/api/home/images/[filename]/route.test.ts` — Added 6 tests covering JPEG/PNG serving, 404 handling, path traversal blocking, file size limits, and all supported formats.
+
+---
+
+### Task 2: Update upload route to use data folder
+
+**Commit:** `cde3f1e`, `2b76537`
+
+**Problem:** Upload route saves images to public/uploads/ which get deleted. Need to save to data/images/ and return API URLs instead of static file URLs.
+
+**Changes:**
+- `workbench/src/app/api/home/upload/route.ts` — Changed UPLOADS_DIR from public/uploads to data/images. Updated return URL format from /uploads/${filename} to /api/home/images/${filename}. Added file size validation (10MB max), magic bytes validation for MIME type spoofing prevention, async file operations with fs.promises, and comprehensive error logging.
+- `workbench/src/app/api/home/upload/route.test.ts` — Updated test UPLOADS_DIR to data/images. Changed URL pattern expectation to /api/home/images/ format. Added 4 security tests for file size limits, magic byte validation, and extension validation.
+
+---
+
+### Task 3: Update .gitignore
+
+**Commit:** `6365b70`
+
+**Problem:** Uploaded images in data/images/ should not be tracked in git.
+
+**Changes:**
+- `.gitignore` — Added data/images/ entry with comment "Home section uploaded images".
+
+---
+
+### Task 4: Clean up old directory
+
+**Commit:** None (file deletion only)
+
+**Problem:** Old public/uploads/ directory no longer needed after migration to data/images/.
+
+**Changes:**
+- Removed `workbench/public/uploads/` directory and its 7 old image files.
+
+---
+
+### Task 5: Create documentation
+
+**Commit:** `068c279`
+
+**Problem:** Home section architecture and image storage flow needs documentation.
+
+**Changes:**
+- `workbench/docs/home-section.md` — Created comprehensive documentation covering overview, architecture (data storage with SQLite schema, API routes, frontend layout), image storage flows (upload and serving), database module functions, and testing information.
+
+---
+
+### Task 6: Fix test isolation and dark mode tests
+
+**Commit:** `613eca1`
+
+**Problem:** Test suite had failures due to incorrect dark mode color expectations and race condition in upload test cleanup interfering with image serving tests.
+
+**Changes:**
+- `workbench/src/app/dark-mode-pages.test.ts` — Changed dark mode background color expectations from dark:bg-gray-900 to dark:bg-neutral-900 to match actual implementation.
+- `workbench/src/app/api/home/upload/route.test.ts` — Fixed cleanup to only remove non-test files (files not starting with "test-") to prevent race condition with parallel image route tests.
+- `workbench/src/app/api/home/images/[filename]/route.test.ts` — Updated to use async fs operations matching route implementation.
