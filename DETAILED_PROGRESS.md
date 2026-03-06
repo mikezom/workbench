@@ -1425,3 +1425,74 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 - `workbench/src/app/dark-mode-pages.test.ts` — Changed dark mode background color expectations from dark:bg-gray-900 to dark:bg-neutral-900 to match actual implementation.
 - `workbench/src/app/api/home/upload/route.test.ts` — Fixed cleanup to only remove non-test files (files not starting with "test-") to prevent race condition with parallel image route tests.
 - `workbench/src/app/api/home/images/[filename]/route.test.ts` — Updated to use async fs operations matching route implementation.
+
+---
+
+## 2026-03-06 — Home Expand Modal Feature
+
+### Task 1: Design and planning
+
+**Commit:** `722cafe`, `684437d`
+
+**Problem:** Need to design expand button and modal feature for home posts to view HD images and full text content.
+
+**Changes:**
+- `docs/plans/2026-03-06-home-expand-modal-design.md` — Created design document specifying expand button on hover, modal with conditional layout (70/30 split for images, centered for text-only), three close methods, responsive behavior, and accessibility requirements.
+- `docs/plans/2026-03-06-home-expand-modal.md` — Created implementation plan with 4 tasks: create ImageModal component, add expand button to home page, improve modal styling, run build/tests/update docs.
+
+---
+
+### Task 2: ImageModal component
+
+**Commit:** `dec2e94`, `d6a7814`
+
+**Problem:** Need reusable modal component with conditional layout for posts with/without images, multiple close methods, and full accessibility support.
+
+**Changes:**
+- `workbench/src/components/image-modal.tsx` — Created ImageModal component with ESC key handler, background click handler, X close button, conditional rendering (side-by-side 70/30 for images, centered for text-only), responsive breakpoints, ARIA attributes (role="dialog", aria-modal, aria-label), focus management using useRef, body scroll lock, and dark mode support.
+
+---
+
+### Task 3: Home page integration
+
+**Commit:** `24b7033`, `79e5b16`
+
+**Problem:** Need to add expand button to post cards and integrate ImageModal component with home page state management.
+
+**Changes:**
+- `workbench/src/app/page.tsx` — Added ImageModal import, expandedPost state, added "relative group" classes to post card div, added expand button with hover visibility (opacity-0 to group-hover:opacity-100), expand icon SVG, onClick handler to set expandedPost, and ImageModal component with isOpen/post/onClose props.
+- `workbench/src/types/home.ts` — Created shared HomePost interface (id, content, image_url, created_at) to eliminate type duplication between page.tsx and image-modal.tsx.
+
+---
+
+### Task 4: Styling improvements
+
+**Commit:** `6426b09`
+
+**Problem:** Modal needed cleaner visual separation and smoother scrolling behavior.
+
+**Changes:**
+- `workbench/src/components/image-modal.tsx` — Removed border classes (border-t, border-l, border-neutral-*) from text area div. Added scroll-smooth class to all three scrollable areas (image area, text area, centered text-only layout).
+
+---
+
+### Task 5: Documentation
+
+**Commit:** `4902e78`, `6aae041`
+
+**Problem:** Need to document completed work in project progress tracking files.
+
+**Changes:**
+- `PROGRESS.md` — Added Phase 7h section with 5 completed tasks (ImageModal component, expand button, three close methods, responsive behavior, testing). Added Phase 7h entry to status table with commit range dec2e94-6426b09.
+
+---
+
+### Task 6: ESLint fixes
+
+**Commit:** `79e5b16` (included in refactor commit)
+
+**Problem:** Build failed with ESLint errors for type safety violations in image route handlers.
+
+**Changes:**
+- `workbench/src/app/api/home/images/[filename]/route.ts` — Changed error catch parameter from `any` to `unknown`, added type guard to check if error is Error instance before accessing message property.
+- `workbench/src/app/api/home/images/[filename]/route.test.ts` — Removed unused error variable from catch block in test.

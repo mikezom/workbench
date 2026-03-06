@@ -352,3 +352,15 @@ return result;
 - Test error scenarios during implementation, not just happy path
 
 **Commit**: `d4abddb`
+
+## 2026-03-06 - ESLint build failure due to unsafe type usage in error handlers
+
+**Problem**: Build failed with ESLint errors when running `npm run build` during Task 4 verification. Two violations: (1) error catch parameter typed as `any` in route.ts, (2) unused error variable in route.test.ts catch block.
+
+**Root Cause**: Image route handlers used `any` type for error catch parameters without type guards, violating TypeScript strict mode. Test file had unused error variable in catch block. These violations were present in existing code but only caught when build was run during the expand modal feature verification.
+
+**Solution**: Changed error catch parameter from `any` to `unknown` in route.ts, added type guard `if (error instanceof Error)` before accessing error.message. Removed unused error variable from test catch block.
+
+**Prevention**: When writing error handlers, always use `unknown` type for catch parameters and add type guards before accessing error properties. Run `npm run build` (not just `npm test`) before claiming implementation is complete to catch ESLint violations early.
+
+**Commit**: `79e5b16`
