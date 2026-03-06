@@ -27,9 +27,6 @@ __MACOSX/
 # uploads directory
 workbench/public/uploads
 
-# Home section uploaded images
-data/images/
-
 # forest.zip (binary)
 forest.zip
 

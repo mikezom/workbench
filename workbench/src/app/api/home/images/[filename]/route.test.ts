@@ -5,7 +5,7 @@ import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
 
-const IMAGES_DIR = path.join(process.cwd(), "data", "images");
+const IMAGES_DIR = path.join(process.cwd(), "..", "..", "shared-data", "images");
 
 describe("GET /api/home/images/[filename]", { concurrent: false }, () => {
   beforeEach(async () => {

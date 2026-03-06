@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import fs from "fs";
 import path from "path";
 
-const UPLOADS_DIR = path.join(process.cwd(), "data", "images");
+const UPLOADS_DIR = path.join(process.cwd(), "..", "..", "shared-data", "images");
 
 describe("POST /api/home/upload", () => {
   beforeEach(() => {

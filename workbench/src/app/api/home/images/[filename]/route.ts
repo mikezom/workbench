@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 
-const IMAGES_DIR = path.join(process.cwd(), "data", "images");
+const IMAGES_DIR = path.join(process.cwd(), "..", "..", "shared-data", "images");
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const CACHE_DURATION = "public, max-age=31536000, immutable";
 
