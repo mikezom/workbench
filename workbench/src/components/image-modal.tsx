@@ -79,7 +79,7 @@ export default function ImageModal({ isOpen, post, onClose, onEdit, onDelete }: 
         className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
         onClick={handleBackdropClick}
       >
-      <div className="relative bg-white dark:bg-neutral-800 rounded-lg shadow-2xl overflow-hidden w-[80vw] h-[80vh] max-md:w-[95vw] max-md:h-[90vh]">
+      <div className="relative rounded-lg shadow-2xl overflow-hidden w-[80vw] h-[80vh] max-md:w-[95vw] max-md:h-[90vh]">
         {/* Close button */}
         <button
           ref={closeButtonRef}
@@ -95,7 +95,7 @@ export default function ImageModal({ isOpen, post, onClose, onEdit, onDelete }: 
           // Side-by-side layout for posts with images
           <div className="flex flex-col md:flex-row h-full">
             {/* Image area - 70% on desktop */}
-            <div className="w-full md:w-[70%] overflow-y-auto flex items-center justify-center scroll-smooth custom-scrollbar">
+            <div className="w-full md:w-[70%] overflow-y-auto flex items-center justify-center scroll-smooth custom-scrollbar bg-black/30 dark:bg-black/50">
               <img
                 src={post.image_url}
                 alt={post.content.substring(0, 100)}
@@ -104,7 +104,7 @@ export default function ImageModal({ isOpen, post, onClose, onEdit, onDelete }: 
             </div>
 
             {/* Text area - 30% on desktop */}
-            <div className="w-full md:w-[30%] overflow-y-auto p-6 scroll-smooth relative">
+            <div className="w-full md:w-[30%] overflow-y-auto p-6 scroll-smooth relative bg-white dark:bg-neutral-800">
               <p className="text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap">
                 {post.content}
               </p>
