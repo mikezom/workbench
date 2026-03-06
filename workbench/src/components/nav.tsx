@@ -55,7 +55,7 @@ export default function Nav() {
       </div>
       <button
         onClick={handleToggleTheme}
-        className="mt-4 px-2 py-1.5 rounded text-sm transition-colors text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 text-left"
+        className="mt-4 px-2 py-1.5 rounded text-sm transition-colors text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 text-left portrait:hidden"
         aria-label="Toggle theme"
       >
         {theme === "light" ? "🌙 Dark" : "☀️ Light"}
