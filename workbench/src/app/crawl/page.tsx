@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ArrowPathIcon } from "@heroicons/react/24/outline";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -218,16 +219,13 @@ function Jin10Panel() {
             ({news.length})
           </span>
         )}
-      </div>
-
-      {/* Refresh Button */}
-      <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
         <button
           onClick={fetchNews}
           disabled={loading}
-          className="w-full px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="ml-auto p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Refresh"
         >
-          {loading ? "Loading..." : "Refresh"}
+          <ArrowPathIcon className={`w-4 h-4 text-neutral-500 dark:text-neutral-400 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
@@ -347,16 +345,13 @@ function SolidotPanel() {
             ({news.length})
           </span>
         )}
-      </div>
-
-      {/* Refresh Button */}
-      <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
         <button
           onClick={fetchNews}
           disabled={loading}
-          className="w-full px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="ml-auto p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Refresh"
         >
-          {loading ? "Loading..." : "Refresh"}
+          <ArrowPathIcon className={`w-4 h-4 text-neutral-500 dark:text-neutral-400 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
