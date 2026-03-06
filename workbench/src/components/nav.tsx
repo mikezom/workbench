@@ -6,12 +6,12 @@ import { useEffect, useState } from "react";
 import { toggleTheme, initTheme, getTheme, type Theme } from "@/lib/theme";
 
 const sections = [
-  { href: "/", label: "Home" },
-  { href: "/agent", label: "Agent" },
-  { href: "/forest", label: "Forest" },
-  { href: "/study", label: "Study" },
-  { href: "/crawl", label: "Crawl" },
-  { href: "/clipboard", label: "Clipboard" },
+  { href: "/", label: "Home", icon: "🏠" },
+  { href: "/agent", label: "Agent", icon: "🤖" },
+  { href: "/forest", label: "Forest", icon: "🌲" },
+  { href: "/study", label: "Study", icon: "📚" },
+  { href: "/crawl", label: "Crawl", icon: "🕷️" },
+  { href: "/clipboard", label: "Clipboard", icon: "📋" },
 ];
 
 export default function Nav() {
