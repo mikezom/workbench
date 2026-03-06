@@ -29,7 +29,7 @@ export default function Nav() {
   };
 
   return (
-    <nav className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 min-h-screen p-4 flex flex-col portrait:w-full portrait:h-auto portrait:min-h-0 portrait:fixed portrait:bottom-0 portrait:left-0 portrait:right-0 portrait:flex-row portrait:border-r-0 portrait:border-t portrait:py-2 portrait:px-0 portrait:z-50">
+    <nav className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 min-h-screen p-4 flex flex-col portrait:w-full portrait:h-auto portrait:min-h-0 portrait:fixed portrait:bottom-0 portrait:left-0 portrait:right-0 portrait:flex-row portrait:border-r-0 portrait:border-t portrait:py-1 portrait:px-0 portrait:z-50">
       <div className="text-sm font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-3 px-2 portrait:hidden">
         Workbench
       </div>
@@ -41,7 +41,7 @@ export default function Nav() {
             <Link
               key={href}
               href={href}
-              className={`block px-2 py-1.5 rounded text-sm transition-colors portrait:flex portrait:flex-col portrait:items-center portrait:gap-1 portrait:py-2 portrait:px-1 portrait:rounded-none portrait:flex-1 ${
+              className={`block px-2 py-1.5 rounded text-sm transition-colors portrait:flex portrait:flex-col portrait:items-center portrait:gap-0.5 portrait:py-1.5 portrait:px-1 portrait:rounded-none portrait:flex-1 ${
                 active
                   ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 font-medium portrait:bg-transparent portrait:border-b-2 portrait:border-blue-500"
                   : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 portrait:hover:bg-neutral-100/50"
