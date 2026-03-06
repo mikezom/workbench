@@ -68,7 +68,7 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
           // Side-by-side layout for posts with images
           <div className="flex flex-col md:flex-row h-full">
             {/* Image area - 70% on desktop */}
-            <div className="w-full md:w-[70%] overflow-y-auto p-6 flex items-start justify-center">
+            <div className="w-full md:w-[70%] overflow-y-auto p-6 flex items-start justify-center scroll-smooth">
               <img
                 src={post.image_url}
                 alt={post.content.substring(0, 100)}
@@ -77,7 +77,7 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
             </div>
 
             {/* Text area - 30% on desktop */}
-            <div className="w-full md:w-[30%] overflow-y-auto p-6 border-t md:border-t-0 md:border-l border-neutral-200 dark:border-neutral-700">
+            <div className="w-full md:w-[30%] overflow-y-auto p-6 scroll-smooth">
               <p className="text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap">
                 {post.content}
               </p>
@@ -86,7 +86,7 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
         ) : (
           // Centered text-only layout for posts without images
           <div className="flex items-center justify-center h-full p-6">
-            <div className="max-w-[600px] overflow-y-auto">
+            <div className="max-w-[600px] overflow-y-auto scroll-smooth">
               <p className="text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap">
                 {post.content}
               </p>
