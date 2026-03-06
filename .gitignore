@@ -27,10 +27,6 @@ __MACOSX/
 # uploads directory
 workbench/public/uploads
 
-# Home section uploaded images
-data/images/*
-!data/images/.gitkeep
-
 # forest.zip (binary)
 forest.zip
 
