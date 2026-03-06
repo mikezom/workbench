@@ -16,16 +16,28 @@ interface ImageModalProps {
 }
 
 export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
-  // ESC key handler
+  // ESC key handler, focus management, and body scroll lock
   useEffect(() => {
     if (!isOpen) return;
+
+    // Focus close button when modal opens
+    const closeButton = document.querySelector('[aria-label="Close modal"]') as HTMLElement;
+    closeButton?.focus();
+
+    // Lock body scroll
+    document.body.style.overflow = 'hidden';
 
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
 
     window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
+
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+      // Restore body scroll
+      document.body.style.overflow = '';
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen || !post) return null;
@@ -39,6 +51,9 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Post detail modal"
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
       onClick={handleBackdropClick}
     >
@@ -60,7 +75,7 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
             <div className="w-full md:w-[70%] overflow-y-auto p-6 flex items-start justify-center">
               <img
                 src={post.image_url}
-                alt=""
+                alt={post.content.substring(0, 100)}
                 className="max-w-full h-auto object-contain"
               />
             </div>
