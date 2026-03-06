@@ -33,7 +33,7 @@ export default function Nav() {
       <div className="text-sm font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-3 px-2 portrait:hidden">
         Workbench
       </div>
-      <div className="flex flex-col gap-1 flex-1">
+      <div className="flex flex-col gap-1 flex-1 portrait:flex-row portrait:justify-around portrait:gap-0 portrait:flex-none">
         {sections.map(({ href, label }) => {
           const active =
             href === "/" ? pathname === "/" : pathname.startsWith(href);
