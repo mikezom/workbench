@@ -1,13 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-
-interface HomePost {
-  id: string;
-  content: string;
-  image_url: string | null;
-  created_at: string;
-}
+import { useEffect, useRef } from "react";
+import { HomePost } from "@/types/home";
 
 interface ImageModalProps {
   isOpen: boolean;
@@ -16,13 +10,14 @@ interface ImageModalProps {
 }
 
 export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
   // ESC key handler, focus management, and body scroll lock
   useEffect(() => {
     if (!isOpen) return;
 
     // Focus close button when modal opens
-    const closeButton = document.querySelector('[aria-label="Close modal"]') as HTMLElement;
-    closeButton?.focus();
+    closeButtonRef.current?.focus();
 
     // Lock body scroll
     document.body.style.overflow = 'hidden';
@@ -60,6 +55,7 @@ export default function ImageModal({ isOpen, post, onClose }: ImageModalProps) {
       <div className="relative bg-white dark:bg-neutral-800 rounded-lg shadow-2xl overflow-hidden w-[80vw] h-[80vh] max-md:w-[95vw] max-md:h-[90vh]">
         {/* Close button */}
         <button
+          ref={closeButtonRef}
           onClick={onClose}
           className="absolute top-4 right-4 z-10 text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 text-3xl leading-none"
           aria-label="Close modal"

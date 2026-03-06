@@ -3,13 +3,7 @@
 import { useState, useEffect } from "react";
 import PageContainer from "@/components/page-container";
 import ImageModal from "@/components/image-modal";
-
-interface HomePost {
-  id: string;
-  content: string;
-  image_url: string | null;
-  created_at: string;
-}
+import { HomePost } from "@/types/home";
 
 export default function Home() {
   const [posts, setPosts] = useState<HomePost[]>([]);
