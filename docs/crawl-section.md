@@ -26,9 +26,11 @@ External APIs (arXiv API implemented, others pending)
 | `src/app/crawl/page.test.tsx` | Static tests verifying 6 panels exist with correct titles |
 | `src/app/api/crawl/arxiv/route.ts` | arXiv API proxy — fetches and parses search results |
 | `src/app/api/crawl/jin10/route.ts` | Jin10 API proxy — scrapes and caches financial news |
+| `src/app/api/crawl/solidot/route.ts` | SOLIDOT API proxy — fetches and caches RSS news |
 | `src/lib/crawl-db.ts` | Database operations for arXiv cache |
 | `src/lib/crawl-db.test.ts` | Tests for arXiv cache CRUD operations |
 | `src/lib/jin10-parser.ts` | HTML parser for Jin10 news content |
+| `src/lib/solidot-parser.ts` | RSS parser for SOLIDOT news content |
 | `data/crawls.json` | Empty JSON array — unused placeholder for future persistence |
 
 ## Content Sources (Panels)
@@ -38,7 +40,7 @@ External APIs (arXiv API implemented, others pending)
 | ArxivPanel | Blue | Functional with API + caching | arXiv API (`export.arxiv.org/api/query`) |
 | Jin10Panel | Yellow | Functional with scraping + caching | Jin10 (`www.jin10.com`) |
 | HackerNewsPanel | Orange | Stub ("Coming soon") | HN API (`hacker-news.firebaseio.com`) |
-| LobstersPanel | Red | Stub ("Coming soon") | Lobsters (`lobste.rs`) |
+| SolidotPanel | Dark Teal (RGB 0,77,77) | Functional with RSS + caching | SOLIDOT (`www.solidot.org/index.rss`) |
 | NLabPanel | Green | Stub ("Coming soon") | nLab (`ncatlab.org`) |
 | PlanetHaskellPanel | Purple | Stub ("Coming soon") | Planet Haskell (`planet.haskell.org`) |
 | RedditPanel | Light Blue | Stub ("Coming soon") | Reddit API |
@@ -130,6 +132,38 @@ Displays latest financial and economic news from [JIN10](https://www.jin10.com/)
 - TTL: 5 minutes
 - Stale fallback: Returns old cache if fetch fails
 - Query key: Always "latest" (no search functionality)
+
+### Error Handling
+
+- Network timeout: 10 seconds
+- Fetch failure with cache: Returns 206 with stale data
+- Fetch failure without cache: Returns 500 error
+- Parse failure: Returns empty array
+
+## SOLIDOT Panel
+
+Displays latest tech news from [SOLIDOT](https://www.solidot.org/), a Chinese technology news site.
+
+### Features
+
+- Auto-fetch on mount
+- Manual refresh button
+- 5-minute cache with stale fallback
+- RSS feed parsing
+- Dark teal color indicator (RGB 0,77,77)
+
+### Architecture
+
+- **Parser**: `src/lib/solidot-parser.ts` - RSS XML parsing
+- **API Route**: `src/app/api/crawl/solidot/route.ts` - Caching proxy
+- **Database**: `solidot_cache` table in SQLite
+- **UI**: `SolidotPanel` component in `src/app/crawl/page.tsx`
+
+### Cache Strategy
+
+- TTL: 5 minutes
+- Stale fallback: Returns old cache if fetch fails
+- Query key: Always "latest" (RSS feed has no search)
 
 ### Error Handling
 
