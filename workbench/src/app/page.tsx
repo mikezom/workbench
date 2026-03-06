@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import PageContainer from "@/components/page-container";
+import ImageModal from "@/components/image-modal";
 
 interface HomePost {
   id: string;
@@ -17,6 +18,7 @@ export default function Home() {
   const [formData, setFormData] = useState({ content: "", image_url: "" });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [expandedPost, setExpandedPost] = useState<HomePost | null>(null);
 
   useEffect(() => {
     fetchPosts();
@@ -121,8 +123,29 @@ export default function Home() {
         {posts.map((post) => (
           <div
             key={post.id}
-            className="masonry-item bg-white dark:bg-neutral-800 rounded-lg shadow p-4 break-inside-avoid"
+            className="masonry-item bg-white dark:bg-neutral-800 rounded-lg shadow p-4 break-inside-avoid relative group"
           >
+            {/* Expand button - visible on hover */}
+            <button
+              onClick={() => setExpandedPost(post)}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black bg-opacity-50 hover:bg-opacity-70 text-white rounded-full p-2 z-10"
+              aria-label="Expand post"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+                />
+              </svg>
+            </button>
             {post.image_url && (
               <img
                 src={post.image_url}
@@ -214,6 +237,12 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <ImageModal
+        isOpen={expandedPost !== null}
+        post={expandedPost}
+        onClose={() => setExpandedPost(null)}
+      />
 
       <style jsx>{`
         .masonry-grid {
