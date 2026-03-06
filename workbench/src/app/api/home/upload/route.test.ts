@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import fs from "fs";
 import path from "path";
 
-const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
+const UPLOADS_DIR = path.join(process.cwd(), "data", "images");
 
 describe("POST /api/home/upload", () => {
   beforeEach(() => {
@@ -47,7 +47,7 @@ describe("POST /api/home/upload", () => {
 
     expect(response.status).toBe(200);
     expect(data.url).toBeDefined();
-    expect(data.url).toMatch(/^\/uploads\/.+\.jpg$/);
+    expect(data.url).toMatch(/^\/api\/home\/images\/.+\.jpg$/);
 
     // Verify file was actually saved
     const filename = data.url.split("/").pop();
