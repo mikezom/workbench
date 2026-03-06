@@ -28,8 +28,11 @@ describe("POST /api/home/upload", () => {
   });
 
   it("uploads an image file and returns the URL", async () => {
-    // Create a mock image file
-    const imageBuffer = Buffer.from("fake-image-data");
+    // Create a mock image file with valid JPEG magic bytes
+    const imageBuffer = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff]),
+      Buffer.from("fake-image-data")
+    ]);
     const file = new File([imageBuffer], "test-image.jpg", {
       type: "image/jpeg",
     });
@@ -92,7 +95,10 @@ describe("POST /api/home/upload", () => {
   });
 
   it("generates unique filenames for multiple uploads", async () => {
-    const imageBuffer = Buffer.from("fake-image-data");
+    const imageBuffer = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff]),
+      Buffer.from("fake-image-data")
+    ]);
     const file1 = new File([imageBuffer], "test.jpg", { type: "image/jpeg" });
     const file2 = new File([imageBuffer], "test.jpg", { type: "image/jpeg" });
 
@@ -123,14 +129,14 @@ describe("POST /api/home/upload", () => {
 
   it("supports common image formats", async () => {
     const formats = [
-      { ext: "jpg", mime: "image/jpeg" },
-      { ext: "png", mime: "image/png" },
-      { ext: "gif", mime: "image/gif" },
-      { ext: "webp", mime: "image/webp" },
+      { ext: "jpg", mime: "image/jpeg", magic: Buffer.from([0xff, 0xd8, 0xff]) },
+      { ext: "png", mime: "image/png", magic: Buffer.from([0x89, 0x50, 0x4e, 0x47]) },
+      { ext: "gif", mime: "image/gif", magic: Buffer.from([0x47, 0x49, 0x46, 0x38]) },
+      { ext: "webp", mime: "image/webp", magic: Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]) },
     ];
 
     for (const format of formats) {
-      const imageBuffer = Buffer.from("fake-image-data");
+      const imageBuffer = Buffer.concat([format.magic, Buffer.from("fake-image-data")]);
       const file = new File([imageBuffer], `test.${format.ext}`, {
         type: format.mime,
       });
@@ -149,5 +155,70 @@ describe("POST /api/home/upload", () => {
       expect(response.status).toBe(200);
       expect(data.url).toMatch(new RegExp(`\\.${format.ext}$`));
     }
+  });
+
+  it("rejects files exceeding 10MB size limit", async () => {
+    // Create a buffer larger than 10MB
+    const largeBuffer = Buffer.alloc(11 * 1024 * 1024); // 11MB
+    const file = new File([largeBuffer], "large-image.jpg", {
+      type: "image/jpeg",
+    });
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const request = new NextRequest("http://localhost:3000/api/home/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("10MB");
+  });
+
+  it("rejects files with invalid magic bytes", async () => {
+    // Create a file with wrong magic bytes
+    const fakeBuffer = Buffer.from("not-a-real-image-file");
+    const file = new File([fakeBuffer], "fake.jpg", {
+      type: "image/jpeg",
+    });
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const request = new NextRequest("http://localhost:3000/api/home/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("content");
+  });
+
+  it("rejects files with invalid extensions", async () => {
+    const imageBuffer = Buffer.from([0xff, 0xd8, 0xff]); // Valid JPEG magic bytes
+    const file = new File([imageBuffer], "test.exe", {
+      type: "image/jpeg",
+    });
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const request = new NextRequest("http://localhost:3000/api/home/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toContain("extension");
   });
 });
