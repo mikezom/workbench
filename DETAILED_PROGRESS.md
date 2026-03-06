@@ -1496,3 +1496,75 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 **Changes:**
 - `workbench/src/app/api/home/images/[filename]/route.ts` — Changed error catch parameter from `any` to `unknown`, added type guard to check if error is Error instance before accessing message property.
 - `workbench/src/app/api/home/images/[filename]/route.test.ts` — Removed unused error variable from catch block in test.
+
+---
+
+## 2026-03-06 — Mobile Responsive Navigation with Liquid-Glass Design
+
+### Task 1: Design and planning
+
+**Commit:** `b610fca`, `10f821f`
+
+**Problem:** Need to adapt workbench navigation for mobile devices by moving sidebar to bottom in portrait orientation with icons and modern glass aesthetic.
+
+**Changes:**
+- `docs/plans/2026-03-06-mobile-responsive-navigation-design.md` — Created design document specifying portrait orientation trigger, horizontal bottom bar layout, icon requirements, theme toggle hiding, and CSS-only responsive approach using Tailwind custom breakpoint.
+- `docs/plans/2026-03-06-mobile-responsive-navigation.md` — Created 10-task implementation plan with step-by-step instructions for Tailwind config, layout changes, nav component updates, icon additions, and testing procedures.
+
+---
+
+### Task 2: Core responsive infrastructure (Tasks 1-2)
+
+**Commit:** `3257a3e`, `796096f`
+
+**Problem:** Need Tailwind breakpoint for portrait orientation and layout structure to stack nav below content on mobile.
+
+**Changes:**
+- `workbench/tailwind.config.ts` — Added custom `portrait` screen breakpoint using `{ 'raw': '(orientation: portrait)' }` to enable portrait: prefix in Tailwind classes.
+- `workbench/src/app/layout.tsx` — Added `portrait:flex-col` to flex container to stack nav below content. Added `portrait:pb-16` to main element to prevent content overlap with fixed bottom nav.
+
+---
+
+### Task 3: Navigation data preparation (Tasks 3-6)
+
+**Commit:** `f63d9f8`, `711bac5`, `ffd1e90`, `e80f371`
+
+**Problem:** Need to prepare navigation component structure for mobile layout with icons, responsive container, and hidden elements.
+
+**Changes:**
+- `workbench/src/components/nav.tsx` — Added icon property to sections array with emoji placeholders. Added portrait-responsive classes to nav container (fixed bottom positioning, full width, horizontal flex, border changes, z-index). Added `portrait:hidden` to branding div. Updated items container with `portrait:flex-row`, `portrait:justify-evenly`, and `portrait:w-full` for horizontal layout.
+
+---
+
+### Task 4: Icon rendering and active states (Tasks 7-8)
+
+**Commit:** `0b88778`, `139c1f4`
+
+**Problem:** Need to render icons in navigation links with portrait-specific styling and hide theme toggle on mobile.
+
+**Changes:**
+- `workbench/src/components/nav.tsx` — Updated sections.map to destructure icon property. Wrapped icon and label in separate span elements with portrait styling (icon at text-xl, label at text-xs). Added portrait-specific active state with blue bottom border instead of background. Added `portrait:hidden` to theme toggle button.
+
+---
+
+### Task 5: Visual refinements
+
+**Commit:** `28b0cbc`, `b4ad447`
+
+**Problem:** Navigation items needed better spacing distribution and more compact height on mobile.
+
+**Changes:**
+- `workbench/src/components/nav.tsx` — Changed container from `justify-around` to `justify-evenly` and added `portrait:w-full`. Added `portrait:flex-1` to each link for equal width distribution. Reduced nav container padding from `py-2` to `py-1`. Reduced link padding from `py-2` to `py-1.5`. Reduced gap between icon and label from `gap-1` to `gap-0.5`.
+
+---
+
+### Task 6: Liquid-glass design implementation
+
+**Commit:** `c7eb6cd`
+
+**Problem:** Need to apply Apple liquid-glass design language to portrait navigation with frosted glass effect, floating appearance, and professional icons.
+
+**Changes:**
+- `workbench/package.json` — Added @heroicons/react dependency for professional icon library.
+- `workbench/src/components/nav.tsx` — Replaced emoji icons with Heroicons Outline as inline SVG (Home, Sparkles, Squares2x2, BookOpen, Globe, ClipboardDocument). Added global styled-jsx with portrait media query for glass effects. Implemented backdrop-blur (16px) with saturation (180%) and explicit -webkit-backdrop-filter for iOS. Added semi-transparent backgrounds (rgba(255,255,255,0.7) light, rgba(0,0,0,0.5) dark). Added floating shadow (0 -4px 16px). Added subtle top border with glass-like transparency. Implemented blue accent glow for active items using drop-shadow filters (8px and 16px radius with rgba(59,130,246) color).
+

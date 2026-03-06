@@ -364,3 +364,16 @@ return result;
 **Prevention**: When writing error handlers, always use `unknown` type for catch parameters and add type guards before accessing error properties. Run `npm run build` (not just `npm test`) before claiming implementation is complete to catch ESLint violations early.
 
 **Commit**: `79e5b16`
+
+## 2026-03-06 - Nested styled-jsx build failure in liquid-glass implementation
+
+**Problem**: Build failed with "Detected nested styled-jsx tag" error when implementing liquid-glass design. The error occurred because styled-jsx was used inside a map function within another styled-jsx block.
+
+**Root Cause**: Next.js styled-jsx does not support nesting styled-jsx tags. The initial implementation placed a `<style jsx>` block inside the Link component within the sections.map() function, which was already inside another `<style jsx>` block at the nav level.
+
+**Solution**: Refactored to use global styled-jsx with media queries and CSS classes. Moved all portrait-specific styles to a single global `<style jsx global>` block at the component root. Applied styles using class names (`.nav-glass`, `.nav-item-active`) instead of inline styled-jsx within the map.
+
+**Prevention**: When using styled-jsx in Next.js, always place style blocks at the component root level, never inside loops or conditional renders. Use global styles with class names for dynamic elements that need styling within map functions.
+
+**Commit**: `c7eb6cd`
+

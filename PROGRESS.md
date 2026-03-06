@@ -239,6 +239,18 @@ Full spec: `docs/agent-section.md`
 - [x] Add responsive behavior (vertical stack on mobile)
 - [x] Test all interactions and edge cases
 
+### Phase 8: Mobile Responsive Navigation
+- [x] Design portrait-responsive navigation (design doc + implementation plan)
+- [x] Add custom Tailwind portrait breakpoint (orientation: portrait)
+- [x] Update root layout for portrait mode (flex-col stacking, bottom padding)
+- [x] Add icon data to navigation sections
+- [x] Transform nav container to fixed bottom bar on portrait
+- [x] Hide branding and theme toggle on portrait
+- [x] Make nav items container portrait-responsive (horizontal layout)
+- [x] Render icons in navigation links with portrait styling
+- [x] Refine spacing and height for mobile (even distribution, compact)
+- [x] Implement liquid-glass design (backdrop blur, transparency, Heroicons, blue glow)
+
 ## Status
 
 | Phase | Status | Notes |
@@ -264,3 +276,4 @@ Full spec: `docs/agent-section.md`
 | 6 - Crawl | In progress | ArxivPanel + Jin10Panel + SolidotPanel functional; commit `0c2f1be` |
 | 7 - Home Image Migration | Complete | Images moved to data/images/ with API serving; commit `613eca1` |
 | 7h - Home Expand Modal | Complete | ImageModal with expand button, three close methods, responsive layout; commits `dec2e94`-`6426b09` |
+| 8 - Mobile Responsive Navigation | Complete | Portrait-responsive nav with liquid-glass design, Heroicons, blue glow; commits `b610fca`-`c7eb6cd` |
