@@ -115,7 +115,7 @@ export default function Nav() {
                     : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 portrait:hover:bg-transparent"
                 }`}
               >
-                <span className="portrait:block portrait:mb-0.5">{icon}</span>
+                <span className="hidden portrait:block portrait:mb-0.5">{icon}</span>
                 <span className="portrait:text-xs portrait:font-medium">{label}</span>
               </Link>
             );
