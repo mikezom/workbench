@@ -514,6 +514,28 @@ function RedditPanel() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  DummyPanel                                                         */
+/* ------------------------------------------------------------------ */
+
+function DummyPanel() {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-900/50 flex flex-col h-full">
+      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-pink-500" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Dummy Panel
+        </span>
+      </div>
+      <div className="flex-1 p-3">
+        <p className="text-xs text-neutral-300 dark:text-neutral-600 text-center py-4">
+          Coming soon
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  SubNavigation                                                      */
 /*  ------------------------------------------------------------------ */
 
@@ -593,24 +615,27 @@ export default function CrawlPage() {
       </div>
 
       {/* Panel Grid */}
-      <div className="grid grid-cols-3 gap-3 flex-1 min-h-0 portrait:grid-cols-1 portrait:gap-0">
-        <div className={`portrait:flex portrait:flex-col portrait:h-full ${activePanel === 'arxiv' ? 'portrait:block' : 'portrait:hidden'}`}>
+      <div className="grid grid-cols-3 gap-3 flex-1 min-h-0 overflow-y-auto portrait:grid-cols-1 portrait:gap-0 portrait:overflow-y-hidden">
+        <div className={`h-[50vh] portrait:h-[100vh] portrait:flex portrait:flex-col ${activePanel === 'arxiv' ? 'portrait:block' : 'portrait:hidden'}`}>
           <ArxivPanel />
         </div>
-        <div className={`portrait:flex portrait:flex-col portrait:h-full ${activePanel === 'jin10' ? 'portrait:block' : 'portrait:hidden'}`}>
+        <div className={`h-[50vh] portrait:h-[100vh] portrait:flex portrait:flex-col ${activePanel === 'jin10' ? 'portrait:block' : 'portrait:hidden'}`}>
           <Jin10Panel />
         </div>
-        <div className={`portrait:flex portrait:flex-col portrait:h-full ${activePanel === 'solidot' ? 'portrait:block' : 'portrait:hidden'}`}>
+        <div className={`h-[50vh] portrait:h-[100vh] portrait:flex portrait:flex-col ${activePanel === 'solidot' ? 'portrait:block' : 'portrait:hidden'}`}>
           <SolidotPanel />
         </div>
-        <div className="portrait:hidden">
+        <div className="h-[50vh] portrait:hidden">
           <NLabPanel />
         </div>
-        <div className="portrait:hidden">
+        <div className="h-[50vh] portrait:hidden">
           <PlanetHaskellPanel />
         </div>
-        <div className="portrait:hidden">
+        <div className="h-[50vh] portrait:hidden">
           <RedditPanel />
+        </div>
+        <div className="h-[50vh] portrait:hidden">
+          <DummyPanel />
         </div>
       </div>
     </div>
