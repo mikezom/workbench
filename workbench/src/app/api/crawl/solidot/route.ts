@@ -12,12 +12,14 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutes
 // GET Handler
 // ---------------------------------------------------------------------------
 
-export async function GET() {
+export async function GET(request: Request) {
   const now = Date.now();
+  const { searchParams } = new URL(request.url);
+  const forceRefresh = searchParams.get("refresh") === "true";
 
-  // Check cache first
+  // Check cache first (skip if manual refresh)
   const cached = getSolidotCache();
-  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+  if (!forceRefresh && cached && now - cached.timestamp < CACHE_TTL_MS) {
     // Return fresh cache
     return NextResponse.json(cached.results, {
       headers: {

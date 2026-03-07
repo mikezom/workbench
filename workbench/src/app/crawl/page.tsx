@@ -180,10 +180,11 @@ function Jin10Panel() {
   const [news, setNews] = useState<Jin10NewsItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchNews = async () => {
+  const fetchNews = async (bustCache = false) => {
     setLoading(true);
     try {
-      const response = await fetch("/api/crawl/jin10");
+      const url = bustCache ? "/api/crawl/jin10?refresh=true" : "/api/crawl/jin10";
+      const response = await fetch(url);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         throw new Error(errorData.error || `Failed to fetch news: ${response.status}`);
@@ -220,7 +221,7 @@ function Jin10Panel() {
           </span>
         )}
         <button
-          onClick={fetchNews}
+          onClick={() => fetchNews(true)}
           disabled={loading}
           className="ml-auto p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           title="Refresh"
@@ -306,10 +307,11 @@ function SolidotPanel() {
   const [news, setNews] = useState<SolidotNewsItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchNews = async () => {
+  const fetchNews = async (bustCache = false) => {
     setLoading(true);
     try {
-      const response = await fetch("/api/crawl/solidot");
+      const url = bustCache ? "/api/crawl/solidot?refresh=true" : "/api/crawl/solidot";
+      const response = await fetch(url);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         throw new Error(errorData.error || `Failed to fetch news: ${response.status}`);
@@ -346,7 +348,7 @@ function SolidotPanel() {
           </span>
         )}
         <button
-          onClick={fetchNews}
+          onClick={() => fetchNews(true)}
           disabled={loading}
           className="ml-auto p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           title="Refresh"
