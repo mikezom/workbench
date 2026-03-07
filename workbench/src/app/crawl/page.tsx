@@ -33,6 +33,29 @@ interface SolidotNewsItem {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/*  ------------------------------------------------------------------ */
+
+type PanelType = 'arxiv' | 'jin10' | 'solidot';
+
+const STORAGE_KEY = 'crawl-active-panel';
+
+function getInitialPanel(): PanelType {
+  if (typeof window === 'undefined') return 'arxiv';
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored === 'arxiv' || stored === 'jin10' || stored === 'solidot') {
+    return stored;
+  }
+  return 'arxiv';
+}
+
+function saveActivePanel(panel: PanelType) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY, panel);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  ArxivPanel                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -495,6 +518,19 @@ function RedditPanel() {
 /* ------------------------------------------------------------------ */
 
 export default function CrawlPage() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [activePanel, setActivePanel] = useState<PanelType>('arxiv');
+
+  useEffect(() => {
+    setActivePanel(getInitialPanel());
+  }, []);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handlePanelChange = (panel: PanelType) => {
+    setActivePanel(panel);
+    saveActivePanel(panel);
+  };
+
   return (
     <div className="flex flex-col h-full p-4 overflow-hidden bg-white dark:bg-neutral-900">
       {/* Header */}
