@@ -136,8 +136,8 @@ function ActiveAgentsTab() {
         const data = await res.json();
         setAgents(Array.isArray(data) ? data : []);
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error("Failed to fetch active agents:", err);
     }
   }, []);
 
@@ -158,8 +158,8 @@ function ActiveAgentsTab() {
     try {
       await fetch(`/api/monitor/terminate/${taskId}`, { method: "POST" });
       fetchAgents();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error("Failed to terminate agent:", err);
     }
   };
 
@@ -251,17 +251,18 @@ function TaskQueueTab() {
 
   const fetchTasks = useCallback(async () => {
     try {
+      const typeParam = filter === "development" ? "worker" : filter;
       const url =
         filter === "all"
           ? "/api/monitor/queue"
-          : `/api/monitor/queue?type=${filter}`;
+          : `/api/monitor/queue?type=${typeParam}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setTasks(Array.isArray(data) ? data : []);
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error("Failed to fetch task queue:", err);
     }
   }, [filter]);
 
@@ -371,8 +372,8 @@ function InvestigationForm({
       if (res.ok) {
         onCreated();
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error("Failed to submit investigation:", err);
     } finally {
       setSubmitting(false);
     }
@@ -435,8 +436,8 @@ function ReportViewer({
         if (res.ok) {
           setReport(await res.json());
         }
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.error("Failed to load report:", err);
       } finally {
         setLoading(false);
       }
@@ -485,8 +486,8 @@ function ReportsTab() {
         const data = await res.json();
         setReports(Array.isArray(data) ? data : []);
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error("Failed to fetch reports:", err);
     }
   }, []);
 

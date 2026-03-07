@@ -10,9 +10,7 @@ with consistent lock/status/error handling.
 
 import logging
 import sqlite3
-import traceback
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 
 from agent_executor import execute_task as run_task_pipeline
 from agent_executor import resume_task as run_resume_pipeline
