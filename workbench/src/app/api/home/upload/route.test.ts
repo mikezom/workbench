@@ -7,26 +7,21 @@ import path from "path";
 const UPLOADS_DIR = path.join(process.cwd(), "..", "..", "shared-data", "images");
 
 describe("POST /api/home/upload", () => {
+  let filesBeforeTest: Set<string>;
+
   beforeEach(() => {
-    // Clean up only upload test files before each test
-    if (fs.existsSync(UPLOADS_DIR)) {
-      const files = fs.readdirSync(UPLOADS_DIR);
-      files.forEach((file) => {
-        // Only delete files that don't start with "test-" (which are from other tests)
-        if (!file.startsWith("test-")) {
-          fs.unlinkSync(path.join(UPLOADS_DIR, file));
-        }
-      });
-    }
+    // Snapshot existing files so we only clean up files created during the test
+    filesBeforeTest = new Set(
+      fs.existsSync(UPLOADS_DIR) ? fs.readdirSync(UPLOADS_DIR) : []
+    );
   });
 
   afterEach(() => {
-    // Clean up only upload test files after each test
+    // Only delete files that were created during this test
     if (fs.existsSync(UPLOADS_DIR)) {
-      const files = fs.readdirSync(UPLOADS_DIR);
-      files.forEach((file) => {
-        // Only delete files that don't start with "test-" (which are from other tests)
-        if (!file.startsWith("test-")) {
+      const filesAfterTest = fs.readdirSync(UPLOADS_DIR);
+      filesAfterTest.forEach((file) => {
+        if (!filesBeforeTest.has(file)) {
           fs.unlinkSync(path.join(UPLOADS_DIR, file));
         }
       });
