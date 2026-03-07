@@ -572,14 +572,12 @@ function SubNavigation({ activePanel, onPanelChange }: SubNavigationProps) {
 /* ------------------------------------------------------------------ */
 
 export default function CrawlPage() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [activePanel, setActivePanel] = useState<PanelType>('arxiv');
 
   useEffect(() => {
     setActivePanel(getInitialPanel());
   }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handlePanelChange = (panel: PanelType) => {
     setActivePanel(panel);
     saveActivePanel(panel);
@@ -595,13 +593,25 @@ export default function CrawlPage() {
       </div>
 
       {/* Panel Grid */}
-      <div className="grid grid-cols-3 gap-3 flex-1 min-h-0">
-        <ArxivPanel />
-        <Jin10Panel />
-        <SolidotPanel />
-        <NLabPanel />
-        <PlanetHaskellPanel />
-        <RedditPanel />
+      <div className="grid grid-cols-3 gap-3 flex-1 min-h-0 portrait:grid-cols-1 portrait:gap-0">
+        <div className={activePanel === 'arxiv' ? 'portrait:block' : 'portrait:hidden'}>
+          <ArxivPanel />
+        </div>
+        <div className={activePanel === 'jin10' ? 'portrait:block' : 'portrait:hidden'}>
+          <Jin10Panel />
+        </div>
+        <div className={activePanel === 'solidot' ? 'portrait:block' : 'portrait:hidden'}>
+          <SolidotPanel />
+        </div>
+        <div className="portrait:hidden">
+          <NLabPanel />
+        </div>
+        <div className="portrait:hidden">
+          <PlanetHaskellPanel />
+        </div>
+        <div className="portrait:hidden">
+          <RedditPanel />
+        </div>
       </div>
     </div>
   );
