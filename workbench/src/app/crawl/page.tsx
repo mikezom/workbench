@@ -514,6 +514,60 @@ function RedditPanel() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  SubNavigation                                                      */
+/*  ------------------------------------------------------------------ */
+
+interface SubNavigationProps {
+  activePanel: PanelType;
+  onPanelChange: (panel: PanelType) => void;
+}
+
+function SubNavigation({ activePanel, onPanelChange }: SubNavigationProps) {
+  const tabs: { id: PanelType; label: string }[] = [
+    { id: 'arxiv', label: 'arXiv' },
+    { id: 'jin10', label: 'Jin10' },
+    { id: 'solidot', label: 'SOLIDOT' },
+  ];
+
+  return (
+    <>
+      <style jsx global>{`
+        @media (orientation: portrait) {
+          .sub-nav-glass {
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            background: rgba(255, 255, 255, 0.7) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.3) !important;
+            box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.1);
+          }
+          .dark .sub-nav-glass {
+            background: rgba(0, 0, 0, 0.5) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+          }
+        }
+      `}</style>
+      <nav className="hidden portrait:flex sub-nav-glass fixed bottom-16 left-0 right-0 z-40 h-12 border-t border-neutral-200 dark:border-neutral-800">
+        <div className="flex w-full">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => onPanelChange(tab.id)}
+              className={`flex-1 text-xs font-medium uppercase tracking-wide transition-colors py-3 ${
+                activePanel === tab.id
+                  ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
+                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -532,9 +586,11 @@ export default function CrawlPage() {
   };
 
   return (
-    <div className="flex flex-col h-full p-4 overflow-hidden bg-white dark:bg-neutral-900">
+    <div className="flex flex-col h-full p-4 overflow-hidden bg-white dark:bg-neutral-900 portrait:pb-28">
+      <SubNavigation activePanel={activePanel} onPanelChange={handlePanelChange} />
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 portrait:hidden">
         <h1 className="text-lg font-bold">Crawl</h1>
       </div>
 
