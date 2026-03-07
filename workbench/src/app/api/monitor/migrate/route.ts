@@ -31,10 +31,16 @@ export async function POST() {
       }
 
       // ── 2. Recreate agent_tasks if constraint is outdated ─────────────
+      //
+      // SQLite rewrites FK references when we rename a table, so all
+      // dependent tables (agent_lock, agent_task_output, agent_task_questions)
+      // must also be recreated to point to the new agent_tasks table.
       if (needsRecreate) {
         db.exec(`
+          -- Rename the main table
           ALTER TABLE agent_tasks RENAME TO agent_tasks_old;
 
+          -- Create new agent_tasks with updated constraint
           CREATE TABLE agent_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -63,20 +69,58 @@ export async function POST() {
             completed_at TEXT
           );
 
-          INSERT INTO agent_tasks
-            SELECT * FROM agent_tasks_old;
+          INSERT INTO agent_tasks SELECT * FROM agent_tasks_old;
 
+          -- Recreate dependent tables so FK references point to new agent_tasks
+          ALTER TABLE agent_task_output RENAME TO agent_task_output_old;
+          CREATE TABLE agent_task_output (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            type TEXT NOT NULL,
+            content TEXT NOT NULL
+          );
+          INSERT INTO agent_task_output SELECT * FROM agent_task_output_old;
+          DROP TABLE agent_task_output_old;
+
+          ALTER TABLE agent_lock RENAME TO agent_lock_old;
+          CREATE TABLE agent_lock (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            locked INTEGER NOT NULL DEFAULT 0,
+            task_id INTEGER REFERENCES agent_tasks(id),
+            locked_at TEXT
+          );
+          INSERT INTO agent_lock SELECT * FROM agent_lock_old;
+          DROP TABLE agent_lock_old;
+
+          ALTER TABLE agent_task_questions RENAME TO agent_task_questions_old;
+          CREATE TABLE agent_task_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
+            question_id TEXT NOT NULL,
+            question TEXT NOT NULL,
+            options TEXT NOT NULL,
+            answer TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          INSERT INTO agent_task_questions SELECT * FROM agent_task_questions_old;
+          DROP TABLE agent_task_questions_old;
+
+          -- Now safe to drop the old main table
           DROP TABLE agent_tasks_old;
 
+          -- Recreate indexes
           CREATE INDEX IF NOT EXISTS idx_agent_task_output_task
             ON agent_task_output(task_id, timestamp);
+          CREATE INDEX IF NOT EXISTS idx_agent_questions_task
+            ON agent_task_questions(task_id);
         `);
       }
 
       // ── 3. Create new monitoring tables ───────────────────────────────
+      // Must match initMonitorSchema() in monitor-db.ts exactly.
       db.exec(`
         CREATE TABLE IF NOT EXISTS agent_monitoring (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
           task_id INTEGER NOT NULL UNIQUE REFERENCES agent_tasks(id) ON DELETE CASCADE,
           process_id INTEGER,
           subprocess_pids TEXT,
@@ -89,7 +133,6 @@ export async function POST() {
         );
 
         CREATE TABLE IF NOT EXISTS investigation_reports (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
           task_id INTEGER NOT NULL UNIQUE REFERENCES agent_tasks(id) ON DELETE CASCADE,
           report_markdown TEXT NOT NULL,
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -103,10 +146,10 @@ export async function POST() {
             'file_read', 'file_write', 'command', 'phase_change',
             'process_start', 'process_end'
           )),
-          details TEXT NOT NULL
+          details TEXT
         );
 
-        CREATE INDEX IF NOT EXISTS idx_activity_log_task_time
+        CREATE INDEX IF NOT EXISTS idx_agent_activity_log_task
           ON agent_activity_log(task_id, timestamp);
       `);
     })();
