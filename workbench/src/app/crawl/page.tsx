@@ -594,13 +594,13 @@ export default function CrawlPage() {
 
       {/* Panel Grid */}
       <div className="grid grid-cols-3 gap-3 flex-1 min-h-0 portrait:grid-cols-1 portrait:gap-0">
-        <div className={activePanel === 'arxiv' ? 'portrait:block' : 'portrait:hidden'}>
+        <div className={`portrait:flex portrait:flex-col portrait:h-full ${activePanel === 'arxiv' ? 'portrait:block' : 'portrait:hidden'}`}>
           <ArxivPanel />
         </div>
-        <div className={activePanel === 'jin10' ? 'portrait:block' : 'portrait:hidden'}>
+        <div className={`portrait:flex portrait:flex-col portrait:h-full ${activePanel === 'jin10' ? 'portrait:block' : 'portrait:hidden'}`}>
           <Jin10Panel />
         </div>
-        <div className={activePanel === 'solidot' ? 'portrait:block' : 'portrait:hidden'}>
+        <div className={`portrait:flex portrait:flex-col portrait:h-full ${activePanel === 'solidot' ? 'portrait:block' : 'portrait:hidden'}`}>
           <SolidotPanel />
         </div>
         <div className="portrait:hidden">
