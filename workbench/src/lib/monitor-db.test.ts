@@ -12,11 +12,7 @@ import {
   logActivity,
   getActivityLog,
 } from "./monitor-db";
-import type {
-  MonitoringRecord,
-  InvestigationReport,
-  ActivityLogEntry,
-} from "./monitor-db";
+// Type imports available: MonitoringRecord, InvestigationReport, ActivityLogEntry
 
 function createTestDb(): Database.Database {
   const db = new Database(":memory:");
