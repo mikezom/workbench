@@ -4,6 +4,103 @@ Detailed log of completed work per session, with commit IDs and file changes.
 
 ---
 
+## 2026-03-06 — Monitor Section & Daemon Refactor
+
+### Task 1: Database schema and task_type extension
+
+**Commit:** `8c9636f`
+
+**Problem:** Need new tables (agent_monitoring, investigation_reports, agent_activity_log) for the monitor section, and extend agent_tasks to accept 'investigation' task_type.
+
+**Changes:**
+- `workbench/src/lib/monitor-db.ts` — Created initMonitorSchema() with 3 new tables, types (MonitoringRecord, InvestigationReport, ActivityLogEntry), and CRUD functions.
+- `workbench/src/lib/monitor-db.test.ts` — 29 tests covering all CRUD, constraints, cascade deletes, pagination.
+- `workbench/src/lib/agent-db.ts` — Extended task_type CHECK constraint and TypeScript type to include 'investigation'.
+
+---
+
+### Task 2: Database migration for existing databases
+
+**Commit:** `b33601a`
+
+**Problem:** Existing databases have the old CHECK constraint without 'investigation'. SQLite cannot ALTER CHECK constraints, requiring table recreation.
+
+**Changes:**
+- `workbench/src/app/api/monitor/migrate/route.ts` — POST endpoint that recreates agent_tasks with updated CHECK constraint, recreates all dependent tables (agent_lock, agent_task_output, agent_task_questions) to fix FK references, and creates monitoring tables.
+
+---
+
+### Task 3: Daemon refactor — extract task handlers
+
+**Commit:** `3e01242`
+
+**Problem:** agent-daemon.py was 614 lines with deeply nested if/else chains. Each new task type added another level of nesting with duplicated lock/status/error logic.
+
+**Changes:**
+- `workbench/scripts/task_handlers.py` — Created TaskHandler ABC with 7 concrete handlers: WorkerNewTaskHandler, WorkerResumeHandler, DecomposeStartHandler, DecomposeResumeHandler, DecomposeRetryHandler, DecomposeReflectionHandler, InvestigationTaskHandler.
+- `workbench/scripts/agent-daemon.py` — Reduced from 614 to ~284 lines. Replaced nested if/else with handler registry pattern and shared execute_with_handler() function.
+
+---
+
+### Task 4: Investigation task handler and executor
+
+**Commit:** `fdbd45e`
+
+**Problem:** Need investigation pipeline: create worktree, inject read-only CLAUDE.md, invoke Claude, extract markdown report, store in database.
+
+**Changes:**
+- `workbench/scripts/agent_executor.py` — Added execute_investigation() function at end of file.
+- `workbench/data/agent-investigation-claude.md` — System prompt for investigation agents (read-only, no skills, write report.md).
+
+---
+
+### Task 5: Monitor and investigation API routes
+
+**Commit:** `191e800`, `5916e93`
+
+**Problem:** Need API routes for the monitor UI to fetch active agents, task queue, terminate agents, view activity logs, and manage investigation tasks/reports.
+
+**Changes:**
+- `workbench/src/app/api/monitor/active/route.ts` — GET: executing agents with monitoring data.
+- `workbench/src/app/api/monitor/queue/route.ts` — GET: all tasks with optional type filter.
+- `workbench/src/app/api/monitor/terminate/[taskId]/route.ts` — POST: cancel task with status validation.
+- `workbench/src/app/api/monitor/activity/[taskId]/route.ts` — GET: activity log entries.
+- `workbench/src/app/api/investigation/create/route.ts` — POST: create investigation task.
+- `workbench/src/app/api/investigation/reports/route.ts` — GET: list all reports.
+- `workbench/src/app/api/investigation/reports/[taskId]/route.ts` — GET: specific report with metadata.
+
+---
+
+### Task 6: Monitor section UI
+
+**Commit:** `822571a`
+
+**Problem:** Need a /monitor page with tabs for active agents, task queue, and investigation reports.
+
+**Changes:**
+- `workbench/src/app/monitor/page.tsx` — Full page with 3 tabs: Active Agents (polls 3s), Task Queue (polls 5s, filterable), Reports (investigation form + report viewer).
+- `workbench/src/components/nav.tsx` — Added Monitor entry with chart icon to navigation.
+- `workbench/src/lib/db.ts` — Added initMonitorSchema() call in getDb().
+
+---
+
+### Task 7: Integration test and bug fixes
+
+**Commit:** `b24e583`, `c106ad7`
+
+**Problem:** Migration broke FK references in dependent tables (SQLite rewrites FK targets on table rename). Code review found several issues: unused imports, missing force-dynamic, silent error handling, queue filter bug.
+
+**Changes:**
+- `workbench/src/app/api/monitor/migrate/route.ts` — Fixed migration to recreate all dependent tables (agent_lock, agent_task_output, agent_task_questions) so FK references point to new agent_tasks. Aligned monitoring table schemas with initMonitorSchema().
+- `workbench/scripts/task_handlers.py` — Removed unused imports (traceback, datetime, timezone).
+- `workbench/src/app/api/monitor/active/route.ts` — Added force-dynamic export.
+- `workbench/src/app/api/monitor/queue/route.ts` — Added force-dynamic export.
+- `workbench/src/app/api/monitor/activity/[taskId]/route.ts` — Added force-dynamic export.
+- `workbench/src/app/api/monitor/terminate/[taskId]/route.ts` — Added force-dynamic export and status validation (reject cancelling completed/failed tasks).
+- `workbench/src/app/monitor/page.tsx` — Replaced silent catch blocks with console.error. Fixed queue filter mapping ("development" -> "worker" task_type).
+
+---
+
 ## 2026-03-06 — Jin10 News Panel Implementation
 
 ### Task 1: Database schema and types

@@ -251,6 +251,19 @@ Full spec: `docs/agent-section.md`
 - [x] Refine spacing and height for mobile (even distribution, compact)
 - [x] Implement liquid-glass design (backdrop blur, transparency, Heroicons, blue glow)
 
+### Phase 9: Monitor Section & Daemon Refactor
+- [x] Refactor agent-daemon.py with TaskHandler ABC registry pattern (614 → 284 lines)
+- [x] Add monitor database schema (agent_monitoring, investigation_reports, agent_activity_log)
+- [x] Extend agent_tasks task_type to include 'investigation'
+- [x] Create database migration route for existing databases
+- [x] Add investigation task handler and executor pipeline
+- [x] Build monitor API routes (active agents, queue, terminate, activity)
+- [x] Build investigation API routes (create, list reports, get report)
+- [x] Create /monitor page with 3 tabs (Active Agents, Task Queue, Reports)
+- [x] Add investigation form and report viewer to Reports tab
+- [x] Wire initMonitorSchema into database initialization
+- [ ] Wire monitoring service into executors (process tracking, activity logging)
+
 ## Status
 
 | Phase | Status | Notes |
@@ -277,3 +290,4 @@ Full spec: `docs/agent-section.md`
 | 7 - Home Image Migration | Complete | Images moved to data/images/ with API serving; commit `613eca1` |
 | 7h - Home Expand Modal | Complete | ImageModal with expand button, three close methods, responsive layout; commits `dec2e94`-`6426b09` |
 | 8 - Mobile Responsive Navigation | Complete | Portrait-responsive nav with liquid-glass design, Heroicons, blue glow; commits `b610fca`-`c7eb6cd` |
+| 9 - Monitor Section & Daemon Refactor | Complete | Handler registry, monitor UI, investigation pipeline; commits `8c9636f`-`c106ad7` |

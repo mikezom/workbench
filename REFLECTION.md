@@ -7,6 +7,20 @@ prevention strategies, and the relevant git commit IDs.
 
 ---
 
+## 2026-03-06 - SQLite ALTER TABLE RENAME breaks FK references in dependent tables
+
+**Problem**: After running the migration (which renames `agent_tasks` to `agent_tasks_old`, creates a new `agent_tasks`, copies data, drops old), the daemon crashed with `sqlite3.OperationalError: no such table: main.agent_tasks_old` on every query touching `agent_lock`.
+
+**Root Cause**: SQLite's `ALTER TABLE RENAME` automatically rewrites foreign key references in all dependent tables to point to the new name. So when `agent_tasks` was renamed to `agent_tasks_old`, the `agent_lock`, `agent_task_output`, and `agent_task_questions` tables had their FK references silently rewritten to `REFERENCES agent_tasks_old(id)`. After the migration dropped `agent_tasks_old`, those FK references became dangling.
+
+**Solution**: Fixed the migration to also recreate all dependent tables (`agent_lock`, `agent_task_output`, `agent_task_questions`) using the same rename-create-copy-drop pattern, so their FK references point to the new `agent_tasks` table. Repaired the production database with the same approach.
+
+**Prevention**: When using SQLite's table-recreation migration pattern (`ALTER TABLE RENAME` → `CREATE` new → `INSERT SELECT` → `DROP` old), always identify and recreate ALL tables that have FK references to the renamed table, not just the table being modified. Check with: `SELECT name, sql FROM sqlite_master WHERE sql LIKE '%REFERENCES tablename%'`.
+
+**Commit**: `b24e583`
+
+---
+
 <!-- Template for each entry:
 
 ## [Date] - Brief description of the issue
@@ -376,4 +390,26 @@ return result;
 **Prevention**: When using styled-jsx in Next.js, always place style blocks at the component root level, never inside loops or conditional renders. Use global styles with class names for dynamic elements that need styling within map functions.
 
 **Commit**: `c7eb6cd`
+
+## 2026-03-06 - Image storage path inside Next.js project caused file loss
+
+**Problem**: Images uploaded to the home section were getting deleted during development. The images were stored at `workbench/workbench/data/images/` which is inside the Next.js project directory, making them vulnerable to deletion during build operations or other development activities.
+
+**Root Cause**: The image storage path was chosen to be inside the Next.js project directory (`workbench/workbench/data/images/`). While this path was gitignored (correct for user-uploaded content), it was still within the project's working directory where build tools, cleanup scripts, or development operations could potentially delete files.
+
+**Solution**: Migrated image storage to `/Users/ccnas/DEVELOPMENT/shared-data/images/` which is outside the workbench project directory and shared across all projects in the DEVELOPMENT directory. Updated:
+- Upload route to save images to the new path
+- Image serving route to read from the new path
+- Test files to use the new path
+- Documentation to reflect the new location
+- Created `.gitignore` at `/Users/ccnas/DEVELOPMENT/` to ignore uploaded images while tracking `.gitkeep`
+
+**Prevention**: When storing user-uploaded files or any data that should persist across development operations:
+- Store files outside the project directory, not inside it
+- Use a shared data directory at a higher level (e.g., `/Users/ccnas/DEVELOPMENT/shared-data/`)
+- Never store persistent user data inside directories that build tools or development operations might clean
+- Document the storage location clearly so future developers understand why it's outside the project
+
+**Commit**: `3c32fa6`
+
 
