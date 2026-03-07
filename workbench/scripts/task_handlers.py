@@ -21,6 +21,7 @@ from agent_executor import (
     resume_decompose_task as run_decompose_resume_pipeline,
     retry_decompose_breakdown as run_decompose_retry_pipeline,
     execute_decompose_reflection as run_decompose_reflection_pipeline,
+    execute_investigation as run_investigation_pipeline,
 )
 from agent_executor import CancelledError, QuestionsAsked
 
@@ -86,6 +87,7 @@ class WorkerNewTaskHandler(TaskHandler):
     def get_next_task(self, conn: sqlite3.Connection) -> dict | None:
         row = conn.execute(
             "SELECT * FROM agent_tasks WHERE status = 'waiting_for_dev' "
+            "AND (task_type IS NULL OR task_type NOT IN ('decompose', 'investigation')) "
             "ORDER BY created_at ASC LIMIT 1"
         ).fetchone()
         if row is None:
@@ -285,3 +287,28 @@ class DecomposeReflectionHandler(TaskHandler):
         if task_after and task_after["decompose_user_comment"]:
             return "decompose_understanding"
         return None
+
+
+# ---------------------------------------------------------------------------
+# Investigation handler
+# ---------------------------------------------------------------------------
+
+
+class InvestigationTaskHandler(TaskHandler):
+    @property
+    def name(self) -> str:
+        return "investigation"
+
+    def get_next_task(self, conn: sqlite3.Connection) -> dict | None:
+        row = conn.execute(
+            "SELECT * FROM agent_tasks WHERE status = 'waiting_for_dev' "
+            "AND task_type = 'investigation' "
+            "ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
+    def execute(self, conn: sqlite3.Connection, task: dict) -> None:
+        run_investigation_pipeline(conn, task)
+
+    def supports_questions(self) -> bool:
+        return False

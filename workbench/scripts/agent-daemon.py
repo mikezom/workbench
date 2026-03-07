@@ -30,6 +30,7 @@ from task_handlers import (
     DecomposeResumeHandler,
     DecomposeRetryHandler,
     DecomposeReflectionHandler,
+    InvestigationTaskHandler,
 )
 
 # ---------------------------------------------------------------------------
@@ -315,6 +316,7 @@ def main() -> None:
         DecomposeResumeHandler(),
         DecomposeRetryHandler(),
         DecomposeReflectionHandler(),
+        InvestigationTaskHandler(),
     ]
 
     while running:

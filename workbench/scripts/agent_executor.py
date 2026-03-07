@@ -1487,3 +1487,96 @@ def execute_decompose_reflection(conn: sqlite3.Connection, task: dict) -> None:
                 f"Worktree preserved at {worktree_path} for debugging")
         raise
 
+
+# ---------------------------------------------------------------------------
+# Investigation agent execution
+# ---------------------------------------------------------------------------
+
+
+def execute_investigation(conn: sqlite3.Connection, task: dict) -> None:
+    """Execute an investigation task: read-only research producing a report.
+
+    Creates a worktree (for CLAUDE.md isolation), invokes Claude, reads the
+    resulting report.md, and stores it in investigation_reports.  No rebase,
+    build, or merge — investigations are purely read-only.
+
+    On success: stores report, cleans up worktree, returns normally.
+    On cancel: cleans up worktree, raises CancelledError.
+    On failure: preserves worktree for debugging, raises the original exception.
+    """
+    task_id = task["id"]
+    prompt = task["prompt"]
+
+    worktree_path = None
+    branch_name = None
+
+    try:
+        # Step 1: Create worktree (for CLAUDE.md isolation)
+        append_output(conn, task_id, "system", "Starting investigation agent...")
+        worktree_path, branch_name = create_worktree(
+            REPO_ROOT, task_id, task.get("title") or f"investigation-{task_id}"
+        )
+
+        # Update task record with worktree info
+        conn.execute(
+            "UPDATE agent_tasks SET branch_name = ?, worktree_path = ? WHERE id = ?",
+            (branch_name, worktree_path, task_id),
+        )
+        conn.commit()
+        append_output(conn, task_id, "system",
+            f"Worktree: {worktree_path}  Branch: {branch_name}")
+
+        # Step 2: Inject investigation CLAUDE.md
+        inject_claude_md(worktree_path, "investigation")
+
+        # Step 3: Invoke Claude Code
+        invoke_claude(worktree_path, prompt, conn, task_id)
+
+        # Step 4: Read the report
+        report_path = os.path.join(worktree_path, "report.md")
+        if os.path.isfile(report_path):
+            with open(report_path, "r", encoding="utf-8") as f:
+                report_markdown = f.read()
+            log.info("Investigation task %d produced report.md (%d chars)",
+                task_id, len(report_markdown))
+        else:
+            # Fallback: use last assistant output from agent_task_output
+            log.warning("Investigation task %d did not produce report.md — "
+                "falling back to last assistant output", task_id)
+            row = conn.execute(
+                "SELECT content FROM agent_task_output "
+                "WHERE task_id = ? AND type = 'assistant' "
+                "ORDER BY id DESC LIMIT 1",
+                (task_id,),
+            ).fetchone()
+            report_markdown = row["content"] if row else "No report produced."
+
+        # Step 5: Store the report in investigation_reports
+        conn.execute(
+            "INSERT INTO investigation_reports (task_id, report_markdown) VALUES (?, ?)",
+            (task_id, report_markdown),
+        )
+        conn.commit()
+        append_output(conn, task_id, "system",
+            "Investigation report stored successfully.")
+        log.info("Investigation task %d report stored", task_id)
+
+        # Step 6: Clean up worktree (no rebase, no build, no merge)
+        cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+        append_output(conn, task_id, "system",
+            "Investigation complete — worktree cleaned up.")
+
+    except CancelledError:
+        append_output(conn, task_id, "system",
+            "Investigation cancelled — cleaning up")
+        if worktree_path and branch_name:
+            cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+        raise
+
+    except Exception:
+        # Preserve worktree on failure for debugging
+        if worktree_path:
+            append_output(conn, task_id, "system",
+                f"Investigation failed — worktree preserved at {worktree_path} for debugging")
+        raise
+
