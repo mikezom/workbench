@@ -22,7 +22,7 @@ export function initAgentSchema(db: Database.Database): void {
         )),
       parent_objective TEXT,
       parent_task_id INTEGER REFERENCES agent_tasks(id) ON DELETE SET NULL,
-      task_type TEXT NOT NULL DEFAULT 'worker' CHECK (task_type IN ('worker', 'decompose')),
+      task_type TEXT NOT NULL DEFAULT 'worker' CHECK (task_type IN ('worker', 'decompose', 'investigation')),
       branch_name TEXT,
       worktree_path TEXT,
       error_message TEXT,
@@ -91,7 +91,7 @@ export type AgentTaskStatus =
   | "decompose_reflecting"
   | "decompose_complete";
 
-export type AgentTaskType = "worker" | "decompose";
+export type AgentTaskType = "worker" | "decompose" | "investigation";
 
 export interface AgentTask {
   id: number;
