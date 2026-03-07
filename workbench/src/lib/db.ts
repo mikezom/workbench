@@ -6,6 +6,7 @@ import { initAgentSchema } from "./agent-db";
 import { initClipboardSchema } from "./clipboard-db";
 import { initCrawlSchema } from "./crawl-db";
 import { initHomeSchema } from "./home-db";
+import { initMonitorSchema } from "./monitor-db";
 
 const f = fsrs();
 
@@ -32,6 +33,7 @@ export function getDb(): Database.Database {
   initClipboardSchema(_db);
   initCrawlSchema(_db);
   initHomeSchema(_db);
+  initMonitorSchema(_db);
   return _db;
 }
 
