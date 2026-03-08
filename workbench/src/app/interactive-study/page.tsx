@@ -171,7 +171,7 @@ export default function InteractiveStudyPage() {
   }, [activeSessionId]);
 
   return (
-    <div className="flex h-[calc(100vh-0px)] portrait:h-[calc(100vh-60px)]">
+    <div className="flex h-full overflow-hidden">
       {/* Session sidebar */}
       <SessionSidebar
         sessions={sessions}
