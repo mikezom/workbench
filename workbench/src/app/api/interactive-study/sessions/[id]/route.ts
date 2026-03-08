@@ -42,9 +42,17 @@ export async function PUT(
     const body = await req.json();
 
     // Whitelist allowed fields - only allow updating title and prompt
-    const allowedUpdates: any = {};
+    const allowedUpdates: { title?: string; prompt?: string } = {};
     if (body.title !== undefined) allowedUpdates.title = body.title;
     if (body.prompt !== undefined) allowedUpdates.prompt = body.prompt;
+
+    // Validate field lengths
+    if (allowedUpdates.title && allowedUpdates.title.length > 200) {
+      return NextResponse.json({ error: "Title too long (max 200 characters)" }, { status: 400 });
+    }
+    if (allowedUpdates.prompt && allowedUpdates.prompt.length > 5000) {
+      return NextResponse.json({ error: "Prompt too long (max 5000 characters)" }, { status: 400 });
+    }
 
     if (Object.keys(allowedUpdates).length === 0) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
