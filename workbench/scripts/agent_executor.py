@@ -1579,3 +1579,75 @@ def execute_investigation(conn: sqlite3.Connection, task: dict) -> None:
                 f"Investigation failed — worktree preserved at {worktree_path} for debugging")
         raise
 
+
+# ---------------------------------------------------------------------------
+# Interactive Study executor
+# ---------------------------------------------------------------------------
+
+
+def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
+    """Execute one turn of an interactive study conversation.
+
+    Unlike worker tasks, interactive study tasks:
+    1. Don't create worktrees (no code changes)
+    2. Load full conversation history from agent_task_output
+    3. Build a prompt with conversation context
+    4. Invoke Claude CLI with the conversation
+    5. Store response in agent_task_output
+    6. Do NOT finish — status goes back to waiting_for_dev
+
+    The daemon sets status to 'developing' before calling this.
+    After this returns, the daemon sets status to 'waiting_for_dev'.
+    """
+    task_id = task["id"]
+
+    append_output(conn, task_id, "system", "Processing study response...")
+
+    # Step 1: Load conversation history from agent_task_output
+    rows = conn.execute(
+        "SELECT type, content FROM agent_task_output "
+        "WHERE task_id = ? AND type IN ('user', 'assistant') "
+        "ORDER BY id ASC",
+        (task_id,),
+    ).fetchall()
+
+    # Step 2: Build conversation prompt
+    # Format as a conversation transcript for Claude
+    conversation_parts = []
+    for row in rows:
+        role = "User" if row["type"] == "user" else "Assistant"
+        conversation_parts.append(f"{role}: {row['content']}")
+
+    conversation_text = "\n\n".join(conversation_parts)
+
+    # The task prompt contains the study topic/context
+    topic = task.get("prompt") or task.get("title") or "general study"
+
+    prompt = (
+        f"You are a Socratic tutor. The study topic is: {topic}\n\n"
+        f"Here is the conversation so far:\n\n{conversation_text}\n\n"
+        f"Continue the conversation. Respond to the user's latest message. "
+        f"Guide them with questions rather than just giving answers. "
+        f"Use LaTeX notation ($...$ for inline, $$...$$ for block) when writing math."
+    )
+
+    # Step 3: Create a temporary directory for Claude CLI execution
+    # Interactive study doesn't need a worktree, but Claude CLI needs a cwd
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="study-") as tmpdir:
+        # Inject the interactive-study CLAUDE.md
+        inject_claude_md(tmpdir, "interactive-study")
+
+        # Step 4: Invoke Claude CLI
+        try:
+            invoke_claude(tmpdir, prompt, conn, task_id)
+        except CancelledError:
+            append_output(conn, task_id, "system", "Study session cancelled")
+            raise
+        except RuntimeError as e:
+            append_output(conn, task_id, "system", f"Claude CLI error: {e}")
+            raise
+
+    append_output(conn, task_id, "system", "Response complete — ready for next message")
+    log.info("Interactive study task %d turn complete", task_id)
+
