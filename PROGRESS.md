@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A personal workbench website (Next.js) with 6 sections: Home, Agentic Tasks, Monitor, Forest, Study (FSRS), Crawl, and Clipboard.
+A personal workbench website (Next.js) with 8 sections: Home, Agentic Tasks, Monitor, Agent, Forest, Study (FSRS), Crawl, and Clipboard.
 
 ## Task Breakdown
 
@@ -14,7 +14,7 @@ A personal workbench website (Next.js) with 6 sections: Home, Agentic Tasks, Mon
 
 ### Phase 1: Layout & Navigation
 - [x] Create main layout with sidebar/nav for all sections
-- [x] Set up routing: `/`, `/agentic-tasks`, `/monitor`, `/forest`, `/study`, `/crawl`, `/clipboard`
+- [x] Set up routing: `/`, `/agentic-tasks`, `/monitor`, `/agent`, `/forest`, `/study`, `/crawl`, `/clipboard`
 - [x] Basic shared UI components (page container, nav links)
 
 ### Phase 2: Forest Section
@@ -261,7 +261,7 @@ Full spec: `docs/monitor-section.md`
 - [x] Add investigation task handler and executor pipeline
 - [x] Build monitor API routes (active agents, queue, terminate, activity)
 - [x] Build investigation API routes (create, list reports, get report)
-- [x] Create /monitor page with 4 tabs (Active Agents, Task Queue, Agent, Reports)
+- [x] Create /monitor page with 3 tabs (Active Agents, Task Queue, Reports)
 - [x] Add investigation form and report viewer to Reports tab
 - [x] Wire initMonitorSchema into database initialization
 - [ ] Wire monitoring service into executors (process tracking, activity logging)
@@ -270,8 +270,9 @@ Full spec: `docs/monitor-section.md`
 - [x] Rename Agent section to Agentic Tasks
 - [x] Update all routes from /agent to /agentic-tasks
 - [x] Update all API routes from /api/agent to /api/agentic-tasks
-- [x] Add dummy Agent tab to Monitor section
+- [x] Create placeholder Agent section at /agent (top-level)
 - [x] Create monitor-section.md documentation
+- [x] Create agent-section.md documentation (placeholder section)
 - [x] Update agentic-tasks-section.md with new routes
 - [x] Update PROGRESS.md to reflect current architecture
 
@@ -301,5 +302,5 @@ Full spec: `docs/monitor-section.md`
 | 7 - Home Image Migration | Complete | Images moved to data/images/ with API serving; commit `613eca1` |
 | 7h - Home Expand Modal | Complete | ImageModal with expand button, three close methods, responsive layout; commits `dec2e94`-`6426b09` |
 | 8 - Mobile Responsive Navigation | Complete | Portrait-responsive nav with liquid-glass design, Heroicons, blue glow; commits `b610fca`-`c7eb6cd` |
-| 9 - Monitor Section & Daemon Refactor | Complete | Handler registry, monitor UI, investigation pipeline; commits `8c9636f`-`c106ad7` |
-| 10 - Documentation & Architecture Updates | Complete | Renamed Agent to Agentic Tasks, added Monitor Agent tab, updated docs; commit `f5a4ea4` |
+| 9 - Monitor Section & Daemon Refactor | Complete | Handler registry, monitor UI (3 tabs), investigation pipeline; commits `8c9636f`-`c106ad7` |
+| 10 - Documentation & Architecture Updates | Complete | Renamed Agent to Agentic Tasks, added placeholder Agent section, updated docs; commits `f5a4ea4`, `d92a158` |

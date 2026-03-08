@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Monitor section provides real-time visibility into the autonomous task execution system. It displays active agents, task queue status, investigation reports, and includes a placeholder Agent tab for future functionality.
+The Monitor section provides real-time visibility into the autonomous task execution system. It displays active agents, task queue status, and investigation reports.
 
 ## Route
 
@@ -11,12 +11,11 @@ The Monitor section provides real-time visibility into the autonomous task execu
 
 ## Architecture
 
-The Monitor section is a tabbed interface with four tabs:
+The Monitor section is a tabbed interface with three tabs:
 
 1. **Active Agents** — Real-time view of currently executing tasks
 2. **Task Queue** — Overview of all tasks by status (queued, in progress, completed, failed)
-3. **Agent** — Placeholder tab for future agent functionality
-4. **Reports** — Investigation reports with creation and viewing capabilities
+3. **Reports** — Investigation reports with creation and viewing capabilities
 
 ## Tabs
 
@@ -90,15 +89,7 @@ interface QueueTask {
 }
 ```
 
-### Tab 3: Agent
-
-Placeholder tab for future agent functionality. Currently displays:
-- "Agent Tab (Placeholder)" heading
-- Subtitle: "This is a dummy section for future agent functionality."
-
-This tab is reserved for future features related to agent management and configuration.
-
-### Tab 4: Reports
+### Tab 3: Reports
 
 Investigation reports interface with creation form and report viewer.
 
@@ -223,7 +214,6 @@ CREATE TABLE agent_activity_log (
 - **Active Agents tab**: Polls every 3 seconds + updates duration display every 1 second
 - **Task Queue tab**: Polls every 5 seconds
 - **Reports tab**: No polling (static list, refreshes on creation)
-- **Agent tab**: No polling (placeholder)
 
 ## Integration with Agentic Tasks
 
