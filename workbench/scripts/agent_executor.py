@@ -377,10 +377,10 @@ def _store_event(
             append_output(conn, task_id, "assistant", content)
 
     elif etype == "result":
-        result_text = event.get("result", "")
-        if result_text:
-            append_output(conn, task_id, "assistant", result_text)
-        # Also store cost/duration metadata as a system message
+        # NOTE: Don't store result_text as 'assistant' — the 'assistant' event
+        # already captured the same content during streaming. Storing it again
+        # causes duplicate messages in interactive-study chat.
+        # Only store cost/duration metadata as a system message.
         cost = event.get("cost_usd")
         duration = event.get("duration_ms")
         if cost is not None or duration is not None:
