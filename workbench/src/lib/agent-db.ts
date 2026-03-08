@@ -56,6 +56,14 @@ export function initAgentSchema(db: Database.Database): void {
     INSERT OR IGNORE INTO agent_lock (id, locked, task_id, locked_at)
       VALUES (1, 0, NULL, NULL);
 
+    CREATE TABLE IF NOT EXISTS agents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS agent_task_questions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       task_id INTEGER NOT NULL REFERENCES agent_tasks(id) ON DELETE CASCADE,
@@ -428,4 +436,91 @@ export function getDecomposeTasksReadyForReflection(): AgentTask[] {
        LIMIT 1`
     )
     .all() as AgentTask[];
+}
+
+// ---------------------------------------------------------------------------
+// Agent types
+// ---------------------------------------------------------------------------
+
+export interface Agent {
+  id: number;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Agent CRUD
+// ---------------------------------------------------------------------------
+
+export function createAgent(name: string, description?: string): Agent {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `INSERT INTO agents (name, description) VALUES (?, ?)`
+    )
+    .run(name, description ?? null);
+
+  return getAgent(result.lastInsertRowid as number)!;
+}
+
+export function getAgent(id: number): Agent | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM agents WHERE id = ?")
+    .get(id) as Agent | undefined;
+  return row ?? null;
+}
+
+export function getAgentByName(name: string): Agent | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM agents WHERE name = ?")
+    .get(name) as Agent | undefined;
+  return row ?? null;
+}
+
+export function getAllAgents(): Agent[] {
+  const db = getDb();
+  return db
+    .prepare("SELECT * FROM agents ORDER BY created_at DESC")
+    .all() as Agent[];
+}
+
+export function updateAgent(
+  id: number,
+  updates: { name?: string; description?: string }
+): Agent | null {
+  const db = getDb();
+  const existing = db
+    .prepare("SELECT id FROM agents WHERE id = ?")
+    .get(id);
+  if (!existing) return null;
+
+  const sets: string[] = [];
+  const values: unknown[] = [];
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) {
+      sets.push(`${key} = ?`);
+      values.push(value);
+    }
+  }
+
+  if (sets.length === 0) return getAgent(id);
+
+  sets.push("updated_at = datetime('now')");
+  values.push(id);
+  db.prepare(`UPDATE agents SET ${sets.join(", ")} WHERE id = ?`).run(
+    ...values
+  );
+
+  return getAgent(id);
+}
+
+export function deleteAgent(id: number): boolean {
+  const db = getDb();
+  const result = db.prepare("DELETE FROM agents WHERE id = ?").run(id);
+  return result.changes > 0;
 }
