@@ -310,3 +310,45 @@ class InvestigationTaskHandler(TaskHandler):
 
     def supports_questions(self) -> bool:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Interactive Study handler
+# ---------------------------------------------------------------------------
+
+
+class InteractiveStudyHandler(TaskHandler):
+    """Handles interactive study conversation turns.
+
+    Picks up interactive-study tasks that are in 'developing' status
+    (set by the API when user sends a message).
+    After execution, status goes back to 'waiting_for_dev'.
+    """
+
+    @property
+    def name(self) -> str:
+        return "interactive-study"
+
+    def get_next_task(self, conn: sqlite3.Connection) -> dict | None:
+        row = conn.execute(
+            "SELECT * FROM agent_tasks WHERE status = 'developing' "
+            "AND task_type = 'interactive-study' "
+            "ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
+    def execute(self, conn: sqlite3.Connection, task: dict) -> None:
+        from agent_executor import execute_interactive_study
+        execute_interactive_study(conn, task)
+
+    def get_developing_status(self) -> str:
+        return "developing"
+
+    def get_finished_status(self) -> str:
+        return "waiting_for_dev"  # Ready for next user message
+
+    def supports_questions(self) -> bool:
+        return False
+
+    def needs_started_at(self) -> bool:
+        return False
