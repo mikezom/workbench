@@ -26,6 +26,7 @@ export function ChatInterface({
   const [input, setInput] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const isProcessing = sessionStatus === "developing";
 
@@ -37,11 +38,22 @@ export function ChatInterface({
     }
   }, [messages.length]);
 
-  // Auto-resize textarea
+  // Auto-resize textarea: expand up to 1/4 of panel height, then show scrollbar
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
+    const textarea = textareaRef.current;
+    const panel = panelRef.current;
+    if (!textarea || !panel) return;
+
+    const maxHeight = Math.floor(panel.clientHeight / 4);
+    textarea.style.height = "auto";
+    const scrollHeight = textarea.scrollHeight;
+
+    if (scrollHeight <= maxHeight) {
+      textarea.style.height = `${scrollHeight}px`;
+      textarea.style.overflowY = "hidden";
+    } else {
+      textarea.style.height = `${maxHeight}px`;
+      textarea.style.overflowY = "auto";
     }
   }, [input]);
 
@@ -74,7 +86,7 @@ export function ChatInterface({
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div ref={panelRef} className="flex-1 flex flex-col h-full">
       {/* Messages area */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4">
         {messages.length === 0 && !isProcessing ? (
