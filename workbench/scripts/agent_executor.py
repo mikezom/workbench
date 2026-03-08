@@ -312,27 +312,26 @@ def symlink_node_modules(repo_root: str, worktree_path: str) -> None:
     log.info("Symlinked node_modules: %s -> %s", dst, src)
 
 
-def inject_claude_md(worktree_path: str, agent_type: str = "working") -> None:
-    """Copy the appropriate agent CLAUDE.md into a worktree root.
+def inject_claude_md(worktree_path: str, agent_name: str) -> None:
+    """Inject an agent's CLAUDE.md into a worktree root.
 
     Claude Code auto-discovers CLAUDE.md files in the working directory.
-    The source file lives at workbench/data/agent-{type}-claude.md in the
-    worktree (since the worktree is a checkout of the repo).  We copy it
-    to the worktree root so Claude Code finds it.
+    This function reads the agent's persona from the agent section
+    (shared-data/agent/<name>/CLAUDE.md) and writes it to the worktree root.
 
     Args:
         worktree_path: Path to the worktree root.
-        agent_type: Either "working" or "decompose".
+        agent_name: Name of the agent (e.g., "worker", "decompose").
     """
-    filename = f"agent-{agent_type}-claude.md"
-    src = os.path.join(worktree_path, "workbench", "data", filename)
+    from agent_model import read_agent_persona
+
+    persona_content = read_agent_persona(agent_name)
     dst = os.path.join(worktree_path, "CLAUDE.md")
 
-    if not os.path.isfile(src):
-        raise FileNotFoundError(f"{filename} not found at {src}")
+    with open(dst, "w", encoding="utf-8") as f:
+        f.write(persona_content)
 
-    shutil.copy2(src, dst)
-    log.info("Injected %s CLAUDE.md into worktree from %s", agent_type, src)
+    log.info("Injected agent '%s' CLAUDE.md into worktree at %s", agent_name, dst)
 
 
 # ---------------------------------------------------------------------------
@@ -896,7 +895,7 @@ def execute_task(conn: sqlite3.Connection, task: dict) -> None:
             f"Worktree: {worktree_path}  Branch: {branch_name}")
 
         # Step 1b: Inject working agent CLAUDE.md
-        inject_claude_md(worktree_path)
+        inject_claude_md(worktree_path, "worker")
 
         # Step 1c: Symlink node_modules from main checkout
         symlink_node_modules(REPO_ROOT, worktree_path)
@@ -1011,7 +1010,7 @@ def resume_task(conn: sqlite3.Connection, task: dict) -> None:
             f"Resuming task with {len(rows)} answered question(s)...")
 
         # Step 4: Re-inject CLAUDE.md (in case worktree was modified)
-        inject_claude_md(worktree_path)
+        inject_claude_md(worktree_path, "worker")
 
         # Step 5: Re-invoke Claude Code
         invoke_claude(worktree_path, resumed_prompt, conn, task_id)
