@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FSRS), Crawl.
+A personal workbench website (Next.js) with 6 sections: Home, Agentic Tasks, Monitor, Forest, Study (FSRS), Crawl, and Clipboard.
 
 ## Task Breakdown
 
@@ -13,8 +13,8 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [x] Extract forest.zip and integrate static files
 
 ### Phase 1: Layout & Navigation
-- [x] Create main layout with sidebar/nav for 4 sections
-- [x] Set up routing: `/agent`, `/forest`, `/study`, `/crawl`
+- [x] Create main layout with sidebar/nav for all sections
+- [x] Set up routing: `/`, `/agentic-tasks`, `/monitor`, `/forest`, `/study`, `/crawl`, `/clipboard`
 - [x] Basic shared UI components (page container, nav links)
 
 ### Phase 2: Forest Section
@@ -120,8 +120,8 @@ A personal workbench website (Next.js) with 4 sections: Agent, Forest, Study (FS
 - [ ] Create source list UI showing available sources
 - [ ] Build reader-friendly content display
 
-### Phase 5: Agent Section
-Full spec: `docs/agent-section.md`
+### Phase 5: Agentic Tasks Section
+Full spec: `docs/agentic-tasks-section.md`
 
 #### 5a: Database & Config
 - [x] Add `agent_tasks`, `agent_task_output`, `agent_lock` tables to SQLite
@@ -252,6 +252,8 @@ Full spec: `docs/agent-section.md`
 - [x] Implement liquid-glass design (backdrop blur, transparency, Heroicons, blue glow)
 
 ### Phase 9: Monitor Section & Daemon Refactor
+Full spec: `docs/monitor-section.md`
+
 - [x] Refactor agent-daemon.py with TaskHandler ABC registry pattern (614 → 284 lines)
 - [x] Add monitor database schema (agent_monitoring, investigation_reports, agent_activity_log)
 - [x] Extend agent_tasks task_type to include 'investigation'
@@ -259,10 +261,19 @@ Full spec: `docs/agent-section.md`
 - [x] Add investigation task handler and executor pipeline
 - [x] Build monitor API routes (active agents, queue, terminate, activity)
 - [x] Build investigation API routes (create, list reports, get report)
-- [x] Create /monitor page with 3 tabs (Active Agents, Task Queue, Reports)
+- [x] Create /monitor page with 4 tabs (Active Agents, Task Queue, Agent, Reports)
 - [x] Add investigation form and report viewer to Reports tab
 - [x] Wire initMonitorSchema into database initialization
 - [ ] Wire monitoring service into executors (process tracking, activity logging)
+
+### Phase 10: Documentation & Architecture Updates
+- [x] Rename Agent section to Agentic Tasks
+- [x] Update all routes from /agent to /agentic-tasks
+- [x] Update all API routes from /api/agent to /api/agentic-tasks
+- [x] Add dummy Agent tab to Monitor section
+- [x] Create monitor-section.md documentation
+- [x] Update agentic-tasks-section.md with new routes
+- [x] Update PROGRESS.md to reflect current architecture
 
 ## Status
 
@@ -285,9 +296,10 @@ Full spec: `docs/agent-section.md`
 | Git Housekeeping | Complete | Fixed .gitignore, pushed 16 commits, switched remote to SSH; `c2fb702` |
 | 2b - Forest Bug Fixes | Complete | graph.json path fix; `3d9e0fe` (forester-repo) |
 | 4 - Crawl | In progress | ArxivPanel functional with API + caching; scrollbar fix `29ef2b9` |
-| 5 - Agent | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |
+| 5 - Agentic Tasks | Complete (backend) | Phase 5a–5j complete (knowledge accumulation deferred); path fix `bfdbccb` |
 | 6 - Crawl | In progress | ArxivPanel + Jin10Panel + SolidotPanel functional; commit `0c2f1be` |
 | 7 - Home Image Migration | Complete | Images moved to data/images/ with API serving; commit `613eca1` |
 | 7h - Home Expand Modal | Complete | ImageModal with expand button, three close methods, responsive layout; commits `dec2e94`-`6426b09` |
 | 8 - Mobile Responsive Navigation | Complete | Portrait-responsive nav with liquid-glass design, Heroicons, blue glow; commits `b610fca`-`c7eb6cd` |
 | 9 - Monitor Section & Daemon Refactor | Complete | Handler registry, monitor UI, investigation pipeline; commits `8c9636f`-`c106ad7` |
+| 10 - Documentation & Architecture Updates | Complete | Renamed Agent to Agentic Tasks, added Monitor Agent tab, updated docs; commit `f5a4ea4` |

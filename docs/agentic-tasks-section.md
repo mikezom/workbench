@@ -1,8 +1,8 @@
-# Agent Section — Technical Description
+# Agentic Tasks Section — Technical Description
 
 ## Overview
 
-The Agent section is an autonomous task execution system built around Claude Code CLI. A user submits a natural-language objective via the web UI; an LLM decomposes it into atomic sub-tasks; a Python polling daemon picks them up one-at-a-time and runs Claude Code in isolated git worktrees. On completion, changes are rebased onto `main` and validated with `npm run build`.
+The Agentic Tasks section is an autonomous task execution system built around Claude Code CLI. A user submits a natural-language objective via the web UI; an LLM decomposes it into atomic sub-tasks; a Python polling daemon picks them up one-at-a-time and runs Claude Code in isolated git worktrees. On completion, changes are rebased onto `main` and validated with `npm run build`.
 
 The system comprises three modules:
 
@@ -17,11 +17,11 @@ User (browser)
   │
   ▼
 Module A: Next.js UI + API Routes
-  │  POST /api/agent/decompose → LLM breaks objective into sub-tasks
-  │  POST /api/agent/tasks     → create task(s)
-  │  GET  /api/agent/tasks     → list tasks (polled by UI every 5s)
-  │  GET  /api/agent/tasks/[id]/output → poll task output
-  │  PUT  /api/agent/tasks/[id] → cancel task
+  │  POST /api/agentic-tasksic-tasks/decompose → LLM breaks objective into sub-tasks
+  │  POST /api/agentic-tasksic-tasks/tasks     → create task(s)
+  │  GET  /api/agentic-tasksic-tasks/tasks     → list tasks (polled by UI every 5s)
+  │  GET  /api/agentic-tasksic-tasks/tasks/[id]/output → poll task output
+  │  PUT  /api/agentic-tasksic-tasks/tasks/[id] → cancel task
   │
   ▼
 SQLite (data/workbench.db) — agent_tasks, agent_task_output, agent_lock
@@ -50,15 +50,15 @@ Scope: Module C operates **only** on the workbench repo (`/Users/ccnas/DEVELOPME
 
 | File | Purpose |
 |------|---------|
-| `src/app/agent/page.tsx` | Entire Agent UI — prompt input, task board, detail modal, config panel |
+| `src/app/agentic-tasks/page.tsx` | Entire Agentic Tasks UI — prompt input, task board, detail modal, config panel |
 | `src/lib/agent-db.ts` | Agent SQLite schema, task CRUD, lock management, output storage |
 | `src/lib/agent-config.ts` | Read/write `data/agent-config.json` (LLM provider/model/key) |
-| `src/app/api/agent/tasks/route.ts` | `GET` list all tasks, `POST` create task |
-| `src/app/api/agent/tasks/[id]/route.ts` | `GET` task detail, `PUT` update/cancel, `DELETE` task |
-| `src/app/api/agent/tasks/[id]/output/route.ts` | `GET` task execution output (paginated) |
-| `src/app/api/agent/decompose/route.ts` | `POST` LLM task decomposition |
-| `src/app/api/agent/tasks/[id]/questions/route.ts` | `GET` questions, `POST` answers |
-| `src/app/api/agent/config/route.ts` | `GET` read config (API key masked), `PUT` update config |
+| `src/app/api/agentic-tasks/tasks/route.ts` | `GET` list all tasks, `POST` create task |
+| `src/app/api/agentic-tasks/tasks/[id]/route.ts` | `GET` task detail, `PUT` update/cancel, `DELETE` task |
+| `src/app/api/agentic-tasks/tasks/[id]/output/route.ts` | `GET` task execution output (paginated) |
+| `src/app/api/agentic-tasks/decompose/route.ts` | `POST` LLM task decomposition |
+| `src/app/api/agentic-tasks/tasks/[id]/questions/route.ts` | `GET` questions, `POST` answers |
+| `src/app/api/agentic-tasks/config/route.ts` | `GET` read config (API key masked), `PUT` update config |
 | `scripts/agent-daemon.py` | Polling daemon (Module B) — launchd-managed |
 | `scripts/agent_executor.py` | Execution pipeline (Module C) — imported by daemon |
 | `data/agent-config.json` | LLM config (gitignored, contains API key) |
@@ -140,7 +140,7 @@ Tasks are **atomic** — no dependencies between tasks. Each sub-task from decom
 
 When the user submits a prompt via the UI, they have two options:
 
-1. **Decompose** — calls `POST /api/agent/decompose` which sends the prompt to the configured LLM with the system prompt from `data/agent-decompose-claude.md`. The LLM returns a JSON array of `{title, prompt}` objects. The UI presents these for review/editing before queuing.
+1. **Decompose** — calls `POST /api/agentic-tasks/decompose` which sends the prompt to the configured LLM with the system prompt from `data/agent-decompose-claude.md`. The LLM returns a JSON array of `{title, prompt}` objects. The UI presents these for review/editing before queuing.
 
 2. **Direct** — creates a single task directly from the prompt text.
 
@@ -197,7 +197,7 @@ The decompose route supports both Anthropic and OpenAI-compatible APIs. It extra
 
 ### Cancellation
 
-- The UI sets `status='cancelled'` via `PUT /api/agent/tasks/[id]`
+- The UI sets `status='cancelled'` via `PUT /api/agentic-tasks/tasks/[id]`
 - The daemon checks the DB every 5 seconds during execution
 - On detection: kills the Claude subprocess, cleans up the worktree
 
@@ -298,7 +298,7 @@ Two separate instruction files for the two agent roles:
    - Git workflow (commit on current branch, no new branches)
    - Build validation requirement (`npm run build` must pass)
 
-2. **Decomposition Agent** (`data/agent-decompose-claude.md`) — used as the system prompt for `POST /api/agent/decompose`. Contains:
+2. **Decomposition Agent** (`data/agent-decompose-claude.md`) — used as the system prompt for `POST /api/agentic-tasks/decompose`. Contains:
    - Rules for atomic, independent sub-tasks
    - Good prompt anatomy (files to modify, behavior, architecture fit, expected outcome)
    - Output format specification (JSON array)
@@ -309,7 +309,7 @@ Two separate instruction files for the two agent roles:
 
 Both working agents and decompose agents use Claude Code CLI directly, which handles authentication via the local Claude CLI configuration (`claude auth login`).
 
-The config file at `data/agent-config.json`, the config API routes (`/api/agent/config`), and the Config panel in the UI are kept for reference only and may be removed in future versions.
+The config file at `data/agent-config.json`, the config API routes (`/api/agentic-tasks/config`), and the Config panel in the UI are kept for reference only and may be removed in future versions.
 
 <details>
 <summary>Legacy config format (for reference)</summary>
@@ -327,7 +327,7 @@ The config file at `data/agent-config.json`, the config API routes (`/api/agent/
 
 Default provider was Anthropic. Also supported OpenAI-compatible APIs (OpenAI, OpenRouter, etc.).
 
-The config API (`GET /api/agent/config`) masked the API key in responses (`sk-ant-...1234`).
+The config API (`GET /api/agentic-tasks/config`) masked the API key in responses (`sk-ant-...1234`).
 
 </details>
 
@@ -368,21 +368,21 @@ Single client component file containing all sub-components.
 
 ### Polling
 
-The main page polls `GET /api/agent/tasks` every 5 seconds. The detail modal additionally polls task output every 3 seconds while the task status is `developing`.
+The main page polls `GET /api/agentic-tasks/tasks` every 5 seconds. The detail modal additionally polls task output every 3 seconds while the task status is `developing`.
 
 ## API Reference
 
 | Method | Route | Purpose |
 |--------|-------|---------|
-| GET | `/api/agent/tasks` | List all tasks (optional `?status=` filter) |
-| POST | `/api/agent/tasks` | Create task (`{title, prompt, parent_objective?}`) |
-| GET | `/api/agent/tasks/:id` | Get single task detail |
-| PUT | `/api/agent/tasks/:id` | Update task (cancel, status change) |
-| DELETE | `/api/agent/tasks/:id` | Delete task and its output |
-| GET | `/api/agent/tasks/:id/output` | Get task output (`?limit=&offset=`) |
-| POST | `/api/agent/decompose` | LLM decomposes prompt into sub-tasks |
-| GET | `/api/agent/config` | Read config (API key masked) |
-| PUT | `/api/agent/config` | Update config (partial updates supported) |
+| GET | `/api/agentic-tasks/tasks` | List all tasks (optional `?status=` filter) |
+| POST | `/api/agentic-tasks/tasks` | Create task (`{title, prompt, parent_objective?}`) |
+| GET | `/api/agentic-tasks/tasks/:id` | Get single task detail |
+| PUT | `/api/agentic-tasks/tasks/:id` | Update task (cancel, status change) |
+| DELETE | `/api/agentic-tasks/tasks/:id` | Delete task and its output |
+| GET | `/api/agentic-tasks/tasks/:id/output` | Get task output (`?limit=&offset=`) |
+| POST | `/api/agentic-tasks/decompose` | LLM decomposes prompt into sub-tasks |
+| GET | `/api/agentic-tasks/config` | Read config (API key masked) |
+| PUT | `/api/agentic-tasks/config` | Update config (partial updates supported) |
 
 ## Common Pitfalls
 
@@ -390,5 +390,5 @@ The main page polls `GET /api/agent/tasks` every 5 seconds. The detail modal add
 - **REPO_ROOT path depth**: The executor is at `workbench/scripts/agent_executor.py` — 3 levels below the git root, not 2. Use `dirname(dirname(dirname(__file__)))`.
 - **Route exports**: Next.js route files (`route.ts`) can only export HTTP handlers. Shared logic must go in `src/lib/` modules (this is why `agent-config.ts` was extracted).
 - **System Python version**: macOS system Python is 3.9. Use `from __future__ import annotations` for modern type hints, or use `Optional[X]`/`Union[X, Y]`.
-- **API key masking**: `GET /api/agent/config` masks the key. The UI never prefills the password field — it shows the masked value as a placeholder. Only send a new key when the user explicitly types one.
+- **API key masking**: `GET /api/agentic-tasks/config` masks the key. The UI never prefills the password field — it shows the masked value as a placeholder. Only send a new key when the user explicitly types one.
 - **Stale lock recovery**: If the daemon crashes mid-execution, the lock may remain held. The daemon clears locks older than 30 minutes on startup and marks the associated task as `failed`.
