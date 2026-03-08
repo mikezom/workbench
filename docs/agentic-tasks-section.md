@@ -36,7 +36,7 @@ Module B: Python Polling Daemon (launchd)
   ▼
 Module C: Execution Pipeline (Python)
   │  1. git worktree add .worktrees/task-<id>
-  │  2. Copy agent-working-claude.md → worktree CLAUDE.md
+  │  2. Read agent persona from shared-data/agent/<name>/CLAUDE.md → worktree CLAUDE.md
   │  3. claude -p [prompt] --output-format stream-json
   │  4. Rebase onto main (up to 3 conflict resolution attempts)
   │  5. npm run build (up to 3 fix attempts)
@@ -61,9 +61,11 @@ Scope: Module C operates **only** on the workbench repo (`/Users/ccnas/DEVELOPME
 | `src/app/api/agentic-tasks/config/route.ts` | `GET` read config (API key masked), `PUT` update config |
 | `scripts/agent-daemon.py` | Polling daemon (Module B) — launchd-managed |
 | `scripts/agent_executor.py` | Execution pipeline (Module C) — imported by daemon |
-| `data/agent-config.json` | LLM config (gitignored, contains API key) |
-| `data/agent-working-claude.md` | CLAUDE.md injected into worktrees for working agents |
-| `data/agent-decompose-claude.md` | System prompt for the decomposition LLM |
+| `scripts/agent_model.py` | Agent model abstraction — reads agent data from agent section |
+| `data/agent-config.json` | LLM config (gitignored, deprecated) |
+| `shared-data/agent/worker/CLAUDE.md` | Working agent persona (injected into worktrees) |
+| `shared-data/agent/decompose/CLAUDE.md` | Decompose agent persona |
+| `shared-data/agent/investigation/CLAUDE.md` | Investigation agent persona |
 
 ## Database Schema
 
@@ -289,19 +291,27 @@ launchctl unload ~/Library/LaunchAgents/com.workbench.agent-daemon.plist
 
 ## CLAUDE.md Files
 
-Two separate instruction files for the two agent roles:
+Agent personas are now managed through the Agent section and stored at `shared-data/agent/<name>/CLAUDE.md`. The executor reads these files using the `agent_model.py` module and injects them into worktrees.
 
-1. **Working Agent** (`data/agent-working-claude.md`) — copied into each worktree as `CLAUDE.md`. Contains:
+Three agent personas are currently defined:
+
+1. **Worker Agent** (`shared-data/agent/worker/CLAUDE.md`) — injected into worktrees for task implementation. Contains:
    - Project structure and tech stack
    - Coding conventions (route exports, DB transactions, Tailwind-only styling)
    - Known pitfalls from REFLECTION.md
    - Git workflow (commit on current branch, no new branches)
    - Build validation requirement (`npm run build` must pass)
 
-2. **Decomposition Agent** (`data/agent-decompose-claude.md`) — used as the system prompt for `POST /api/agentic-tasks/decompose`. Contains:
+2. **Decompose Agent** (`shared-data/agent/decompose/CLAUDE.md`) — used for task decomposition. Contains:
    - Rules for atomic, independent sub-tasks
    - Good prompt anatomy (files to modify, behavior, architecture fit, expected outcome)
    - Output format specification (JSON array)
+
+3. **Investigation Agent** (`shared-data/agent/investigation/CLAUDE.md`) — used for investigation tasks. Contains:
+   - Investigation methodology and reporting format
+   - Analysis guidelines and best practices
+
+The old files at `data/agent-working-claude.md` and `data/agent-decompose-claude.md` have been migrated to the agent section and are no longer used.
 
 ## Config (DEPRECATED)
 
