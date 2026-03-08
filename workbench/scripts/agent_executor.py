@@ -16,6 +16,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 
@@ -1613,12 +1614,20 @@ def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
 
     # Step 2: Build conversation prompt
     # Format as a conversation transcript for Claude
-    conversation_parts = []
-    for row in rows:
-        role = "User" if row["type"] == "user" else "Assistant"
-        conversation_parts.append(f"{role}: {row['content']}")
+    if not rows:
+        conversation_text = "(This is the start of a new conversation)"
+    else:
+        conversation_parts = []
+        for row in rows:
+            role = "User" if row["type"] == "user" else "Assistant"
+            conversation_parts.append(f"{role}: {row['content']}")
 
-    conversation_text = "\n\n".join(conversation_parts)
+        conversation_text = "\n\n".join(conversation_parts)
+
+        # Validate that the last message is from the user
+        if rows[-1]["type"] != "user":
+            append_output(conn, task_id, "system", "Error: Last message must be from user")
+            raise RuntimeError("Invalid conversation state: last message is not from user")
 
     # The task prompt contains the study topic/context
     topic = task.get("prompt") or task.get("title") or "general study"
@@ -1633,7 +1642,6 @@ def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
 
     # Step 3: Create a temporary directory for Claude CLI execution
     # Interactive study doesn't need a worktree, but Claude CLI needs a cwd
-    import tempfile
     with tempfile.TemporaryDirectory(prefix="study-") as tmpdir:
         # Inject the interactive-study CLAUDE.md
         inject_claude_md(tmpdir, "interactive-study")
