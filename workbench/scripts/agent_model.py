@@ -130,3 +130,41 @@ def agent_exists(agent_name: str) -> bool:
     """
     agent_dir = get_agent_dir(agent_name)
     return os.path.isdir(agent_dir)
+
+
+def read_agent_skill(agent_name: str, skill_name: str) -> str:
+    """Read the SKILL.md file from an agent's skill directory.
+
+    Args:
+        agent_name: Name of the agent
+        skill_name: Name of the skill
+
+    Returns:
+        Content of SKILL.md
+
+    Raises:
+        FileNotFoundError: If the skill or SKILL.md doesn't exist
+    """
+    agent_dir = get_agent_dir(agent_name)
+    skill_path = os.path.join(agent_dir, "skills", skill_name, "SKILL.md")
+
+    if not os.path.isfile(skill_path):
+        raise FileNotFoundError(
+            f"Skill '{skill_name}' SKILL.md not found at {skill_path}"
+        )
+
+    with open(skill_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def get_agent_skills_dir(agent_name: str) -> str:
+    """Get the path to an agent's skills directory.
+
+    Args:
+        agent_name: Name of the agent
+
+    Returns:
+        Path to the agent's skills directory
+    """
+    agent_dir = get_agent_dir(agent_name)
+    return os.path.join(agent_dir, "skills")
