@@ -182,7 +182,7 @@ function PromptInput({
     setDecomposing(true);
     setError(null);
     try {
-      const res = await fetch("/api/agent/decompose", {
+      const res = await fetch("/api/agentic-tasks/decompose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: prompt.trim() }),
@@ -207,7 +207,7 @@ function PromptInput({
     setCreating(true);
     setError(null);
     try {
-      const res = await fetch("/api/agent/tasks", {
+      const res = await fetch("/api/agentic-tasks/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: prompt.trim().slice(0, 80), prompt: prompt.trim() }),
@@ -394,7 +394,7 @@ function TaskDetailModal({
   // Fetch task output
   const fetchOutput = useCallback(async () => {
     try {
-      const res = await fetch(`/api/agent/tasks/${task.id}/output?limit=500`);
+      const res = await fetch(`/api/agentic-tasks/tasks/${task.id}/output?limit=500`);
       if (!res.ok) return;
       const data = await res.json();
       setOutput(data);
@@ -408,7 +408,7 @@ function TaskDetailModal({
   // Fetch task status
   const fetchTask = useCallback(async () => {
     try {
-      const res = await fetch(`/api/agent/tasks/${task.id}`);
+      const res = await fetch(`/api/agentic-tasks/tasks/${task.id}`);
       if (!res.ok) return;
       const data = await res.json();
       setCurrentTask(data);
@@ -425,7 +425,7 @@ function TaskDetailModal({
   const fetchQuestions = useCallback(async () => {
     if (currentTask.status !== "waiting_for_review") return;
     try {
-      const res = await fetch(`/api/agent/tasks/${task.id}/questions`);
+      const res = await fetch(`/api/agentic-tasks/tasks/${task.id}/questions`);
       if (!res.ok) return;
       const data: AgentTaskQuestion[] = await res.json();
       setQuestions(data);
@@ -446,7 +446,7 @@ function TaskDetailModal({
     if (!isDecompose) return;
     if (currentTask.status !== "decompose_waiting_for_answers" && currentTask.status !== "decompose_waiting_for_approval") return;
     try {
-      const res = await fetch(`/api/agent/decompose/${task.id}`);
+      const res = await fetch(`/api/agentic-tasks/decompose/${task.id}`);
       if (!res.ok) return;
       const data = await res.json();
       setDecomposeQuestions(data.questions || []);
@@ -466,7 +466,7 @@ function TaskDetailModal({
     if (!isDecompose) return;
     if (currentTask.status !== "decompose_waiting_for_completion" && currentTask.status !== "decompose_reflecting") return;
     try {
-      const res = await fetch(`/api/agent/decompose/${task.id}/subtasks`);
+      const res = await fetch(`/api/agentic-tasks/decompose/${task.id}/subtasks`);
       if (!res.ok) return;
       const data = await res.json();
       setSubTasks(data.sub_tasks || []);
@@ -506,7 +506,7 @@ function TaskDetailModal({
   const handleCancel = async () => {
     setCancelling(true);
     try {
-      await fetch(`/api/agent/tasks/${task.id}`, {
+      await fetch(`/api/agentic-tasks/tasks/${task.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "cancelled" }),
@@ -524,7 +524,7 @@ function TaskDetailModal({
     if (!confirm(`Delete task "${currentTask.title}"?`)) return;
     setDeleting(true);
     try {
-      await fetch(`/api/agent/tasks/${task.id}`, { method: "DELETE" });
+      await fetch(`/api/agentic-tasks/tasks/${task.id}`, { method: "DELETE" });
       onTaskUpdated();
       onClose();
     } catch {
@@ -541,7 +541,7 @@ function TaskDetailModal({
 
     setSubmittingAnswers(true);
     try {
-      const res = await fetch(`/api/agent/tasks/${task.id}/questions`, {
+      const res = await fetch(`/api/agentic-tasks/tasks/${task.id}/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers: selectedAnswers }),
@@ -562,7 +562,7 @@ function TaskDetailModal({
     setSubmittingAnswers(true);
     setDecomposeError(null);
     try {
-      const res = await fetch(`/api/agent/decompose/${task.id}/answers`, {
+      const res = await fetch(`/api/agentic-tasks/decompose/${task.id}/answers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers: decomposeAnswers }),
@@ -585,7 +585,7 @@ function TaskDetailModal({
     setSubmittingAnswers(true);
     setDecomposeError(null);
     try {
-      const res = await fetch(`/api/agent/decompose/${task.id}/approve`, {
+      const res = await fetch(`/api/agentic-tasks/decompose/${task.id}/approve`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -610,7 +610,7 @@ function TaskDetailModal({
     setSubmittingAnswers(true);
     setDecomposeError(null);
     try {
-      const res = await fetch(`/api/agent/decompose/${task.id}/reject`, {
+      const res = await fetch(`/api/agentic-tasks/decompose/${task.id}/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comment: rejectComment.trim() }),
@@ -632,7 +632,7 @@ function TaskDetailModal({
   // Sub-task commenting
   const handleCommentSubTask = async (taskId: number, taskComment: string) => {
     try {
-      const res = await fetch(`/api/agent/tasks/${taskId}/comment`, {
+      const res = await fetch(`/api/agentic-tasks/tasks/${taskId}/comment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ comment: taskComment }),
@@ -1007,7 +1007,7 @@ function ConfigPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/agent/config");
+        const res = await fetch("/api/agentic-tasks/config");
         if (!res.ok) return;
         const data: AgentConfig = await res.json();
         setConfig(data);
@@ -1034,7 +1034,7 @@ function ConfigPanel({ onClose }: { onClose: () => void }) {
       if (Object.keys(llm).length > 0) update.llm = llm;
 
       if (Object.keys(update).length > 0) {
-        const res = await fetch("/api/agent/config", {
+        const res = await fetch("/api/agentic-tasks/config", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(update),
@@ -1168,7 +1168,7 @@ export default function AgentPage() {
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await fetch("/api/agent/tasks");
+      const res = await fetch("/api/agentic-tasks/tasks");
       if (!res.ok) return;
       const data = await res.json();
       setTasks(data);

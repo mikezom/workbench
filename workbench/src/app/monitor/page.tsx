@@ -53,7 +53,7 @@ interface FullReport {
   task_created_at: string;
 }
 
-type Tab = "active" | "queue" | "reports";
+type Tab = "active" | "queue" | "reports" | "agent";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -348,6 +348,23 @@ function TaskQueueTab() {
 /*  Tab 3: Reports                                                     */
 /* ------------------------------------------------------------------ */
 
+function AgentTab() {
+  return (
+    <div className="text-center py-12">
+      <p className="text-neutral-500 dark:text-neutral-400 text-lg mb-2">
+        Agent Tab (Placeholder)
+      </p>
+      <p className="text-neutral-400 dark:text-neutral-500 text-sm">
+        This is a dummy section for future agent functionality.
+      </p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tab 4: Reports                                                     */
+/* ------------------------------------------------------------------ */
+
 function InvestigationForm({
   onCreated,
   onCancel,
@@ -565,6 +582,7 @@ const TABS: { label: string; value: Tab }[] = [
   { label: "Active Agents", value: "active" },
   { label: "Task Queue", value: "queue" },
   { label: "Reports", value: "reports" },
+  { label: "Agent", value: "agent" },
 ];
 
 export default function MonitorPage() {
@@ -590,6 +608,7 @@ export default function MonitorPage() {
 
       {tab === "active" && <ActiveAgentsTab />}
       {tab === "queue" && <TaskQueueTab />}
+      {tab === "agent" && <AgentTab />}
       {tab === "reports" && <ReportsTab />}
     </PageContainer>
   );
