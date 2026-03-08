@@ -276,6 +276,28 @@ Full spec: `docs/monitor-section.md`
 - [x] Update agentic-tasks-section.md with new routes
 - [x] Update PROGRESS.md to reflect current architecture
 
+### Phase 11: Interactive Study Section
+Full spec: `docs/plans/2026-03-08-interactive-study-design.md`
+Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
+
+#### 11a: Backend (Tasks 1-7)
+- [x] Install KaTeX dependency
+- [x] Add `interactive-study` task type to database schema with migration
+- [x] Exclude `interactive-study` from worker handler
+- [x] Create interactive-study executor function
+- [x] Create interactive-study task handler and register in daemon
+- [x] Create agent config files (CLAUDE.md + config.json)
+- [x] API routes for session CRUD and messages
+
+#### 11b: Frontend (Tasks 8-13)
+- [x] LaTeX renderer component with KaTeX (inline/block math, markdown)
+- [x] MessageBubble component (user/assistant variants, avatars)
+- [x] ChatInterface component (auto-scroll, typing indicator, input)
+- [x] SessionSidebar component (session list, status dots, delete)
+- [x] Interactive Study page with session management and polling
+- [x] Add Tutor to navigation sidebar
+- [x] Build verification and smoke test
+
 ## Status
 
 | Phase | Status | Notes |
@@ -304,3 +326,5 @@ Full spec: `docs/monitor-section.md`
 | 8 - Mobile Responsive Navigation | Complete | Portrait-responsive nav with liquid-glass design, Heroicons, blue glow; commits `b610fca`-`c7eb6cd` |
 | 9 - Monitor Section & Daemon Refactor | Complete | Handler registry, monitor UI (3 tabs), investigation pipeline; commits `8c9636f`-`c106ad7` |
 | 10 - Documentation & Architecture Updates | Complete | Renamed Agent to Agentic Tasks, added placeholder Agent section, updated docs; commits `f5a4ea4`, `d92a158` |
+| 11a - Interactive Study Backend | Complete | DB schema, executor, task handler, API routes; commits `4aafde5`-`80ce122` |
+| 11b - Interactive Study Frontend | Complete | LaTeX renderer, chat UI, study page, nav entry; commits `cb86af4`-`e57c265` |

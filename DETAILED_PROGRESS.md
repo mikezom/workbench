@@ -1665,3 +1665,75 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 - `workbench/package.json` — Added @heroicons/react dependency for professional icon library.
 - `workbench/src/components/nav.tsx` — Replaced emoji icons with Heroicons Outline as inline SVG (Home, Sparkles, Squares2x2, BookOpen, Globe, ClipboardDocument). Added global styled-jsx with portrait media query for glass effects. Implemented backdrop-blur (16px) with saturation (180%) and explicit -webkit-backdrop-filter for iOS. Added semi-transparent backgrounds (rgba(255,255,255,0.7) light, rgba(0,0,0,0.5) dark). Added floating shadow (0 -4px 16px). Added subtle top border with glass-like transparency. Implemented blue accent glow for active items using drop-shadow filters (8px and 16px radius with rgba(59,130,246) color).
 
+---
+
+## 2026-03-08 — Interactive Study Section (UI Components)
+
+### Task 1: LaTeX Renderer Component
+
+**Commit:** `cb86af4`
+
+**Problem:** Need a reusable component to render math expressions (inline and block LaTeX) and basic markdown in chat messages for the interactive study feature.
+
+**Changes:**
+- `workbench/src/components/latex-renderer.tsx` — Created LatexRenderer component using KaTeX with support for inline ($...$) and block ($$...$$) math, basic markdown (bold, italic, code, line breaks), and graceful error handling for invalid LaTeX.
+- `workbench/src/components/latex-renderer.test.tsx` — 5 tests covering plain text, inline LaTeX, block LaTeX, invalid LaTeX, and markdown formatting.
+- `workbench/src/app/layout.tsx` — Added `import "katex/dist/katex.min.css"` for KaTeX styling.
+
+---
+
+### Task 2: MessageBubble Component
+
+**Commit:** `ec690de`
+
+**Problem:** Need a chat bubble component to display user and assistant messages with avatar support and LaTeX rendering for assistant responses.
+
+**Changes:**
+- `workbench/src/components/study/message-bubble.tsx` — Created MessageBubble with user (blue, right-aligned, plain text) and assistant (neutral, left-aligned, LaTeX-rendered) variants, avatar support with image fallback to initials.
+
+---
+
+### Task 3: ChatInterface and SessionSidebar Components
+
+**Commit:** `f265991`
+
+**Problem:** Need the main chat UI with message display, typing indicator, and input area, plus a session list sidebar for managing study sessions.
+
+**Changes:**
+- `workbench/src/components/study/chat-interface.tsx` — Created ChatInterface with auto-scrolling messages, auto-resizing textarea, Enter-to-send/Shift+Enter for newline, typing indicator (bouncing dots), and empty state placeholder.
+- `workbench/src/components/study/session-sidebar.tsx` — Created SessionSidebar with new session button, session list with status dots (pulse for developing, red for failed, green for ready), active session highlighting, and delete button on hover.
+
+---
+
+### Task 4: Interactive Study Page
+
+**Commit:** `cd25fa0`
+
+**Problem:** Need the main page that wires together session management, messaging, and polling for the interactive study feature.
+
+**Changes:**
+- `workbench/src/app/interactive-study/page.tsx` — Created InteractiveStudyPage with session CRUD (create, select, delete), message sending with optimistic updates, 2-second polling for messages and session status, error banner with dismiss, and responsive portrait layout.
+
+---
+
+### Task 5: Navigation Entry
+
+**Commit:** `4fa839b`
+
+**Problem:** Need to add the Tutor (interactive study) section to the sidebar navigation so users can access it.
+
+**Changes:**
+- `workbench/src/components/nav.tsx` — Added Tutor entry with chat bubble SVG icon between Study and Crawl sections.
+
+---
+
+### Task 6: Dev Dependencies
+
+**Commit:** `e57c265`
+
+**Problem:** @testing-library/react was needed for component tests but not yet installed.
+
+**Changes:**
+- `workbench/package.json` — Added @testing-library/react and @testing-library/dom as dev dependencies.
+- `workbench/package-lock.json` — Updated lockfile.
+
