@@ -85,7 +85,7 @@ class WorkerNewTaskHandler(TaskHandler):
     def get_next_task(self, conn: sqlite3.Connection) -> dict | None:
         row = conn.execute(
             "SELECT * FROM agent_tasks WHERE status = 'waiting_for_dev' "
-            "AND (task_type IS NULL OR task_type NOT IN ('decompose', 'investigation')) "
+            "AND (task_type IS NULL OR task_type NOT IN ('decompose', 'investigation', 'interactive-study')) "
             "ORDER BY created_at ASC LIMIT 1"
         ).fetchone()
         if row is None:
