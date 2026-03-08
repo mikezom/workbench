@@ -530,15 +530,28 @@ export function deleteAgent(id: number): boolean {
 // ---------------------------------------------------------------------------
 
 export function migrateAgentSchema(db: Database.Database): void {
-  // Add interactive-study to task_type if not already present
+  // Check if migration is needed by querying the schema directly
+  const tableInfo = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='agent_tasks'")
+    .get() as { sql: string } | undefined;
+
+  // If table doesn't exist or already has 'interactive-study', no migration needed
+  if (!tableInfo || tableInfo.sql.includes("'interactive-study'")) {
+    console.log("[migrateAgentSchema] Migration not needed or already applied");
+    return;
+  }
+
+  console.log("[migrateAgentSchema] Starting migration to add 'interactive-study' task type");
+
+  // Wrap entire migration in a transaction
+  db.exec("BEGIN TRANSACTION");
+
   try {
-    const stmt = db.prepare(
-      "INSERT INTO agent_tasks (title, prompt, task_type) VALUES ('__migration_test__', '__test__', 'interactive-study')"
-    );
-    stmt.run();
-    db.exec("DELETE FROM agent_tasks WHERE title = '__migration_test__'");
-  } catch {
-    // Constraint doesn't allow interactive-study — recreate table
+    // Temporarily disable foreign key constraints to avoid CASCADE issues
+    db.exec("PRAGMA foreign_keys = OFF");
+    console.log("[migrateAgentSchema] Disabled foreign keys");
+
+    // Create new table with updated constraint
     db.exec(`
       CREATE TABLE agent_tasks_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -567,10 +580,34 @@ export function migrateAgentSchema(db: Database.Database): void {
         started_at TEXT,
         completed_at TEXT
       );
-
-      INSERT INTO agent_tasks_new SELECT * FROM agent_tasks;
-      DROP TABLE agent_tasks;
-      ALTER TABLE agent_tasks_new RENAME TO agent_tasks;
     `);
+    console.log("[migrateAgentSchema] Created new table with updated schema");
+
+    // Copy all data from old table to new table
+    db.exec("INSERT INTO agent_tasks_new SELECT * FROM agent_tasks");
+    console.log("[migrateAgentSchema] Copied data to new table");
+
+    // Drop the old table
+    db.exec("DROP TABLE agent_tasks");
+    console.log("[migrateAgentSchema] Dropped old table");
+
+    // Rename new table to original name
+    db.exec("ALTER TABLE agent_tasks_new RENAME TO agent_tasks");
+    console.log("[migrateAgentSchema] Renamed new table");
+
+    // Re-enable foreign key constraints
+    db.exec("PRAGMA foreign_keys = ON");
+    console.log("[migrateAgentSchema] Re-enabled foreign keys");
+
+    // Commit the transaction
+    db.exec("COMMIT");
+    console.log("[migrateAgentSchema] Migration completed successfully");
+  } catch (error) {
+    // Rollback on any error
+    db.exec("ROLLBACK");
+    console.error("[migrateAgentSchema] Migration failed, rolled back:", error);
+    throw new Error(
+      `Failed to migrate agent_tasks schema: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
