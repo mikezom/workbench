@@ -79,7 +79,7 @@ describe("interactive-study sessions API logic", () => {
     appendTaskOutput(task.id, "user", "test");
 
     const db = getDb();
-    db.exec(`DELETE FROM agent_tasks WHERE id = ${task.id}`);
+    db.prepare("DELETE FROM agent_tasks WHERE id = ?").run(task.id);
 
     const deleted = getTask(task.id);
     expect(deleted).toBeNull();
