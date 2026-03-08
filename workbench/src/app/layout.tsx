@@ -46,7 +46,7 @@ export default function RootLayout({
       >
         <div className="flex h-screen portrait:flex-col">
           <Nav />
-          <main className="flex-1 overflow-auto bg-white dark:bg-neutral-900 portrait:pb-16">{children}</main>
+          <main className="flex-1 h-full overflow-auto bg-white dark:bg-neutral-900 portrait:pb-16">{children}</main>
         </div>
       </body>
     </html>
