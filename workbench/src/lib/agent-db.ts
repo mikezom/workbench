@@ -22,7 +22,7 @@ export function initAgentSchema(db: Database.Database): void {
         )),
       parent_objective TEXT,
       parent_task_id INTEGER REFERENCES agent_tasks(id) ON DELETE SET NULL,
-      task_type TEXT NOT NULL DEFAULT 'worker' CHECK (task_type IN ('worker', 'decompose', 'investigation')),
+      task_type TEXT NOT NULL DEFAULT 'worker' CHECK (task_type IN ('worker', 'decompose', 'investigation', 'interactive-study')),
       branch_name TEXT,
       worktree_path TEXT,
       error_message TEXT,
@@ -99,7 +99,7 @@ export type AgentTaskStatus =
   | "decompose_reflecting"
   | "decompose_complete";
 
-export type AgentTaskType = "worker" | "decompose" | "investigation";
+export type AgentTaskType = "worker" | "decompose" | "investigation" | "interactive-study";
 
 export interface AgentTask {
   id: number;
@@ -523,4 +523,54 @@ export function deleteAgent(id: number): boolean {
   const db = getDb();
   const result = db.prepare("DELETE FROM agents WHERE id = ?").run(id);
   return result.changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Schema migration
+// ---------------------------------------------------------------------------
+
+export function migrateAgentSchema(db: Database.Database): void {
+  // Add interactive-study to task_type if not already present
+  try {
+    const stmt = db.prepare(
+      "INSERT INTO agent_tasks (title, prompt, task_type) VALUES ('__migration_test__', '__test__', 'interactive-study')"
+    );
+    stmt.run();
+    db.exec("DELETE FROM agent_tasks WHERE title = '__migration_test__'");
+  } catch {
+    // Constraint doesn't allow interactive-study — recreate table
+    db.exec(`
+      CREATE TABLE agent_tasks_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'waiting_for_dev'
+          CHECK (status IN (
+            'waiting_for_dev', 'developing', 'waiting_for_review',
+            'finished', 'failed', 'cancelled',
+            'decompose_understanding', 'decompose_waiting_for_answers',
+            'decompose_breaking_down', 'decompose_waiting_for_approval',
+            'decompose_approved', 'decompose_waiting_for_completion',
+            'decompose_reflecting', 'decompose_complete'
+          )),
+        parent_objective TEXT,
+        parent_task_id INTEGER REFERENCES agent_tasks_new(id) ON DELETE SET NULL,
+        task_type TEXT NOT NULL DEFAULT 'worker' CHECK (task_type IN ('worker', 'decompose', 'investigation', 'interactive-study')),
+        branch_name TEXT,
+        worktree_path TEXT,
+        error_message TEXT,
+        commit_id TEXT,
+        decompose_breakdown TEXT,
+        decompose_user_comment TEXT,
+        user_task_comment TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        completed_at TEXT
+      );
+
+      INSERT INTO agent_tasks_new SELECT * FROM agent_tasks;
+      DROP TABLE agent_tasks;
+      ALTER TABLE agent_tasks_new RENAME TO agent_tasks;
+    `);
+  }
 }

@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { existsSync, readFileSync, renameSync } from "fs";
 import path from "path";
 import { fsrs, Rating, type Grade, type Card as FSRSCard } from "ts-fsrs";
-import { initAgentSchema } from "./agent-db";
+import { initAgentSchema, migrateAgentSchema } from "./agent-db";
 import { initClipboardSchema } from "./clipboard-db";
 import { initCrawlSchema } from "./crawl-db";
 import { initHomeSchema } from "./home-db";
@@ -30,6 +30,7 @@ export function getDb(): Database.Database {
 
   initSchema(_db);
   initAgentSchema(_db);
+  migrateAgentSchema(_db);
   initClipboardSchema(_db);
   initCrawlSchema(_db);
   initHomeSchema(_db);
