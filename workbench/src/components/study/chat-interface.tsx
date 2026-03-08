@@ -87,6 +87,8 @@ export function ChatInterface({
               key={msg.id}
               type={msg.type as "user" | "assistant"}
               content={msg.content}
+              userAvatar="/api/interactive-study/avatars/student.jpg"
+              agentAvatar="/api/interactive-study/avatars/teacher.png"
             />
           ))
         )}
@@ -94,8 +96,13 @@ export function ChatInterface({
         {/* Typing indicator */}
         {isProcessing && (
           <div className="flex gap-3 mb-4">
-            <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0">
-              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">A</span>
+            <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0 overflow-hidden">
+              <img
+                src="/api/interactive-study/avatars/teacher.png"
+                alt="Agent"
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
             </div>
             <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl rounded-bl-md px-4 py-3">
               <div className="flex gap-1.5">
