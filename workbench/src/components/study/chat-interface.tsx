@@ -24,14 +24,17 @@ export function ChatInterface({
   onSendMessage,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isProcessing = sessionStatus === "developing";
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages.length]);
 
   // Auto-resize textarea
@@ -73,7 +76,7 @@ export function ChatInterface({
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4">
         {messages.length === 0 && !isProcessing ? (
           <div className="text-center text-neutral-400 dark:text-neutral-500 mt-20">
             <p className="text-sm">Send a message to start the conversation</p>
@@ -103,8 +106,6 @@ export function ChatInterface({
             </div>
           </div>
         )}
-
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input area */}
