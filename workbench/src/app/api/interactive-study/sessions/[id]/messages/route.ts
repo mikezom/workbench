@@ -18,7 +18,8 @@ export async function GET(
     }
 
     const sinceId = Number(req.nextUrl.searchParams.get("since")) || 0;
-    const output = getTaskOutput(id);
+    // Get all messages (no limit) for interactive study sessions
+    const output = getTaskOutput(id, { limit: 10000 });
 
     // Filter to only chat messages (user + assistant), optionally after sinceId
     const messages = output
