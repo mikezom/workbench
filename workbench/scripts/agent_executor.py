@@ -334,6 +334,66 @@ def inject_claude_md(worktree_path: str, agent_name: str) -> None:
     log.info("Injected agent '%s' CLAUDE.md into worktree at %s", agent_name, dst)
 
 
+def inject_agent_context(worktree_path: str, agent_name: str) -> None:
+    """Inject complete agent context: CLAUDE.md, memory, and skills.
+
+    Creates the .claude directory structure in the worktree and copies:
+    - CLAUDE.md to worktree root
+    - REFLECTION.md to .claude/projects/-worktree-path/memory/MEMORY.md
+    - skills/ to .claude/skills/
+
+    This gives the agent access to its persona, memory, and capabilities.
+
+    Args:
+        worktree_path: Path to the worktree root.
+        agent_name: Name of the agent (e.g., "interactive-study").
+    """
+    from agent_model import (
+        read_agent_persona,
+        read_agent_memory,
+        get_agent_dir,
+        get_agent_skills_dir,
+    )
+
+    # 1. Inject CLAUDE.md to worktree root
+    persona_content = read_agent_persona(agent_name)
+    claude_md_path = os.path.join(worktree_path, "CLAUDE.md")
+    with open(claude_md_path, "w", encoding="utf-8") as f:
+        f.write(persona_content)
+    log.info("Injected CLAUDE.md for agent '%s'", agent_name)
+
+    # 2. Inject memory (REFLECTION.md) to .claude/projects/.../memory/MEMORY.md
+    memory_content = read_agent_memory(agent_name)
+    if memory_content:
+        # Create project-specific memory directory
+        # Claude Code expects memory at .claude/projects/<project-path>/memory/
+        project_slug = worktree_path.replace("/", "-").lstrip("-")
+        memory_dir = os.path.join(
+            worktree_path, ".claude", "projects", project_slug, "memory"
+        )
+        os.makedirs(memory_dir, exist_ok=True)
+
+        memory_file = os.path.join(memory_dir, "MEMORY.md")
+        with open(memory_file, "w", encoding="utf-8") as f:
+            f.write(memory_content)
+        log.info("Injected memory for agent '%s' to %s", agent_name, memory_file)
+
+    # 3. Copy skills directory to .claude/skills/
+    agent_skills_dir = get_agent_skills_dir(agent_name)
+    if os.path.isdir(agent_skills_dir):
+        worktree_skills_dir = os.path.join(worktree_path, ".claude", "skills")
+
+        # Remove existing skills directory if present
+        if os.path.exists(worktree_skills_dir):
+            shutil.rmtree(worktree_skills_dir)
+
+        # Copy entire skills directory
+        shutil.copytree(agent_skills_dir, worktree_skills_dir)
+        log.info("Copied skills for agent '%s' to %s", agent_name, worktree_skills_dir)
+    else:
+        log.info("No skills directory found for agent '%s'", agent_name)
+
+
 # ---------------------------------------------------------------------------
 # Claude Code CLI invocation
 # ---------------------------------------------------------------------------
@@ -1628,8 +1688,8 @@ def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
             f"Worktree: {worktree_path}  Branch: {branch_name}",
         )
 
-    # Inject CLAUDE.md every turn (in case it was updated)
-    inject_claude_md(worktree_path, "interactive-study")
+    # Inject CLAUDE.md, memory, and skills every turn (in case they were updated)
+    inject_agent_context(worktree_path, "interactive-study")
 
     # Step 2: Load conversation history from agent_task_output
     rows = conn.execute(
