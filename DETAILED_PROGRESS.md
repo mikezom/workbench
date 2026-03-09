@@ -1737,3 +1737,21 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 - `workbench/package.json` — Added @testing-library/react and @testing-library/dom as dev dependencies.
 - `workbench/package-lock.json` — Updated lockfile.
 
+
+
+---
+
+## 2026-03-09 — Interactive Study Worktree Bug Fix
+
+### Task 1: Fix worktree-per-message bug in interactive study
+
+**Commit:** `5901445`
+
+**Problem:** The daemon was creating a new git worktree every time the user sent a message in an interactive study session. Worktrees should be created once per session and reused. Root causes: (1) the executor used a throwaway temp directory per message, (2) the idle status `waiting_for_dev` was shared with worker tasks, allowing stale daemon processes to pick up interactive-study tasks via the wrong handler, and (3) two daemon processes were running simultaneously — one with old code.
+
+**Changes:**
+- `workbench/scripts/agent_executor.py` — Rewrote `execute_interactive_study` to create a persistent worktree on the first message and reuse it for subsequent messages. Added guard in `execute_task` to reject non-worker task types. Removed unused `tempfile` import.
+- `workbench/scripts/task_handlers.py` — Changed `InteractiveStudyHandler.get_finished_status()` from `waiting_for_dev` to `waiting_for_review` to prevent WorkerNewTaskHandler from matching interactive-study tasks.
+- `workbench/src/app/api/interactive-study/sessions/route.ts` — Session creation now immediately sets status to `waiting_for_review` instead of leaving it at `waiting_for_dev`.
+- `workbench/src/app/api/interactive-study/sessions/[id]/messages/route.ts` — Updated status check to accept `waiting_for_review` as a valid state for sending messages, with stricter validation for other states.
+- `workbench/src/app/interactive-study/page.tsx` — Updated default session status from `waiting_for_dev` to `waiting_for_review`.

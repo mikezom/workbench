@@ -298,6 +298,12 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Add Tutor to navigation sidebar
 - [x] Build verification and smoke test
 
+### Phase 11c: Interactive Study Bug Fixes
+- [x] Fix worktree-per-message bug (create once per session, reuse for subsequent messages)
+- [x] Change idle status from `waiting_for_dev` to `waiting_for_review` to prevent handler conflicts
+- [x] Add guard in execute_task to reject non-worker task types
+- [x] Kill stale daemon processes and clean up orphaned worktrees
+
 ## Status
 
 | Phase | Status | Notes |
@@ -328,3 +334,4 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 | 10 - Documentation & Architecture Updates | Complete | Renamed Agent to Agentic Tasks, added placeholder Agent section, updated docs; commits `f5a4ea4`, `d92a158` |
 | 11a - Interactive Study Backend | Complete | DB schema, executor, task handler, API routes; commits `4aafde5`-`80ce122` |
 | 11b - Interactive Study Frontend | Complete | LaTeX renderer, chat UI, study page, nav entry; commits `cb86af4`-`e57c265` |
+| 11c - Interactive Study Bug Fixes | Complete | Worktree-per-session fix, status isolation, guard in execute_task; commit `5901445` |

@@ -412,4 +412,19 @@ return result;
 
 **Commit**: `3c32fa6`
 
+## 2026-03-09 - Interactive study daemon created worktree on every message
+
+**Problem**: Every time the user sent a message in the interactive study (tutor) section, the daemon tried to create a new git worktree. This caused repeated failures and left orphaned worktrees. Worktrees should be created once per session and reused.
+
+**Root Cause**: Two compounding issues: (1) The `execute_interactive_study` function used a throwaway `tempfile.TemporaryDirectory` for each message instead of a persistent worktree. (2) The idle status after each turn was `waiting_for_dev`, which is the same status that `WorkerNewTaskHandler` polls for. Two daemon processes were running simultaneously — an old one (started before the `interactive-study` exclusion was added to `WorkerNewTaskHandler`) kept picking up the task via the wrong handler and calling `execute_task`, which creates worktrees. The combination meant every message cycle triggered worktree creation.
+
+**Solution**: (1) Changed `execute_interactive_study` to create a persistent worktree on the first message and reuse it for subsequent messages. (2) Changed the idle status from `waiting_for_dev` to `waiting_for_review` so `WorkerNewTaskHandler` can never match interactive-study tasks. (3) Added a guard in `execute_task` to reject non-worker task types. (4) Killed both stale daemon processes.
+
+**Prevention**:
+- When adding a new task type to the daemon, ensure its idle status is NOT `waiting_for_dev` — use a status that no other handler polls for
+- Add guards in executor functions to reject unexpected task types (defense-in-depth)
+- Never run multiple daemon processes simultaneously — add a PID file or startup check
+- When the daemon code changes, always restart ALL running daemon instances
+
+**Commit**: `5901445`
 
