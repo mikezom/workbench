@@ -1759,25 +1759,51 @@ def finish_interactive_study_session(conn: sqlite3.Connection, task: dict) -> No
     # Step 1: Inject agent context (in case it was updated)
     inject_agent_context(worktree_path, "interactive-study")
 
-    # Step 2: Build prompt to record progress
-    prompt = (
-        "The student has ended this study session. "
-        "Invoke the 'record-progress' skill to summarize what was learned "
-        "and update the progress memory file."
-    )
+    # Step 2: Load conversation history from agent_task_output
+    rows = conn.execute(
+        "SELECT type, content FROM agent_task_output "
+        "WHERE task_id = ? AND type IN ('user', 'assistant') "
+        "ORDER BY id ASC",
+        (task_id,),
+    ).fetchall()
 
-    # Step 3: Invoke Claude CLI to record progress
-    try:
-        invoke_claude(worktree_path, prompt, conn, task_id)
-    except CancelledError:
-        append_output(conn, task_id, "system", "Session finish cancelled")
-        raise
-    except RuntimeError as e:
-        append_output(conn, task_id, "system", f"Error recording progress: {e}")
-        # Continue with cleanup even if recording fails
-        log.warning("Failed to record progress for task %d: %s", task_id, e)
+    if not rows:
+        append_output(conn, task_id, "system", "No conversation history found — skipping progress recording")
+        log.warning("Task %d has no conversation history", task_id)
+        # Still clean up the worktree even if there's no history
+    else:
+        # Step 3: Build conversation summary for the agent
+        conversation_parts = []
+        for row in rows:
+            role = "User" if row["type"] == "user" else "Assistant"
+            conversation_parts.append(f"{role}: {row['content']}")
 
-    # Step 4: Copy updated REFLECTION.md back to agent's data folder
+        conversation_text = "\n\n".join(conversation_parts)
+
+        # The task prompt contains the study topic/context
+        topic = task.get("prompt") or task.get("title") or "general study"
+
+        # Step 4: Build prompt to record progress
+        prompt = (
+            f"You just finished a study session on: {topic}\n\n"
+            f"Here is the complete conversation:\n\n{conversation_text}\n\n"
+            f"The student has ended this study session. "
+            f"Invoke the 'record-progress' skill to summarize what was learned "
+            f"and update the progress memory file."
+        )
+
+        # Step 5: Invoke Claude CLI to record progress
+        try:
+            invoke_claude(worktree_path, prompt, conn, task_id)
+        except CancelledError:
+            append_output(conn, task_id, "system", "Session finish cancelled")
+            raise
+        except RuntimeError as e:
+            append_output(conn, task_id, "system", f"Error recording progress: {e}")
+            # Continue with cleanup even if recording fails
+            log.warning("Failed to record progress for task %d: %s", task_id, e)
+
+    # Step 6: Copy updated REFLECTION.md back to agent's data folder
     from agent_model import get_agent_dir
 
     agent_dir = get_agent_dir("interactive-study")
@@ -1797,7 +1823,7 @@ def finish_interactive_study_session(conn: sqlite3.Connection, task: dict) -> No
     else:
         log.warning("No updated memory found at %s", worktree_memory_path)
 
-    # Step 5: Clean up worktree
+    # Step 7: Clean up worktree
     branch_name = task.get("branch_name")
     if branch_name:
         append_output(conn, task_id, "system", "Cleaning up worktree...")
