@@ -326,6 +326,10 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Simplify memory path to .claude/MEMORY.md
 - [x] Update interactive-study-cat-theory skill for new memory path
 
+### Phase 11g: Interactive Study Message Display Fix
+- [x] Fix message limit bug (100 message default caused messages to disappear)
+- [x] Increase limit to 10000 for interactive study sessions
+
 ## Status
 
 | Phase | Status | Notes |
@@ -360,3 +364,4 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 | 11d - Interactive Study End Session | Complete | End session button, finished status, checkmark icon; commit `85494cd` |
 | 11e - Interactive Study Agent Context | Complete | Inject memory and skills into worktree; commit `96bcc96` |
 | 11f - Interactive Study Session Finish | Complete | Auto-record progress, copy memory, cleanup worktree; commit `2a02f92` |
+| 11g - Interactive Study Message Display | Complete | Fix 100 message limit bug; commit `83fed8e` |
