@@ -355,3 +355,43 @@ class InteractiveStudyHandler(TaskHandler):
 
     def needs_started_at(self) -> bool:
         return False
+
+
+class InteractiveStudyFinishHandler(TaskHandler):
+    """Handles finishing an interactive study session.
+
+    Picks up interactive-study tasks that are in 'finished' status
+    (set by the API when user clicks "End Session").
+    Invokes the agent one final time to record progress, then copies
+    the updated memory back to the agent's data folder and cleans up
+    the worktree.
+    """
+
+    @property
+    def name(self) -> str:
+        return "interactive-study-finish"
+
+    def get_next_task(self, conn: sqlite3.Connection) -> dict | None:
+        row = conn.execute(
+            "SELECT * FROM agent_tasks WHERE status = 'finished' "
+            "AND task_type = 'interactive-study' "
+            "AND worktree_path IS NOT NULL "
+            "ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
+    def execute(self, conn: sqlite3.Connection, task: dict) -> None:
+        from agent_executor import finish_interactive_study_session
+        finish_interactive_study_session(conn, task)
+
+    def get_developing_status(self) -> str:
+        return "finished"  # Keep status as finished during cleanup
+
+    def get_finished_status(self) -> str:
+        return "finished"  # Status remains finished after cleanup
+
+    def supports_questions(self) -> bool:
+        return False
+
+    def needs_started_at(self) -> bool:
+        return False

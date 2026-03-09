@@ -32,6 +32,7 @@ from task_handlers import (
     DecomposeReflectionHandler,
     InvestigationTaskHandler,
     InteractiveStudyHandler,
+    InteractiveStudyFinishHandler,
 )
 
 # ---------------------------------------------------------------------------
@@ -311,7 +312,8 @@ def main() -> None:
     log.info("Agent daemon ready — entering poll loop")
 
     handlers: list[TaskHandler] = [
-        InteractiveStudyHandler(),  # Check first — fast response needed
+        InteractiveStudyFinishHandler(),  # Check first — cleanup finished sessions
+        InteractiveStudyHandler(),  # Then check for active conversations
         WorkerNewTaskHandler(),
         WorkerResumeHandler(),
         DecomposeStartHandler(),

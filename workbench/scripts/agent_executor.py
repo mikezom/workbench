@@ -1739,3 +1739,87 @@ def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
     append_output(conn, task_id, "system", "Response complete — ready for next message")
     log.info("Interactive study task %d turn complete", task_id)
 
+
+def finish_interactive_study_session(conn: sqlite3.Connection, task: dict) -> None:
+    """Finish an interactive study session.
+
+    When the user ends a session (status='finished'), this function:
+    1. Invokes the agent one final time to record progress
+    2. Copies the updated REFLECTION.md back to the agent's data folder
+    3. Cleans up the worktree (no commit needed)
+
+    Args:
+        conn: Database connection
+        task: Task dict with worktree_path set
+    """
+    task_id = task["id"]
+    worktree_path = task.get("worktree_path")
+
+    if not worktree_path or not os.path.isdir(worktree_path):
+        log.warning("Task %d has no worktree to clean up", task_id)
+        return
+
+    append_output(conn, task_id, "system", "Finishing session and recording progress...")
+
+    # Step 1: Inject agent context (in case it was updated)
+    inject_agent_context(worktree_path, "interactive-study")
+
+    # Step 2: Build prompt to record progress
+    prompt = (
+        "The student has ended this study session. "
+        "Invoke the 'record-progress' skill to summarize what was learned "
+        "and update the progress memory file."
+    )
+
+    # Step 3: Invoke Claude CLI to record progress
+    try:
+        invoke_claude(worktree_path, prompt, conn, task_id)
+    except CancelledError:
+        append_output(conn, task_id, "system", "Session finish cancelled")
+        raise
+    except RuntimeError as e:
+        append_output(conn, task_id, "system", f"Error recording progress: {e}")
+        # Continue with cleanup even if recording fails
+        log.warning("Failed to record progress for task %d: %s", task_id, e)
+
+    # Step 4: Copy updated REFLECTION.md back to agent's data folder
+    from agent_model import get_agent_dir
+
+    agent_dir = get_agent_dir("interactive-study")
+    agent_memory_path = os.path.join(agent_dir, "REFLECTION.md")
+
+    # The memory was written to .claude/projects/.../memory/MEMORY.md
+    project_slug = worktree_path.replace("/", "-").lstrip("-")
+    worktree_memory_path = os.path.join(
+        worktree_path, ".claude", "projects", project_slug, "memory", "MEMORY.md"
+    )
+
+    if os.path.isfile(worktree_memory_path):
+        try:
+            shutil.copy2(worktree_memory_path, agent_memory_path)
+            append_output(conn, task_id, "system", "Progress saved to agent memory")
+            log.info("Copied updated memory from %s to %s", worktree_memory_path, agent_memory_path)
+        except Exception as e:
+            append_output(conn, task_id, "system", f"Warning: Failed to save progress: {e}")
+            log.warning("Failed to copy memory for task %d: %s", task_id, e)
+    else:
+        log.warning("No updated memory found at %s", worktree_memory_path)
+
+    # Step 5: Clean up worktree
+    branch_name = task.get("branch_name")
+    if branch_name:
+        append_output(conn, task_id, "system", "Cleaning up worktree...")
+        cleanup_worktree(REPO_ROOT, worktree_path, branch_name)
+
+        # Clear worktree_path and branch_name from task
+        conn.execute(
+            "UPDATE agent_tasks SET worktree_path = NULL, branch_name = NULL WHERE id = ?",
+            (task_id,),
+        )
+        conn.commit()
+
+        append_output(conn, task_id, "system", "Session complete — worktree cleaned up")
+        log.info("Cleaned up worktree for task %d", task_id)
+    else:
+        log.warning("Task %d has no branch_name — skipping cleanup", task_id)
+
