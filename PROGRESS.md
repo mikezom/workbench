@@ -311,6 +311,11 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Display checkmark icon for finished sessions in SessionSidebar
 - [x] Fix unused error variables in API routes and test files
 
+### Phase 11e: Interactive Study Agent Context Fix
+- [x] Add inject_agent_context() to copy memory and skills into worktree
+- [x] Update execute_interactive_study() to inject complete agent context
+- [x] Fix bug where agent couldn't access REFLECTION.md or skills
+
 ## Status
 
 | Phase | Status | Notes |
@@ -343,3 +348,4 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 | 11b - Interactive Study Frontend | Complete | LaTeX renderer, chat UI, study page, nav entry; commits `cb86af4`-`e57c265` |
 | 11c - Interactive Study Bug Fixes | Complete | Worktree-per-session fix, status isolation, guard in execute_task; commit `5901445` |
 | 11d - Interactive Study End Session | Complete | End session button, finished status, checkmark icon; commit `85494cd` |
+| 11e - Interactive Study Agent Context | Complete | Inject memory and skills into worktree; commit `96bcc96` |
