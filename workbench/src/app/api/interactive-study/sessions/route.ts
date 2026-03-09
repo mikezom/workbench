@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createTask, getAllTasks } from "@/lib/agent-db";
+import { createTask, getAllTasks, updateTask } from "@/lib/agent-db";
 
 export function GET() {
   try {
@@ -37,7 +37,11 @@ export async function POST(req: NextRequest) {
       task_type: "interactive-study",
     });
 
-    return NextResponse.json(task, { status: 201 });
+    // Set to waiting_for_review (idle) instead of waiting_for_dev to prevent
+    // the WorkerNewTaskHandler from picking up interactive-study tasks.
+    updateTask(task.id, { status: "waiting_for_review" });
+
+    return NextResponse.json({ ...task, status: "waiting_for_review" }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
   }

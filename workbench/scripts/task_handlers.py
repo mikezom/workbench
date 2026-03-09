@@ -322,7 +322,10 @@ class InteractiveStudyHandler(TaskHandler):
 
     Picks up interactive-study tasks that are in 'developing' status
     (set by the API when user sends a message).
-    After execution, status goes back to 'waiting_for_dev'.
+    After execution, status goes to 'waiting_for_review' (idle, ready
+    for next user message).  Using 'waiting_for_review' instead of
+    'waiting_for_dev' prevents the WorkerNewTaskHandler from ever
+    picking up interactive-study tasks.
     """
 
     @property
@@ -345,7 +348,7 @@ class InteractiveStudyHandler(TaskHandler):
         return "developing"
 
     def get_finished_status(self) -> str:
-        return "waiting_for_dev"  # Ready for next user message
+        return "waiting_for_review"  # Idle — ready for next user message
 
     def supports_questions(self) -> bool:
         return False

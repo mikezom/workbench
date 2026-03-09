@@ -24,7 +24,7 @@ const POLL_INTERVAL = 2000; // 2 seconds
 export default function InteractiveStudyPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
-  const [activeSessionStatus, setActiveSessionStatus] = useState<string>("waiting_for_dev");
+  const [activeSessionStatus, setActiveSessionStatus] = useState<string>("waiting_for_review");
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);

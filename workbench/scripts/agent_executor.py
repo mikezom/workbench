@@ -16,7 +16,6 @@ import re
 import shutil
 import sqlite3
 import subprocess
-import tempfile
 import time
 from datetime import datetime, timezone
 
@@ -876,6 +875,15 @@ def execute_task(conn: sqlite3.Connection, task: dict) -> None:
     On failure: preserves worktree for debugging, raises the original exception.
     """
     task_id = task["id"]
+
+    # Guard: only worker tasks should use this pipeline
+    task_type = task.get("task_type") or "worker"
+    if task_type != "worker":
+        raise RuntimeError(
+            f"execute_task called for task_type='{task_type}' — "
+            f"only 'worker' tasks are supported by this pipeline"
+        )
+
     prompt = task["prompt"]
 
     worktree_path = None
@@ -1589,22 +1597,41 @@ def execute_investigation(conn: sqlite3.Connection, task: dict) -> None:
 def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
     """Execute one turn of an interactive study conversation.
 
-    Unlike worker tasks, interactive study tasks:
-    1. Don't create worktrees (no code changes)
-    2. Load full conversation history from agent_task_output
-    3. Build a prompt with conversation context
-    4. Invoke Claude CLI with the conversation
-    5. Store response in agent_task_output
-    6. Do NOT finish — status goes back to waiting_for_dev
+    Creates a worktree on the FIRST message in a session, then reuses it
+    for all subsequent messages.  The worktree persists for the lifetime
+    of the session so the Claude CLI has a stable working directory.
 
     The daemon sets status to 'developing' before calling this.
-    After this returns, the daemon sets status to 'waiting_for_dev'.
+    After this returns, the daemon sets status to 'waiting_for_review'
+    (idle, ready for the next user message).
     """
     task_id = task["id"]
 
     append_output(conn, task_id, "system", "Processing study response...")
 
-    # Step 1: Load conversation history from agent_task_output
+    # Step 1: Get or create worktree (once per session)
+    worktree_path = task.get("worktree_path")
+
+    if not worktree_path or not os.path.isdir(worktree_path):
+        # First message — create a persistent worktree for this session
+        append_output(conn, task_id, "system", "Creating session worktree...")
+        worktree_path, branch_name = create_worktree(
+            REPO_ROOT, task_id, task["title"]
+        )
+        conn.execute(
+            "UPDATE agent_tasks SET branch_name = ?, worktree_path = ? WHERE id = ?",
+            (branch_name, worktree_path, task_id),
+        )
+        conn.commit()
+        append_output(
+            conn, task_id, "system",
+            f"Worktree: {worktree_path}  Branch: {branch_name}",
+        )
+
+    # Inject CLAUDE.md every turn (in case it was updated)
+    inject_claude_md(worktree_path, "interactive-study")
+
+    # Step 2: Load conversation history from agent_task_output
     rows = conn.execute(
         "SELECT type, content FROM agent_task_output "
         "WHERE task_id = ? AND type IN ('user', 'assistant') "
@@ -1612,8 +1639,7 @@ def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
         (task_id,),
     ).fetchall()
 
-    # Step 2: Build conversation prompt
-    # Format as a conversation transcript for Claude
+    # Step 3: Build conversation prompt
     if not rows:
         conversation_text = "(This is the start of a new conversation)"
     else:
@@ -1640,21 +1666,15 @@ def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
         f"Use LaTeX notation ($...$ for inline, $$...$$ for block) when writing math."
     )
 
-    # Step 3: Create a temporary directory for Claude CLI execution
-    # Interactive study doesn't need a worktree, but Claude CLI needs a cwd
-    with tempfile.TemporaryDirectory(prefix="study-") as tmpdir:
-        # Inject the interactive-study CLAUDE.md
-        inject_claude_md(tmpdir, "interactive-study")
-
-        # Step 4: Invoke Claude CLI
-        try:
-            invoke_claude(tmpdir, prompt, conn, task_id)
-        except CancelledError:
-            append_output(conn, task_id, "system", "Study session cancelled")
-            raise
-        except RuntimeError as e:
-            append_output(conn, task_id, "system", f"Claude CLI error: {e}")
-            raise
+    # Step 4: Invoke Claude CLI in the persistent worktree
+    try:
+        invoke_claude(worktree_path, prompt, conn, task_id)
+    except CancelledError:
+        append_output(conn, task_id, "system", "Study session cancelled")
+        raise
+    except RuntimeError as e:
+        append_output(conn, task_id, "system", f"Claude CLI error: {e}")
+        raise
 
     append_output(conn, task_id, "system", "Response complete — ready for next message")
     log.info("Interactive study task %d turn complete", task_id)

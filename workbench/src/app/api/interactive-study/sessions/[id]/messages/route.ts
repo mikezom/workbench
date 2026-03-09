@@ -50,12 +50,13 @@ export async function POST(
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    // Prevent sending while agent is processing
-    if (task.status === "developing") {
-      return NextResponse.json(
-        { error: "Agent is still responding. Please wait." },
-        { status: 409 }
-      );
+    // Only allow sending when session is idle (waiting_for_review)
+    // or freshly created (waiting_for_dev, for backwards compatibility)
+    if (task.status !== "waiting_for_review" && task.status !== "waiting_for_dev") {
+      const msg = task.status === "developing"
+        ? "Agent is still responding. Please wait."
+        : `Cannot send message — session status is '${task.status}'.`;
+      return NextResponse.json({ error: msg }, { status: 409 });
     }
 
     const body = await req.json();
