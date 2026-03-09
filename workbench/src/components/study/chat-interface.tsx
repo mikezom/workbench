@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { MessageBubble } from "./message-bubble";
 
 interface Message {
@@ -26,7 +27,7 @@ export function ChatInterface({
   onEndSession,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -35,9 +36,12 @@ export function ChatInterface({
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.scrollTop = container.scrollHeight;
+    if (messages.length > 0) {
+      virtuosoRef.current?.scrollToIndex({
+        index: messages.length - 1,
+        align: "end",
+        behavior: "auto",
+      });
     }
   }, [messages.length]);
 
@@ -91,42 +95,55 @@ export function ChatInterface({
   return (
     <div ref={panelRef} className="flex-1 flex flex-col h-full">
       {/* Messages area */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4">
+      <div className="flex-1 overflow-hidden">
         {messages.length === 0 && !isProcessing ? (
-          <div className="text-center text-neutral-400 dark:text-neutral-500 mt-20">
+          <div className="flex items-center justify-center h-full text-center text-neutral-400 dark:text-neutral-500">
             <p className="text-sm">Send a message to start the conversation</p>
           </div>
         ) : (
-          messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              type={msg.type as "user" | "assistant"}
-              content={msg.content}
-              userAvatar="/api/interactive-study/avatars/student.jpg"
-              agentAvatar="/api/interactive-study/avatars/teacher.png"
-            />
-          ))
-        )}
-
-        {/* Typing indicator */}
-        {isProcessing && (
-          <div className="flex gap-3 mb-4">
-            <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0 overflow-hidden">
-              <img
-                src="/api/interactive-study/avatars/teacher.png"
-                alt="Agent"
-                className="w-full h-full object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-              />
-            </div>
-            <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl rounded-bl-md px-4 py-3">
-              <div className="flex gap-1.5">
-                <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          <Virtuoso
+            ref={virtuosoRef}
+            data={messages}
+            className="custom-scrollbar"
+            style={{ height: "100%" }}
+            itemContent={(index, msg) => (
+              <div className="px-4 py-2">
+                <MessageBubble
+                  key={msg.id}
+                  type={msg.type as "user" | "assistant"}
+                  content={msg.content}
+                  userAvatar="/api/interactive-study/avatars/student.jpg"
+                  agentAvatar="/api/interactive-study/avatars/teacher.png"
+                />
               </div>
-            </div>
-          </div>
+            )}
+            components={{
+              Footer: () => (
+                <>
+                  {/* Typing indicator */}
+                  {isProcessing && (
+                    <div className="flex gap-3 mb-4 px-4">
+                      <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0 overflow-hidden">
+                        <img
+                          src="/api/interactive-study/avatars/teacher.png"
+                          alt="Agent"
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </div>
+                      <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl rounded-bl-md px-4 py-3">
+                        <div className="flex gap-1.5">
+                          <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-2 h-2 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ),
+            }}
+          />
         )}
       </div>
 
