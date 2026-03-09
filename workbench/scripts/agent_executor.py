@@ -1761,7 +1761,7 @@ def finish_interactive_study_session(conn: sqlite3.Connection, task: dict) -> No
 
     # Step 2: Build prompt to record progress
     prompt = (
-        "The student has ended this study session. "
+        f"The student has ended this study session (task ID: {task_id}). "
         "Invoke the 'record-progress' skill to summarize what was learned "
         "and update the progress memory file."
     )
