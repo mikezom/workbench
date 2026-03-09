@@ -7,7 +7,6 @@ import {
   updateTask,
   deleteTask,
   migrateAgentSchema,
-  initAgentSchema,
 } from "./agent-db";
 import { getDb } from "./db";
 
@@ -86,9 +85,9 @@ describe("agent-db", () => {
     });
 
     it("returns all tasks ordered by created_at DESC", () => {
-      const task1 = createTask({ title: "First", prompt: "First" });
-      const task2 = createTask({ title: "Second", prompt: "Second" });
-      const task3 = createTask({ title: "Third", prompt: "Third" });
+      createTask({ title: "First", prompt: "First" });
+      createTask({ title: "Second", prompt: "Second" });
+      createTask({ title: "Third", prompt: "Third" });
 
       const tasks = getAllTasks();
       expect(tasks).toHaveLength(3);

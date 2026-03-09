@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTask, updateTask, deleteTask } from "@/lib/agent-db";
+import { getTask, updateTask, deleteTask, AgentTaskStatus } from "@/lib/agent-db";
 
 export async function GET(
   _req: NextRequest,
@@ -18,7 +18,7 @@ export async function GET(
     }
 
     return NextResponse.json(task);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to retrieve session" }, { status: 500 });
   }
 }
@@ -41,10 +41,17 @@ export async function PUT(
 
     const body = await req.json();
 
-    // Whitelist allowed fields - only allow updating title and prompt
-    const allowedUpdates: { title?: string; prompt?: string } = {};
+    // Whitelist allowed fields - allow updating title, prompt, and status
+    const allowedUpdates: { title?: string; prompt?: string; status?: AgentTaskStatus } = {};
     if (body.title !== undefined) allowedUpdates.title = body.title;
     if (body.prompt !== undefined) allowedUpdates.prompt = body.prompt;
+    if (body.status !== undefined) {
+      // Only allow transitioning to 'finished' status for interactive-study sessions
+      if (body.status !== "finished") {
+        return NextResponse.json({ error: "Invalid status. Only 'finished' is allowed." }, { status: 400 });
+      }
+      allowedUpdates.status = body.status as AgentTaskStatus;
+    }
 
     // Validate field lengths
     if (allowedUpdates.title && allowedUpdates.title.length > 200) {
@@ -60,7 +67,7 @@ export async function PUT(
 
     const task = updateTask(id, allowedUpdates);
     return NextResponse.json(task);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to update session" }, { status: 500 });
   }
 }
@@ -83,7 +90,7 @@ export async function DELETE(
 
     deleteTask(id);
     return NextResponse.json({ ok: true });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to delete session" }, { status: 500 });
   }
 }

@@ -170,6 +170,33 @@ export default function InteractiveStudyPage() {
     }
   }, [activeSessionId]);
 
+  // End session
+  const handleEndSession = useCallback(async () => {
+    if (!activeSessionId) return;
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `/api/interactive-study/sessions/${activeSessionId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "finished" }),
+        }
+      );
+
+      if (res.ok) {
+        setActiveSessionStatus("finished");
+        await fetchSessions(); // Refresh session list to show updated status
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to end session");
+      }
+    } catch {
+      setError("Failed to end session");
+    }
+  }, [activeSessionId, fetchSessions]);
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Session sidebar */}
@@ -201,6 +228,7 @@ export default function InteractiveStudyPage() {
           sessionStatus={activeSessionStatus}
           messages={messages}
           onSendMessage={handleSendMessage}
+          onEndSession={handleEndSession}
         />
       </div>
     </div>

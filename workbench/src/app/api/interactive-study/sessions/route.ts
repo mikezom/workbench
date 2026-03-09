@@ -10,7 +10,7 @@ export function GET() {
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
     return NextResponse.json(sessions);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to retrieve sessions" }, { status: 500 });
   }
 }
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     updateTask(task.id, { status: "waiting_for_review" });
 
     return NextResponse.json({ ...task, status: "waiting_for_review" }, { status: 201 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
   }
 }

@@ -29,7 +29,7 @@ export async function GET(
       messages,
       status: task.status,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to retrieve messages" }, { status: 500 });
   }
 }
@@ -79,7 +79,7 @@ export async function POST(
     updateTask(id, { status: "developing" });
 
     return NextResponse.json({ ok: true }, { status: 201 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to send message" }, { status: 500 });
   }
 }

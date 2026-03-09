@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { getDb } from "./db";
-import { createTask, getTask, getAllTasks, updateTask, appendTaskOutput, getTaskOutput } from "./agent-db";
+import { createTask, getAllTasks, updateTask, appendTaskOutput, getTaskOutput } from "./agent-db";
 
 describe("interactive-study task type", () => {
   beforeEach(() => {
