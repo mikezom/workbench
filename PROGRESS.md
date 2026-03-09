@@ -304,6 +304,13 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Add guard in execute_task to reject non-worker task types
 - [x] Kill stale daemon processes and clean up orphaned worktrees
 
+### Phase 11d: Interactive Study End Session Feature
+- [x] Add "End Session" button to ChatInterface
+- [x] Update PUT endpoint to allow status='finished' transition
+- [x] Show "Session ended" message when session is finished
+- [x] Display checkmark icon for finished sessions in SessionSidebar
+- [x] Fix unused error variables in API routes and test files
+
 ## Status
 
 | Phase | Status | Notes |
@@ -335,3 +342,4 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 | 11a - Interactive Study Backend | Complete | DB schema, executor, task handler, API routes; commits `4aafde5`-`80ce122` |
 | 11b - Interactive Study Frontend | Complete | LaTeX renderer, chat UI, study page, nav entry; commits `cb86af4`-`e57c265` |
 | 11c - Interactive Study Bug Fixes | Complete | Worktree-per-session fix, status isolation, guard in execute_task; commit `5901445` |
+| 11d - Interactive Study End Session | Complete | End session button, finished status, checkmark icon; commit `85494cd` |
