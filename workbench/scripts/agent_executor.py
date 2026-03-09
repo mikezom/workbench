@@ -339,7 +339,7 @@ def inject_agent_context(worktree_path: str, agent_name: str) -> None:
 
     Creates the .claude directory structure in the worktree and copies:
     - CLAUDE.md to worktree root
-    - REFLECTION.md to .claude/projects/-worktree-path/memory/MEMORY.md
+    - REFLECTION.md to .claude/MEMORY.md
     - skills/ to .claude/skills/
 
     This gives the agent access to its persona, memory, and capabilities.
@@ -362,18 +362,13 @@ def inject_agent_context(worktree_path: str, agent_name: str) -> None:
         f.write(persona_content)
     log.info("Injected CLAUDE.md for agent '%s'", agent_name)
 
-    # 2. Inject memory (REFLECTION.md) to .claude/projects/.../memory/MEMORY.md
+    # 2. Inject memory (REFLECTION.md) to .claude/MEMORY.md
     memory_content = read_agent_memory(agent_name)
     if memory_content:
-        # Create project-specific memory directory
-        # Claude Code expects memory at .claude/projects/<project-path>/memory/
-        project_slug = worktree_path.replace("/", "-").lstrip("-")
-        memory_dir = os.path.join(
-            worktree_path, ".claude", "projects", project_slug, "memory"
-        )
-        os.makedirs(memory_dir, exist_ok=True)
+        claude_dir = os.path.join(worktree_path, ".claude")
+        os.makedirs(claude_dir, exist_ok=True)
 
-        memory_file = os.path.join(memory_dir, "MEMORY.md")
+        memory_file = os.path.join(claude_dir, "MEMORY.md")
         with open(memory_file, "w", encoding="utf-8") as f:
             f.write(memory_content)
         log.info("Injected memory for agent '%s' to %s", agent_name, memory_file)
@@ -1788,11 +1783,8 @@ def finish_interactive_study_session(conn: sqlite3.Connection, task: dict) -> No
     agent_dir = get_agent_dir("interactive-study")
     agent_memory_path = os.path.join(agent_dir, "REFLECTION.md")
 
-    # The memory was written to .claude/projects/.../memory/MEMORY.md
-    project_slug = worktree_path.replace("/", "-").lstrip("-")
-    worktree_memory_path = os.path.join(
-        worktree_path, ".claude", "projects", project_slug, "memory", "MEMORY.md"
-    )
+    # The memory was written to .claude/MEMORY.md
+    worktree_memory_path = os.path.join(worktree_path, ".claude", "MEMORY.md")
 
     if os.path.isfile(worktree_memory_path):
         try:
