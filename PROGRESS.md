@@ -334,6 +334,12 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Pass task_id in prompt when ending session
 - [x] Update record-progress skill to load conversation from database
 
+### Phase 11i: Interactive Study Virtual Scrolling
+- [x] Install react-virtuoso for efficient message rendering
+- [x] Replace manual scrolling with Virtuoso component
+- [x] Move typing indicator to Footer component
+- [x] Maintain auto-scroll behavior for new messages
+
 ## Status
 
 | Phase | Status | Notes |
@@ -370,3 +376,4 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 | 11f - Interactive Study Session Finish | Complete | Auto-record progress, copy memory, cleanup worktree; commit `2a02f92` |
 | 11g - Interactive Study Message Display | Complete | Fix 100 message limit bug; commit `83fed8e` |
 | 11h - Interactive Study Progress Recording | Complete | Agent loads conversation from database; commit `b25fd1a` |
+| 11i - Interactive Study Virtual Scrolling | Complete | react-virtuoso for efficient rendering; commit `31b7966` |
