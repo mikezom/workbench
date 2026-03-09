@@ -322,6 +322,7 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Auto-invoke record-progress skill when session ends
 - [x] Copy updated REFLECTION.md back to agent data folder
 - [x] Clean up worktree and branch after session completion
+- [x] Fix record-progress skill to use worktree memory path (no commit)
 
 ## Status
 
