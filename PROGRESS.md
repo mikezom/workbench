@@ -380,5 +380,6 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 | 11e - Interactive Study Agent Context | Complete | Inject memory and skills into worktree; commit `96bcc96` |
 | 11f - Interactive Study Session Finish | Complete | Auto-record progress, copy memory, cleanup worktree; commit `2a02f92` |
 | 11g - Interactive Study Message Display | Complete | Fix 100 message limit bug; commit `83fed8e` |
+| 11j - Interactive Study Session Resume | Complete | CLI --resume for conversation continuity; commit `7d87347` |
 | 11h - Interactive Study Progress Recording | Complete | Agent loads conversation from database; commit `b25fd1a` |
 | 11i - Interactive Study Virtual Scrolling | Complete | react-virtuoso for efficient rendering; commit `31b7966` |

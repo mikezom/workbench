@@ -1755,3 +1755,26 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 - `workbench/src/app/api/interactive-study/sessions/route.ts` — Session creation now immediately sets status to `waiting_for_review` instead of leaving it at `waiting_for_dev`.
 - `workbench/src/app/api/interactive-study/sessions/[id]/messages/route.ts` — Updated status check to accept `waiting_for_review` as a valid state for sending messages, with stricter validation for other states.
 - `workbench/src/app/interactive-study/page.tsx` — Updated default session status from `waiting_for_dev` to `waiting_for_review`.
+
+---
+
+## 2026-03-11 — Phase 11j: Interactive Study Session Resume Fix
+
+### Task 1: Fix CLI session resume for interactive study
+
+**Commit:** `7d87347`
+
+**Problem:** Each interactive study message started a completely fresh Claude CLI session without `--resume`, losing conversation context and re-triggering session-start skills on every turn. A stuck database lock from a crashed daemon also prevented processing of new tasks.
+
+**Changes:**
+- `workbench/scripts/agent_executor.py` — Added `resume_session_id` parameter to `invoke_claude` to support `--resume` flag. Created `_get_cli_session_id()` helper to extract session_id from CLI init events stored in task output. Rewrote `execute_interactive_study` to resume the previous CLI session on subsequent turns (passing only the latest user message). Updated `finish_interactive_study_session` to resume session for context when recording progress.
+
+### Task 2: Update documentation
+
+**Commit:** `1777d4c`
+
+**Problem:** PROGRESS.md and REFLECTION.md needed updates to reflect the session resume fix.
+
+**Changes:**
+- `PROGRESS.md` — Added Phase 11j section with checked-off items for session resume fix.
+- `REFLECTION.md` — Added entry for the interactive study fresh-session bug with root cause, solution, and prevention strategies.
