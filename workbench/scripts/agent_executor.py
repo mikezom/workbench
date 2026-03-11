@@ -481,12 +481,23 @@ def invoke_claude(
     prompt: str,
     conn: sqlite3.Connection,
     task_id: int,
+    *,
+    resume_session_id: str | None = None,
 ) -> None:
     """Invoke the Claude Code CLI and stream-parse its output.
 
     Launches ``claude -p <prompt>`` with stream-json output, reads events
     line-by-line, and stores each one via :func:`_store_event`.  Periodically
     checks for task cancellation and kills the subprocess if cancelled.
+
+    Args:
+        cwd: Working directory for the CLI process.
+        prompt: The prompt text to send.
+        conn: Database connection for output storage and cancellation checks.
+        task_id: Task ID for output storage.
+        resume_session_id: If provided, resumes a previous CLI session instead
+            of starting fresh.  Used by interactive-study to maintain
+            conversation continuity across message turns.
 
     Raises:
         CancelledError: If the task is cancelled during execution.
@@ -503,6 +514,9 @@ def invoke_claude(
         "--max-turns",
         "50",
     ]
+
+    if resume_session_id:
+        cmd.extend(["--resume", resume_session_id])
 
     # Remove CLAUDECODE from env to prevent nested-session errors
     env = os.environ.copy()
@@ -1649,12 +1663,42 @@ def execute_investigation(conn: sqlite3.Connection, task: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _get_cli_session_id(conn: sqlite3.Connection, task_id: int) -> str | None:
+    """Extract the most recent Claude CLI session_id from task output.
+
+    The CLI emits an init event with a session_id at startup.  This is stored
+    as a JSON system message by _store_event.  We parse the last one to enable
+    --resume on subsequent turns.
+
+    Returns:
+        The session_id string, or None if not found.
+    """
+    row = conn.execute(
+        "SELECT content FROM agent_task_output "
+        "WHERE task_id = ? AND type = 'system' "
+        "AND content LIKE '%\"session_id\"%' "
+        "ORDER BY id DESC LIMIT 1",
+        (task_id,),
+    ).fetchone()
+    if row:
+        try:
+            event = json.loads(row["content"])
+            return event.get("session_id")
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return None
+
+
 def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
     """Execute one turn of an interactive study conversation.
 
     Creates a worktree on the FIRST message in a session, then reuses it
     for all subsequent messages.  The worktree persists for the lifetime
     of the session so the Claude CLI has a stable working directory.
+
+    On the first turn, launches a fresh CLI session.  On subsequent turns,
+    uses ``--resume <session_id>`` to continue the same CLI session, which
+    preserves conversation context and avoids re-running session-start skills.
 
     The daemon sets status to 'developing' before calling this.
     After this returns, the daemon sets status to 'waiting_for_review'
@@ -1686,44 +1730,47 @@ def execute_interactive_study(conn: sqlite3.Connection, task: dict) -> None:
     # Inject CLAUDE.md, memory, and skills every turn (in case they were updated)
     inject_agent_context(worktree_path, "interactive-study")
 
-    # Step 2: Load conversation history from agent_task_output
-    rows = conn.execute(
-        "SELECT type, content FROM agent_task_output "
-        "WHERE task_id = ? AND type IN ('user', 'assistant') "
-        "ORDER BY id ASC",
+    # Step 2: Check for existing CLI session to resume
+    session_id = _get_cli_session_id(conn, task_id)
+
+    # Step 3: Get the latest user message
+    last_user_row = conn.execute(
+        "SELECT content FROM agent_task_output "
+        "WHERE task_id = ? AND type = 'user' "
+        "ORDER BY id DESC LIMIT 1",
         (task_id,),
-    ).fetchall()
+    ).fetchone()
 
-    # Step 3: Build conversation prompt
-    if not rows:
-        conversation_text = "(This is the start of a new conversation)"
+    if not last_user_row:
+        append_output(conn, task_id, "system", "Error: No user message found")
+        raise RuntimeError("No user message found for interactive study turn")
+
+    latest_message = last_user_row["content"]
+
+    # Step 4: Build prompt
+    if session_id:
+        # Subsequent turn — resume previous CLI session.
+        # The CLI already has the full conversation context, so we only
+        # need to pass the latest user message.
+        prompt = latest_message
+        log.info("Resuming CLI session %s for task %d", session_id, task_id)
     else:
-        conversation_parts = []
-        for row in rows:
-            role = "User" if row["type"] == "user" else "Assistant"
-            conversation_parts.append(f"{role}: {row['content']}")
+        # First turn — set up the study context.
+        # The CLAUDE.md persona handles teaching style; we just provide
+        # the topic and the student's first message.
+        topic = task.get("prompt") or task.get("title") or "general study"
+        prompt = (
+            f"Study topic: {topic}\n\n"
+            f"Student's message:\n{latest_message}"
+        )
+        log.info("Starting new CLI session for task %d", task_id)
 
-        conversation_text = "\n\n".join(conversation_parts)
-
-        # Validate that the last message is from the user
-        if rows[-1]["type"] != "user":
-            append_output(conn, task_id, "system", "Error: Last message must be from user")
-            raise RuntimeError("Invalid conversation state: last message is not from user")
-
-    # The task prompt contains the study topic/context
-    topic = task.get("prompt") or task.get("title") or "general study"
-
-    prompt = (
-        f"You are a Socratic tutor. The study topic is: {topic}\n\n"
-        f"Here is the conversation so far:\n\n{conversation_text}\n\n"
-        f"Continue the conversation. Respond to the user's latest message. "
-        f"Guide them with questions rather than just giving answers. "
-        f"Use LaTeX notation ($...$ for inline, $$...$$ for block) when writing math."
-    )
-
-    # Step 4: Invoke Claude CLI in the persistent worktree
+    # Step 5: Invoke Claude CLI in the persistent worktree
     try:
-        invoke_claude(worktree_path, prompt, conn, task_id)
+        invoke_claude(
+            worktree_path, prompt, conn, task_id,
+            resume_session_id=session_id,
+        )
     except CancelledError:
         append_output(conn, task_id, "system", "Study session cancelled")
         raise
@@ -1766,9 +1813,13 @@ def finish_interactive_study_session(conn: sqlite3.Connection, task: dict) -> No
         "and update the progress memory file."
     )
 
-    # Step 3: Invoke Claude CLI to record progress
+    # Step 3: Invoke Claude CLI to record progress (resume session for context)
+    session_id = _get_cli_session_id(conn, task_id)
     try:
-        invoke_claude(worktree_path, prompt, conn, task_id)
+        invoke_claude(
+            worktree_path, prompt, conn, task_id,
+            resume_session_id=session_id,
+        )
     except CancelledError:
         append_output(conn, task_id, "system", "Session finish cancelled")
         raise
