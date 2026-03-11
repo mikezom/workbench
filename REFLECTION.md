@@ -428,3 +428,18 @@ return result;
 
 **Commit**: `5901445`
 
+## 2026-03-11 - Interactive study started fresh CLI session on every message
+
+**Problem**: Each interactive study message started a completely new Claude CLI session (fresh `claude -p` without `--resume`). This lost all conversation context between turns — the CLI didn't remember previous tool calls, skill invocations, or conversation state. The session-start skill (`interactive-study-cat-theory`) was re-invoked on every single message, burning max-turns and adding latency. The full conversation history was packed into the prompt text as a workaround, but this lost tool-use context and grew unboundedly.
+
+**Root Cause**: The `invoke_claude` function had no support for the `--resume` flag. The `execute_interactive_study` function treated every turn as a brand-new session, building the entire conversation from scratch in the prompt. Additionally, a previous daemon crash left a stale lock on the database, preventing the current daemon from processing new tasks.
+
+**Solution**: Added `resume_session_id` parameter to `invoke_claude`. Created `_get_cli_session_id()` helper to extract the session_id from the CLI's init event (already stored in task output). Modified `execute_interactive_study` to resume the previous CLI session on subsequent turns (passing only the latest user message). Updated `finish_interactive_study_session` to also resume the session for context when recording progress. Released the stuck database lock.
+
+**Prevention**:
+- When building multi-turn conversational agents on top of CLI tools, always use session resumption (--resume) instead of repacking conversation history
+- The CLI session_id from the init event should be captured and reused — don't start fresh sessions for ongoing conversations
+- Consider adding PID-based lock detection to catch stale locks from crashed daemons immediately, rather than relying on the 30-minute timeout
+
+**Commit**: `7d87347`
+

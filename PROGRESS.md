@@ -334,6 +334,11 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Pass task_id in prompt when ending session
 - [x] Update record-progress skill to load conversation from database
 
+### Phase 11j: Interactive Study Session Resume Fix
+- [x] Fix CLI session resume (--resume flag) for conversation continuity
+- [x] Extract session_id from init events for subsequent turns
+- [x] Update finish handler to resume session when recording progress
+
 ### Phase 11i: Interactive Study Virtual Scrolling
 - [x] Install react-virtuoso for efficient message rendering
 - [x] Replace manual scrolling with Virtuoso component
