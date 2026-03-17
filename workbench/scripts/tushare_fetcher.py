@@ -15,6 +15,7 @@ import argparse
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 # Add scripts dir to path for mock_data import
@@ -135,6 +136,7 @@ def fetch_real_data(
     start_date: str,
     end_date: str,
     mode: str,
+    limit: int = 0,
 ) -> None:
     try:
         import tushare as ts
@@ -155,8 +157,18 @@ def fetch_real_data(
         conn.commit()
         print(f"  Fetched {len(stock_df)} stocks from Tushare")
 
-        # Fetch daily OHLCV
-        for i, code in enumerate(stock_df["ts_code"].tolist()[:200]):  # Limit to 200 stocks
+        # Fetch daily OHLCV with rate limiting (max 480/min to stay under 500/min)
+        codes = stock_df["ts_code"].tolist()
+        if limit > 0:
+            codes = codes[:limit]
+        total = len(codes)
+        print(f"  Fetching daily OHLCV for {total} stocks (rate limit: 480/min)")
+
+        BATCH_SIZE = 480
+        batch_start_time = time.time()
+        batch_count = 0
+
+        for i, code in enumerate(codes):
             try:
                 df = pro.daily(ts_code=code, start_date=start_date, end_date=end_date)
                 if df is not None and len(df) > 0:
@@ -165,12 +177,43 @@ def fetch_real_data(
                             "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                             (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
                         )
-                if (i + 1) % 50 == 0:
+                batch_count += 1
+
+                # Rate limiting: after every BATCH_SIZE calls, ensure 60s have passed
+                if batch_count >= BATCH_SIZE:
                     conn.commit()
-                    print(f"  Daily OHLCV: {i+1} stocks done")
+                    elapsed = time.time() - batch_start_time
+                    if elapsed < 62:
+                        wait = 62 - elapsed
+                        print(f"  Rate limit: {i+1}/{total} done, waiting {wait:.0f}s...")
+                        time.sleep(wait)
+                    batch_start_time = time.time()
+                    batch_count = 0
+
+                if (i + 1) % 100 == 0:
+                    conn.commit()
+                    print(f"  Daily OHLCV: {i+1}/{total} stocks done")
             except Exception as e:
                 print(f"  Warning: failed to fetch {code}: {e}")
+                # If rate limited, wait and retry once
+                if "每分钟" in str(e) or "too many" in str(e).lower():
+                    print("  Rate limited, waiting 65s...")
+                    time.sleep(65)
+                    batch_start_time = time.time()
+                    batch_count = 0
+                    try:
+                        df = pro.daily(ts_code=code, start_date=start_date, end_date=end_date)
+                        if df is not None and len(df) > 0:
+                            for _, row in df.iterrows():
+                                conn.execute(
+                                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
+                                )
+                        batch_count += 1
+                    except Exception as e2:
+                        print(f"  Warning: retry also failed for {code}: {e2}")
         conn.commit()
+        print(f"  Daily OHLCV complete: {total} stocks")
 
     if mode in ("fundamental", "history"):
         print("  Fundamental data fetching via Tushare not yet implemented (requires higher-tier API access)")
@@ -184,6 +227,7 @@ def main():
     parser.add_argument("--mode", choices=["daily", "history", "fundamental"], default="history", help="Fetch type")
     parser.add_argument("--start", default="20210101", help="Start date (YYYYMMDD)")
     parser.add_argument("--end", default="20241231", help="End date (YYYYMMDD)")
+    parser.add_argument("--limit", type=int, default=0, help="Limit number of stocks to fetch (0 = default)")
     args = parser.parse_args()
 
     token = os.environ.get("TUSHARE_TOKEN", "")
@@ -196,8 +240,8 @@ def main():
         print("Running in DRY-RUN mode (mock data)")
         populate_mock_data(conn, args.start, args.end, args.mode)
     else:
-        print(f"Fetching real data from Tushare (mode={args.mode})")
-        fetch_real_data(conn, token, args.start, args.end, args.mode)
+        print(f"Fetching real data from Tushare (mode={args.mode}, limit={args.limit or 'default'})")
+        fetch_real_data(conn, token, args.start, args.end, args.mode, args.limit)
 
     conn.close()
     print(f"Database: {DB_PATH}")
