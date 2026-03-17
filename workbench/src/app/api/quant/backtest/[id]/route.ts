@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBacktestRun, getBacktestResults, getTradeLog, deleteBacktestRun } from "@/lib/quant-db";
+import { getTushareDb } from "@/lib/tushare-db";
 
 export function GET(
   _req: NextRequest,
@@ -13,7 +14,22 @@ export function GET(
   const results = getBacktestResults(run.id);
   const trades = getTradeLog(run.id);
 
-  return NextResponse.json({ run, results, trades });
+  // Resolve stock names from tushare.db
+  const tsDb = getTushareDb();
+  const nameMap: Record<string, string> = {};
+  if (tsDb) {
+    const symbols = [...new Set(trades.map((t: { symbol: string }) => t.symbol))];
+    for (const sym of symbols) {
+      const row = tsDb.prepare("SELECT name FROM stock_basic WHERE ts_code = ?").get(sym) as { name: string } | undefined;
+      if (row) nameMap[sym] = row.name;
+    }
+  }
+  const tradesWithName = trades.map((t: { symbol: string }) => ({
+    ...t,
+    name: nameMap[t.symbol] ?? "",
+  }));
+
+  return NextResponse.json({ run, results, trades: tradesWithName });
 }
 
 export function DELETE(

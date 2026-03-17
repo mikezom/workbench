@@ -4,6 +4,7 @@ interface Trade {
   id: number;
   date: string;
   symbol: string;
+  name: string;
   direction: string;
   quantity: number;
   price: number;
@@ -28,6 +29,7 @@ export default function TradeLogTable({ trades }: TradeLogTableProps) {
           <tr className="border-b border-neutral-200 dark:border-neutral-700 text-left">
             <th className="py-2 px-3 font-medium">Date</th>
             <th className="py-2 px-3 font-medium">Symbol</th>
+            <th className="py-2 px-3 font-medium">Name</th>
             <th className="py-2 px-3 font-medium">Direction</th>
             <th className="py-2 px-3 font-medium text-right">Qty</th>
             <th className="py-2 px-3 font-medium text-right">Price</th>
@@ -44,6 +46,7 @@ export default function TradeLogTable({ trades }: TradeLogTableProps) {
             >
               <td className="py-1.5 px-3 font-mono text-xs">{t.date}</td>
               <td className="py-1.5 px-3">{t.symbol}</td>
+              <td className="py-1.5 px-3 text-neutral-500 text-xs">{t.name}</td>
               <td className="py-1.5 px-3">
                 <span
                   className={
