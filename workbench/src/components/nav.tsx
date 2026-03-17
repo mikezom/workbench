@@ -131,7 +131,9 @@ export default function Nav() {
         <div className="flex flex-col gap-1 flex-1 portrait:flex-row portrait:justify-evenly portrait:gap-0 portrait:flex-none portrait:w-full">
           {sections.map(({ href, label, icon }) => {
             const active =
-              href === "/" ? pathname === "/" : pathname.startsWith(href);
+              href === "/"
+                ? pathname === "/"
+                : pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
