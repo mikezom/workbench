@@ -14,13 +14,14 @@ export async function POST(req: NextRequest) {
   const dryRun = body.dry_run !== false; // default true
 
   const scriptPath = path.join(process.cwd(), "scripts", "tushare_fetcher.py");
+  const pythonPath = path.join(process.cwd(), ".venv", "bin", "python");
   const args = ["--mode", mode];
   if (dryRun) args.push("--dry-run");
   if (body.start) args.push("--start", body.start);
   if (body.end) args.push("--end", body.end);
 
   try {
-    const child = spawn("python3", [scriptPath, ...args], {
+    const child = spawn(pythonPath, [scriptPath, ...args], {
       detached: true,
       stdio: "ignore",
     });

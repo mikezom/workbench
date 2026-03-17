@@ -112,12 +112,11 @@ def get_rebalance_dates(dates: pd.DatetimeIndex, freq: str) -> list[pd.Timestamp
     if freq == "daily":
         return list(dates)
     elif freq == "weekly":
-        # Every Friday (or last trading day of the week)
         weekly = dates.to_series().groupby(dates.isocalendar().week).last()
-        return list(weekly.values)
+        return [pd.Timestamp(d) for d in weekly.values]
     elif freq == "monthly":
         monthly = dates.to_series().groupby([dates.year, dates.month]).last()
-        return list(monthly.values)
+        return [pd.Timestamp(d) for d in monthly.values]
     return list(dates)
 
 

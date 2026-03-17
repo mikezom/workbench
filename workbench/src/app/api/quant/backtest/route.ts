@@ -38,8 +38,9 @@ export async function POST(req: NextRequest) {
 
   // Spawn backtest subprocess
   const scriptPath = path.join(process.cwd(), "scripts", "quant_backtest.py");
+  const pythonPath = path.join(process.cwd(), ".venv", "bin", "python");
   try {
-    const child = spawn("python3", [scriptPath, "--run-id", String(run.id)], {
+    const child = spawn(pythonPath, [scriptPath, "--run-id", String(run.id)], {
       detached: true,
       stdio: "ignore",
     });
