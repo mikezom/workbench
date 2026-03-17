@@ -1,10 +1,30 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
+import { getTheme } from "@/lib/theme";
 
 export default function ForestPage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [currentPath, setCurrentPath] = useState("/forest/index/index.xml");
+
+  const syncThemeToIframe = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc?.documentElement) return;
+      const theme = getTheme();
+      if (theme === "dark") {
+        doc.documentElement.classList.add("dark");
+        doc.documentElement.classList.remove("light");
+      } else {
+        doc.documentElement.classList.add("light");
+        doc.documentElement.classList.remove("dark");
+      }
+    } catch {
+      // cross-origin or security restriction — ignore
+    }
+  }, []);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -19,11 +39,27 @@ export default function ForestPage() {
       } catch {
         // cross-origin or security restriction — ignore
       }
+      // Sync theme on each iframe navigation
+      syncThemeToIframe();
     };
 
     iframe.addEventListener("load", handleLoad);
     return () => iframe.removeEventListener("load", handleLoad);
-  }, []);
+  }, [syncThemeToIframe]);
+
+  // Watch for dark class changes on the parent document
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      syncThemeToIframe();
+    });
+
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, [syncThemeToIframe]);
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-neutral-900">
@@ -35,7 +71,7 @@ export default function ForestPage() {
       <iframe
         ref={iframeRef}
         src="/forest/index/index.xml"
-        className="flex-1 w-full border-0"
+        className="flex-1 w-full border-0 bg-white dark:bg-[#1a1a1a]"
         title="Forester"
       />
     </div>
