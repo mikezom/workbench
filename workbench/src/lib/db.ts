@@ -7,6 +7,7 @@ import { initClipboardSchema } from "./clipboard-db";
 import { initCrawlSchema } from "./crawl-db";
 import { initHomeSchema } from "./home-db";
 import { initMonitorSchema } from "./monitor-db";
+import { initQuantSchema } from "./quant-db";
 
 const f = fsrs();
 
@@ -35,6 +36,7 @@ export function getDb(): Database.Database {
   initCrawlSchema(_db);
   initHomeSchema(_db);
   initMonitorSchema(_db);
+  initQuantSchema(_db);
   return _db;
 }
 

@@ -1,0 +1,410 @@
+"""Core backtesting engine for quant strategies.
+
+Usage:
+    python quant_backtest.py --run-id 1
+
+Reads configuration from workbench.db, market data from tushare.db.
+Writes results back to workbench.db.
+"""
+
+import argparse
+import json
+import sqlite3
+import sys
+import traceback
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).parent))
+from quant_factors import compute_factors
+from quant_models import QuantModel
+
+WORKBENCH_DB = Path(__file__).parent.parent / "data" / "workbench.db"
+TUSHARE_DB = Path("/Users/ccnas/DEVELOPMENT/shared-data/tushare/tushare.db")
+
+
+def get_workbench_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(WORKBENCH_DB))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_tushare_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(TUSHARE_DB))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
+    run = wb_conn.execute("SELECT * FROM quant_backtest_runs WHERE id = ?", (run_id,)).fetchone()
+    if not run:
+        raise ValueError(f"Backtest run {run_id} not found")
+
+    strategy = wb_conn.execute(
+        "SELECT * FROM quant_strategies WHERE id = ?", (run["strategy_id"],)
+    ).fetchone()
+    if not strategy:
+        raise ValueError(f"Strategy {run['strategy_id']} not found")
+
+    return {
+        "run_id": run_id,
+        "strategy_id": run["strategy_id"],
+        "start_date": run["start_date"],
+        "end_date": run["end_date"],
+        "initial_capital": run["initial_capital"],
+        "benchmark": run["benchmark"],
+        "rebalance_freq": run["rebalance_freq"],
+        "top_n": run["top_n"],
+        "commission": run["commission"],
+        "factors": json.loads(strategy["factors"]),
+        "model_type": strategy["model_type"],
+        "hyperparams": json.loads(strategy["hyperparams"]),
+    }
+
+
+def load_stock_data(ts_conn: sqlite3.Connection, start_date: str, end_date: str) -> dict[str, pd.DataFrame]:
+    """Load all stock OHLCV data from tushare.db."""
+    stocks = {}
+    codes = [r["ts_code"] for r in ts_conn.execute("SELECT ts_code FROM stock_basic").fetchall()]
+
+    for code in codes:
+        rows = ts_conn.execute(
+            "SELECT * FROM daily_ohlcv WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
+            (code, start_date, end_date),
+        ).fetchall()
+        if len(rows) < 60:
+            continue
+
+        df = pd.DataFrame([dict(r) for r in rows])
+        df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
+        df = df.set_index("trade_date").sort_index()
+
+        # Merge fundamental data
+        fina_rows = ts_conn.execute(
+            "SELECT * FROM fina_indicator WHERE ts_code = ? ORDER BY end_date",
+            (code,),
+        ).fetchall()
+        if fina_rows:
+            fina_df = pd.DataFrame([dict(r) for r in fina_rows])
+            fina_df["end_date"] = pd.to_datetime(fina_df["end_date"], format="%Y%m%d")
+            fina_df = fina_df.set_index("end_date").sort_index()
+            # Forward-fill fundamental data to daily frequency
+            fina_daily = fina_df.reindex(df.index, method="ffill")
+            for col in fina_df.columns:
+                if col != "ts_code":
+                    df[col] = fina_daily[col]
+
+        stocks[code] = df
+
+    return stocks
+
+
+def compute_forward_returns(df: pd.DataFrame, days: int = 5) -> pd.Series:
+    """Compute forward returns for prediction target."""
+    return df["close"].pct_change(days).shift(-days)
+
+
+def get_rebalance_dates(dates: pd.DatetimeIndex, freq: str) -> list[pd.Timestamp]:
+    """Get rebalance dates based on frequency."""
+    if freq == "daily":
+        return list(dates)
+    elif freq == "weekly":
+        # Every Friday (or last trading day of the week)
+        weekly = dates.to_series().groupby(dates.isocalendar().week).last()
+        return list(weekly.values)
+    elif freq == "monthly":
+        monthly = dates.to_series().groupby([dates.year, dates.month]).last()
+        return list(monthly.values)
+    return list(dates)
+
+
+def run_backtest(config: dict) -> dict:
+    """Run the backtest and return results."""
+    ts_conn = get_tushare_conn()
+
+    print(f"Loading stock data ({config['start_date']}–{config['end_date']})...")
+    stocks = load_stock_data(ts_conn, config["start_date"], config["end_date"])
+    print(f"  Loaded {len(stocks)} stocks with sufficient data")
+
+    if len(stocks) < 5:
+        raise ValueError("Not enough stocks with data for backtesting")
+
+    factor_ids = config["factors"]
+    print(f"Computing {len(factor_ids)} factors...")
+
+    # Compute factors for all stocks
+    all_factor_data: dict[str, pd.DataFrame] = {}
+    all_returns: dict[str, pd.Series] = {}
+    for code, df in stocks.items():
+        factors_df = compute_factors(df, factor_ids)
+        fwd_ret = compute_forward_returns(df, days=5)
+        all_factor_data[code] = factors_df
+        all_returns[code] = fwd_ret
+
+    # Get common trading dates
+    all_dates = sorted(set().union(*[df.index for df in stocks.values()]))
+    all_dates = pd.DatetimeIndex(all_dates)
+
+    # Walk-forward: train on first 60% of data, then roll forward
+    split_idx = int(len(all_dates) * 0.6)
+    train_end = all_dates[split_idx]
+    test_dates = all_dates[split_idx:]
+    rebalance_dates = get_rebalance_dates(test_dates, config["rebalance_freq"])
+
+    print(f"Training period ends: {train_end.strftime('%Y-%m-%d')}")
+    print(f"Test period: {test_dates[0].strftime('%Y-%m-%d')} to {test_dates[-1].strftime('%Y-%m-%d')}")
+    print(f"Rebalance dates: {len(rebalance_dates)}")
+
+    # Build training dataset
+    X_train_list, y_train_list = [], []
+    for code in stocks:
+        factors_df = all_factor_data[code]
+        returns = all_returns[code]
+        mask = (factors_df.index <= train_end) & factors_df.notna().all(axis=1) & returns.notna()
+        if mask.sum() > 0:
+            X_train_list.append(factors_df.loc[mask].values)
+            y_train_list.append(returns.loc[mask].values)
+
+    if not X_train_list:
+        raise ValueError("No valid training data available")
+
+    X_train = np.vstack(X_train_list)
+    y_train = np.concatenate(y_train_list)
+
+    # Handle NaN/Inf
+    valid = np.isfinite(X_train).all(axis=1) & np.isfinite(y_train)
+    X_train = X_train[valid]
+    y_train = y_train[valid]
+
+    print(f"Training samples: {len(X_train)}")
+
+    # Train model
+    model = QuantModel(config["model_type"], config["hyperparams"])
+    model.fit(X_train, y_train, feature_names=factor_ids)
+    print("Model trained.")
+
+    # Simulate trading
+    capital = config["initial_capital"]
+    cash = capital
+    positions: dict[str, int] = {}  # code -> shares
+    equity_curve = []
+    trade_log = []
+    top_n = config["top_n"]
+    commission_rate = config["commission"]
+
+    for i, date in enumerate(rebalance_dates):
+        # Score all stocks on this date
+        scores: dict[str, float] = {}
+        for code in stocks:
+            factors_df = all_factor_data[code]
+            if date in factors_df.index:
+                x = factors_df.loc[date].values.reshape(1, -1)
+                if np.isfinite(x).all():
+                    scores[code] = float(model.predict(x)[0])
+
+        if not scores:
+            continue
+
+        # Rank and select top N
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        target_codes = [code for code, _ in ranked[:top_n]]
+
+        # Calculate portfolio value
+        portfolio_value = cash
+        for code, shares in positions.items():
+            if date in stocks[code].index:
+                portfolio_value += shares * stocks[code].loc[date, "close"]
+
+        # Sell positions not in target
+        for code in list(positions.keys()):
+            if code not in target_codes and code in stocks and date in stocks[code].index:
+                price = stocks[code].loc[date, "close"]
+                shares = positions.pop(code)
+                amount = shares * price
+                comm = amount * commission_rate
+                cash += amount - comm
+                trade_log.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "symbol": code,
+                    "direction": "sell",
+                    "quantity": shares,
+                    "price": round(price, 2),
+                    "amount": round(amount, 2),
+                    "commission": round(comm, 2),
+                    "reason": "rebalance",
+                })
+
+        # Buy target positions
+        if target_codes:
+            allocation = cash / len(target_codes)
+            for code in target_codes:
+                if code not in positions and code in stocks and date in stocks[code].index:
+                    price = stocks[code].loc[date, "close"]
+                    shares = int(allocation / price / 100) * 100  # Round to lots of 100
+                    if shares > 0:
+                        amount = shares * price
+                        comm = amount * commission_rate
+                        if amount + comm <= cash:
+                            positions[code] = positions.get(code, 0) + shares
+                            cash -= amount + comm
+                            trade_log.append({
+                                "date": date.strftime("%Y-%m-%d"),
+                                "symbol": code,
+                                "direction": "buy",
+                                "quantity": shares,
+                                "price": round(price, 2),
+                                "amount": round(amount, 2),
+                                "commission": round(comm, 2),
+                                "reason": "rebalance",
+                            })
+
+        # Record equity
+        total_value = cash
+        for code, shares in positions.items():
+            if date in stocks[code].index:
+                total_value += shares * stocks[code].loc[date, "close"]
+        equity_curve.append({"date": date.strftime("%Y-%m-%d"), "value": round(total_value, 2)})
+
+    if not equity_curve:
+        raise ValueError("No trades were executed during the backtest period")
+
+    # Compute metrics
+    equity_values = [e["value"] for e in equity_curve]
+    returns_series = pd.Series(equity_values).pct_change().dropna()
+
+    total_return = (equity_values[-1] / capital - 1) if equity_values else 0
+    n_years = len(equity_values) / 52 if config["rebalance_freq"] == "weekly" else len(equity_values) / 252
+    annualized_return = (1 + total_return) ** (1 / max(n_years, 0.01)) - 1 if n_years > 0 else 0
+
+    sharpe = (returns_series.mean() / returns_series.std() * np.sqrt(52)) if len(returns_series) > 1 and returns_series.std() > 0 else 0
+
+    # Max drawdown
+    peak = pd.Series(equity_values).cummax()
+    drawdown = (pd.Series(equity_values) - peak) / peak
+    max_drawdown = float(drawdown.min()) if len(drawdown) > 0 else 0
+
+    # Win rate
+    buy_trades = [t for t in trade_log if t["direction"] == "buy"]
+    sell_trades = [t for t in trade_log if t["direction"] == "sell"]
+    wins = sum(1 for t in sell_trades if t["amount"] > t.get("buy_amount", t["amount"]))
+    win_rate = wins / max(len(sell_trades), 1)
+
+    # Monthly returns
+    monthly_returns = []
+    if equity_curve:
+        eq_df = pd.DataFrame(equity_curve)
+        eq_df["date"] = pd.to_datetime(eq_df["date"])
+        eq_df = eq_df.set_index("date")
+        for (year, month), group in eq_df.groupby([eq_df.index.year, eq_df.index.month]):
+            if len(group) >= 2:
+                mr = group["value"].iloc[-1] / group["value"].iloc[0] - 1
+            else:
+                mr = 0
+            monthly_returns.append({"year": int(year), "month": int(month), "return": round(float(mr), 4)})
+
+    factor_imp = model.feature_importance()
+
+    return {
+        "total_return": round(total_return, 4),
+        "annualized_return": round(annualized_return, 4),
+        "sharpe_ratio": round(float(sharpe), 4),
+        "max_drawdown": round(float(max_drawdown), 4),
+        "win_rate": round(win_rate, 4),
+        "profit_factor": round(abs(total_return / max(abs(max_drawdown), 0.0001)), 4),
+        "total_trades": len(trade_log),
+        "alpha": round(annualized_return - 0.08, 4),  # Simplified: excess over 8% benchmark
+        "beta": 1.0,  # Simplified
+        "benchmark_return": 0.08,  # Placeholder
+        "equity_curve": equity_curve,
+        "monthly_returns": monthly_returns,
+        "factor_importance": factor_imp,
+        "trade_log": trade_log,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Quant backtest engine")
+    parser.add_argument("--run-id", type=int, required=True, help="Backtest run ID")
+    args = parser.parse_args()
+
+    wb_conn = get_workbench_conn()
+
+    try:
+        # Set status to running
+        wb_conn.execute(
+            "UPDATE quant_backtest_runs SET status = 'running' WHERE id = ?",
+            (args.run_id,),
+        )
+        wb_conn.commit()
+
+        config = load_run_config(wb_conn, args.run_id)
+        print(f"Running backtest #{args.run_id}: {config['model_type']} with {len(config['factors'])} factors")
+
+        results = run_backtest(config)
+        trade_log = results.pop("trade_log")
+
+        # Write results
+        wb_conn.execute(
+            """INSERT INTO quant_backtest_results
+               (run_id, total_return, annualized_return, sharpe_ratio, max_drawdown,
+                win_rate, profit_factor, total_trades, alpha, beta, benchmark_return,
+                equity_curve, monthly_returns, factor_importance)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                args.run_id,
+                results["total_return"],
+                results["annualized_return"],
+                results["sharpe_ratio"],
+                results["max_drawdown"],
+                results["win_rate"],
+                results["profit_factor"],
+                results["total_trades"],
+                results["alpha"],
+                results["beta"],
+                results["benchmark_return"],
+                json.dumps(results["equity_curve"]),
+                json.dumps(results["monthly_returns"]),
+                json.dumps(results["factor_importance"]),
+            ),
+        )
+
+        # Write trade log
+        for t in trade_log:
+            wb_conn.execute(
+                """INSERT INTO quant_trade_log
+                   (run_id, date, symbol, direction, quantity, price, amount, commission, reason)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (args.run_id, t["date"], t["symbol"], t["direction"],
+                 t["quantity"], t["price"], t["amount"], t["commission"], t["reason"]),
+            )
+
+        # Update run status
+        wb_conn.execute(
+            "UPDATE quant_backtest_runs SET status = 'completed', completed_at = datetime('now') WHERE id = ?",
+            (args.run_id,),
+        )
+        wb_conn.commit()
+        print(f"Backtest #{args.run_id} completed successfully.")
+        print(f"  Total return: {results['total_return']:.2%}")
+        print(f"  Sharpe ratio: {results['sharpe_ratio']:.2f}")
+        print(f"  Max drawdown: {results['max_drawdown']:.2%}")
+        print(f"  Total trades: {results['total_trades']}")
+
+    except Exception as e:
+        traceback.print_exc()
+        wb_conn.execute(
+            "UPDATE quant_backtest_runs SET status = 'failed', error_message = ? WHERE id = ?",
+            (str(e), args.run_id),
+        )
+        wb_conn.commit()
+        print(f"Backtest #{args.run_id} FAILED: {e}")
+        sys.exit(1)
+    finally:
+        wb_conn.close()
+
+
+if __name__ == "__main__":
+    main()

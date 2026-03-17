@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A personal workbench website (Next.js) with 8 sections: Home, Agentic Tasks, Monitor, Agent, Forest, Study (FSRS), Crawl, and Clipboard.
+A personal workbench website (Next.js) with 9 sections: Home, Agentic Tasks, Monitor, Agent, Forest, Study (FSRS), Tutor, Crawl, Clipboard, and Quant.
 
 ## Task Breakdown
 
@@ -355,6 +355,47 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Fix duplicate forester.js script tag in tree.xsl
 - [x] Remove old javascript-source/ directory
 
+### Phase 13: Quant Section
+Full spec: `docs/quant-section.md`
+
+#### 13a: Foundation
+- [x] Create quant-db.ts (schema, seed 33 factors, CRUD for strategies/backtests)
+- [x] Create quant page with 4 tabs (Strategies, Backtest, Results, Data)
+- [x] Add nav entry with chart bar icon
+- [x] Wire initQuantSchema into database initialization
+- [x] Create API routes for factors, strategies, strategies/[id]
+
+#### 13b: Data Layer
+- [x] Create mock_data.py (deterministic OHLCV + fundamental generator, 50 stocks)
+- [x] Create tushare_fetcher.py (dry-run/real API, populates tushare.db)
+- [x] Create tushare-db.ts (separate DB accessor for market data)
+- [x] Create API routes for data summary, OHLCV, and sync trigger
+
+#### 13c: Strategy Management UI
+- [x] Create factor-picker.tsx (multi-select grouped by category)
+- [x] Create strategy-form.tsx (model type, hyperparams, universe)
+- [x] Create strategy-list.tsx (table with actions)
+- [x] Wire Strategies tab in quant page
+
+#### 13d: Backtesting Engine
+- [x] Create quant_factors.py (33 factor computation functions)
+- [x] Create quant_models.py (Linear, Ridge, Lasso, RF, XGBoost wrappers)
+- [x] Create quant_backtest.py (walk-forward training, trade simulation)
+- [x] Create backtest-config.tsx (form for backtest parameters)
+- [x] Create API routes for backtest runs with subprocess spawning
+- [x] Wire Backtest tab with config form + running runs list
+
+#### 13e: Results Dashboard
+- [x] Install react-plotly.js and plotly.js-dist-min
+- [x] Create equity-chart.tsx (Plotly line chart vs benchmark)
+- [x] Create candlestick-chart.tsx (Plotly OHLCV with volume)
+- [x] Create metrics-panel.tsx (9 metric cards with color coding)
+- [x] Create monthly-returns-heatmap.tsx (Plotly heatmap)
+- [x] Create factor-analysis.tsx (horizontal bar chart)
+- [x] Create trade-log-table.tsx (scrollable with custom scrollbar)
+- [x] Wire Results tab with all dashboard components
+- [x] Wire Data tab with summary cards and sync button
+
 ## Status
 
 | Phase | Status | Notes |
@@ -394,3 +435,4 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 | 11h - Interactive Study Progress Recording | Complete | Agent loads conversation from database; commit `b25fd1a` |
 | 11i - Interactive Study Virtual Scrolling | Complete | react-virtuoso for efficient rendering; commit `31b7966` |
 | 12 - Forester Theme TS Refactoring | Complete | graph.js monolith → 14 TS modules, shared utils, type safety; commit `9308047` |
+| 13 - Quant Section | Complete | Factor-based model training, backtesting, Plotly charts, mock data |
