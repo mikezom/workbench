@@ -345,6 +345,16 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 - [x] Move typing indicator to Footer component
 - [x] Maintain auto-scroll behavior for new messages
 
+### Phase 12: Forester Theme TypeScript Refactoring
+- [x] Convert graph.js (1,898 LOC monolith) to 8 focused TypeScript modules
+- [x] Convert hover-card.js to TypeScript entry point
+- [x] Convert forester.js to TypeScript entry point
+- [x] Deduplicate serializeNode and TAXON_COLORS into shared modules
+- [x] Add tsconfig.json, @types/cytoscape, typescript devDeps
+- [x] Update bundle-js.sh for 3 TS entry points
+- [x] Fix duplicate forester.js script tag in tree.xsl
+- [x] Remove old javascript-source/ directory
+
 ## Status
 
 | Phase | Status | Notes |
@@ -383,3 +393,4 @@ Implementation plan: `docs/plans/2026-03-08-interactive-study-impl.md`
 | 11j - Interactive Study Session Resume | Complete | CLI --resume for conversation continuity; commit `7d87347` |
 | 11h - Interactive Study Progress Recording | Complete | Agent loads conversation from database; commit `b25fd1a` |
 | 11i - Interactive Study Virtual Scrolling | Complete | react-virtuoso for efficient rendering; commit `31b7966` |
+| 12 - Forester Theme TS Refactoring | Complete | graph.js monolith → 14 TS modules, shared utils, type safety; commit `9308047` |

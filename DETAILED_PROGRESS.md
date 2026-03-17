@@ -1778,3 +1778,39 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 **Changes:**
 - `PROGRESS.md` — Added Phase 11j section with checked-off items for session resume fix.
 - `REFLECTION.md` — Added entry for the interactive study fresh-session bug with root cause, solution, and prevention strategies.
+
+---
+
+## 2026-03-17 — Forester Theme TypeScript Refactoring
+
+### Task 1: Convert graph.js, hover-card.js, forester.js to TypeScript modules
+
+**Commit:** `9308047`
+
+**Problem:** graph.js was a 1,898 LOC monolith with ~15 mutable variables shared across deeply nested functions inside a single initGraph() closure. No type safety, hard to debug or extend.
+
+**Changes:**
+- `theme/src/shared/types.ts` — Created shared TypeScript interfaces (GraphEdge, NodeDegree, CyElement, GraphContext, etc.).
+- `theme/src/shared/utils.ts` — Extracted extractIdFromPath, toSafeString, stableHash, escapeHtml utility functions.
+- `theme/src/shared/constants.ts` — Extracted TAXON_COLORS constant shared between graph and hover-card.
+- `theme/src/shared/serialize-node.ts` — Deduplicated serializeNode function (was duplicated in graph.js and hover-card.js).
+- `theme/src/shared/cy-types.ts` — Re-exported cytoscape types (CyCore, CyStylesheet, etc.) to work around UMD global typing issues.
+- `theme/src/graph/graph-data.ts` — Edge deduplication, node label building, buildCleanElements, sanitizeElements.
+- `theme/src/graph/graph-styles.ts` — buildGraphStyles pure function.
+- `theme/src/graph/graph-algorithms.ts` — computeNodeDegrees, computeNodeWeights (PageRank).
+- `theme/src/graph/layered-layout.ts` — Self-contained ~760 LOC layered crossing + HCA layout algorithm.
+- `theme/src/graph/polyline-edges.ts` — getFullPolylineEdges dummy node traversal.
+- `theme/src/graph/ui-controls.ts` — Card stack, close-all, layout toggle, slider, smartCenter.
+- `theme/src/graph/event-handlers.ts` — Node tap and background tap handlers.
+- `theme/src/graph/graph.ts` — Entry point orchestrating DOMContentLoaded and initGraph.
+- `theme/src/hover-card/hover-card.ts` — Hover preview card entry point importing shared modules.
+- `theme/src/forester/forester.ts` — Ninja-keys, KaTeX, command palette entry point.
+- `theme/src/global.d.ts` — Ambient type declarations for renderMathInElement, katex/contrib/auto-render.
+- `theme/tsconfig.json` — TypeScript config (noEmit: true, tsc for type-checking only).
+- `theme/bundle-js.sh` — Updated to build 3 TS entry points via esbuild.
+- `theme/package.json` — Added @types/cytoscape and typescript as devDependencies, added typecheck/build scripts.
+- `theme/tree.xsl` — Fixed duplicate forester.js script tag (lines 27-28 were identical).
+- `theme/graph.js` — Now build output (26.1kb minified) from src/graph/graph.ts.
+- `theme/hover-card.js` — Now build output (3.7kb minified) from src/hover-card/hover-card.ts.
+- `theme/forester.js` — Now build output (321kb minified) from src/forester/forester.ts.
+- `theme/javascript-source/forester.js` — Deleted (replaced by src/forester/forester.ts).

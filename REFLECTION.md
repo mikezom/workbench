@@ -443,3 +443,15 @@ return result;
 
 **Commit**: `7d87347`
 
+
+## 2026-03-17 - Cytoscape UMD global types unavailable in ES module files
+
+**Problem**: TypeScript type-check failed with ~30 "Cannot find namespace 'cytoscape'" errors across all graph module files after initial conversion.
+
+**Root Cause**: `@types/cytoscape` declares types using `export = cytoscape` and `declare namespace cytoscape`, which makes them available as UMD globals. However, in files that contain `import` statements (making them ES modules), TypeScript treats the global namespace as inaccessible. The `/// <reference types="cytoscape" />` directive and `"types": ["cytoscape"]` in tsconfig both failed to resolve this in module context.
+
+**Solution**: Created a `cy-types.ts` re-export layer that imports `type cytoscape from 'cytoscape'` and re-exports individual types (CyCore, CyStylesheet, CyNodeSingular, etc.). All graph modules import from this file instead of referencing `cytoscape.*` directly.
+
+**Prevention**: When using a library loaded via CDN (not bundled) in TypeScript modules, always create a local type re-export file rather than relying on ambient namespace declarations. Check whether @types packages use `export =` (module) vs `declare global` (ambient) — the former requires explicit imports in ES module files.
+
+**Commit**: `9308047`
