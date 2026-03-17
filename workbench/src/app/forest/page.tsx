@@ -1,10 +1,29 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 
 export default function ForestPage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [currentPath, setCurrentPath] = useState("/forest/index/index.xml");
+
+  const syncThemeToIframe = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc?.documentElement) return;
+      const isDark = document.documentElement.classList.contains("dark");
+      if (isDark) {
+        doc.documentElement.classList.add("dark");
+        doc.documentElement.classList.remove("light");
+      } else {
+        doc.documentElement.classList.add("light");
+        doc.documentElement.classList.remove("dark");
+      }
+    } catch {
+      // cross-origin or security restriction — ignore
+    }
+  }, []);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -19,11 +38,22 @@ export default function ForestPage() {
       } catch {
         // cross-origin or security restriction — ignore
       }
+      syncThemeToIframe();
     };
 
     iframe.addEventListener("load", handleLoad);
     return () => iframe.removeEventListener("load", handleLoad);
-  }, []);
+  }, [syncThemeToIframe]);
+
+  // Watch for theme toggle on parent document
+  useEffect(() => {
+    const observer = new MutationObserver(() => syncThemeToIframe());
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, [syncThemeToIframe]);
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-neutral-900">
