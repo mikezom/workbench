@@ -109,6 +109,8 @@ def load_universe_codes(ts_conn: sqlite3.Connection, universe: str, as_of_date: 
         "ZZ500": (300, 800),
         "ZZ1000": (800, 1800),
     }
+    if universe == "ALL":
+        return [r["ts_code"] for r in ts_conn.execute("SELECT ts_code FROM stock_basic ORDER BY ts_code").fetchall()]
     start, end = rank_ranges.get(universe, (0, 0))
     if end == 0:
         return [r["ts_code"] for r in ts_conn.execute("SELECT ts_code FROM stock_basic").fetchall()]
@@ -179,10 +181,14 @@ def load_stock_data(
     start_date: str,
     end_date: str,
     universe: str,
+    custom_symbols: list[str] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Load all stock OHLCV data from tushare.db."""
     stocks = {}
-    codes = load_universe_codes(ts_conn, universe, start_date)
+    if universe == "CUSTOM":
+        codes = custom_symbols or []
+    else:
+        codes = load_universe_codes(ts_conn, universe, start_date)
 
     for code in codes:
         rows = ts_conn.execute(
@@ -346,11 +352,21 @@ def run_backtest(config: dict) -> dict:
         f"Loading stock data ({config['start_date']}–{config['end_date']}, "
         f"universe={config['universe']})..."
     )
+    custom_symbols = None
+    if config["universe"] == "CUSTOM":
+        raw_symbols = config["hyperparams"].get("universe_symbols", [])
+        if not isinstance(raw_symbols, list):
+            raise ValueError("Custom universe requires a list of symbols")
+        custom_symbols = [str(symbol).strip().upper() for symbol in raw_symbols if str(symbol).strip()]
+        if not custom_symbols:
+            raise ValueError("Custom universe requires at least one symbol")
+
     stocks = load_stock_data(
         ts_conn,
         config["start_date"],
         config["end_date"],
         config["universe"],
+        custom_symbols,
     )
     print(f"  Loaded {len(stocks)} stocks with sufficient data")
 

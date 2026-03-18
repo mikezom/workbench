@@ -27,6 +27,17 @@ const MODEL_LABELS: Record<string, string> = {
   xgboost: "XGBoost",
 };
 
+function universeLabel(strategy: Strategy): string {
+  if (strategy.universe === "CUSTOM") {
+    const symbols = Array.isArray(strategy.hyperparams.universe_symbols)
+      ? strategy.hyperparams.universe_symbols.length
+      : 0;
+    return symbols > 0 ? `Custom (${symbols})` : "Custom";
+  }
+  if (strategy.universe === "ALL") return "All A-Shares";
+  return strategy.universe;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300",
   ready: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
@@ -65,7 +76,7 @@ export default function StrategyList({ strategies, onEdit, onDelete, onRunBackte
             >
               <td className="py-2 px-3 font-medium">{s.name}</td>
               <td className="py-2 px-3">{MODEL_LABELS[s.model_type] ?? s.model_type}</td>
-              <td className="py-2 px-3">{s.universe}</td>
+              <td className="py-2 px-3">{universeLabel(s)}</td>
               <td className="py-2 px-3">{s.factors.length}</td>
               <td className="py-2 px-3">
                 <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_COLORS[s.status] ?? ""}`}>

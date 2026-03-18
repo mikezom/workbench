@@ -25,7 +25,7 @@ export function initQuantSchema(db: Database.Database): void {
         CHECK (model_type IN ('linear_regression', 'ridge', 'lasso', 'random_forest', 'xgboost')),
       hyperparams TEXT NOT NULL DEFAULT '{}',
       universe TEXT NOT NULL DEFAULT 'HS300'
-        CHECK (universe IN ('HS300', 'ZZ500', 'ZZ1000')),
+        CHECK (universe IN ('HS300', 'ZZ500', 'ZZ1000', 'ALL', 'CUSTOM')),
       status TEXT NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft', 'ready', 'backtesting', 'completed')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -103,6 +103,43 @@ export function initQuantSchema(db: Database.Database): void {
 }
 
 function migrateQuantSchema(db: Database.Database): void {
+  const strategyTable = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'quant_strategies'"
+  ).get() as { sql: string } | undefined;
+  if (strategyTable?.sql && !strategyTable.sql.includes("'CUSTOM'")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+
+      CREATE TABLE quant_strategies_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        factors TEXT NOT NULL DEFAULT '[]',
+        model_type TEXT NOT NULL DEFAULT 'linear_regression'
+          CHECK (model_type IN ('linear_regression', 'ridge', 'lasso', 'random_forest', 'xgboost')),
+        hyperparams TEXT NOT NULL DEFAULT '{}',
+        universe TEXT NOT NULL DEFAULT 'HS300'
+          CHECK (universe IN ('HS300', 'ZZ500', 'ZZ1000', 'ALL', 'CUSTOM')),
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft', 'ready', 'backtesting', 'completed')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      INSERT INTO quant_strategies_new (
+        id, name, description, factors, model_type, hyperparams, universe, status, created_at, updated_at
+      )
+      SELECT
+        id, name, description, factors, model_type, hyperparams, universe, status, created_at, updated_at
+      FROM quant_strategies;
+
+      DROP TABLE quant_strategies;
+      ALTER TABLE quant_strategies_new RENAME TO quant_strategies;
+
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
   const resultColumns = db.prepare("PRAGMA table_info(quant_backtest_results)").all() as Array<{ name: string }>;
   const hasBenchmarkCurve = resultColumns.some((column) => column.name === "benchmark_curve");
   const hasYearlyPerformance = resultColumns.some((column) => column.name === "yearly_performance");

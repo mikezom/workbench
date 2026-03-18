@@ -36,6 +36,8 @@ const UNIVERSES = [
   { value: "HS300", label: "CSI 300 (HS300)" },
   { value: "ZZ500", label: "CSI 500 (ZZ500)" },
   { value: "ZZ1000", label: "CSI 1000 (ZZ1000)" },
+  { value: "ALL", label: "All A-Shares" },
+  { value: "CUSTOM", label: "Custom Symbols" },
 ];
 
 export default function StrategyForm({ initial, onSubmit, onCancel }: StrategyFormProps) {
@@ -44,6 +46,11 @@ export default function StrategyForm({ initial, onSubmit, onCancel }: StrategyFo
   const [factors, setFactors] = useState<string[]>(initial?.factors ?? []);
   const [modelType, setModelType] = useState(initial?.model_type ?? "linear_regression");
   const [universe, setUniverse] = useState(initial?.universe ?? "HS300");
+  const [customSymbols, setCustomSymbols] = useState(
+    Array.isArray(initial?.hyperparams?.universe_symbols)
+      ? (initial?.hyperparams?.universe_symbols as string[]).join(", ")
+      : ""
+  );
 
   // Hyperparams
   const [nEstimators, setNEstimators] = useState(
@@ -60,26 +67,40 @@ export default function StrategyForm({ initial, onSubmit, onCancel }: StrategyFo
   );
 
   const buildHyperparams = (): Record<string, unknown> => {
+    const shared: Record<string, unknown> = {};
+    const symbols = customSymbols
+      .split(/[\s,]+/)
+      .map((value) => value.trim().toUpperCase())
+      .filter(Boolean);
+    if (universe === "CUSTOM") {
+      shared.universe_symbols = Array.from(new Set(symbols));
+    }
+
     switch (modelType) {
       case "ridge":
       case "lasso":
-        return { alpha: parseFloat(alpha) };
+        return { ...shared, alpha: parseFloat(alpha) };
       case "random_forest":
-        return { n_estimators: parseInt(nEstimators), max_depth: parseInt(maxDepth) };
+        return { ...shared, n_estimators: parseInt(nEstimators), max_depth: parseInt(maxDepth) };
       case "xgboost":
         return {
+          ...shared,
           n_estimators: parseInt(nEstimators),
           max_depth: parseInt(maxDepth),
           learning_rate: parseFloat(learningRate),
         };
       default:
-        return {};
+        return shared;
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || factors.length === 0) return;
+    const symbolCount = customSymbols
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean).length;
+    if (!name.trim() || factors.length === 0 || (universe === "CUSTOM" && symbolCount === 0)) return;
     onSubmit({
       name: name.trim(),
       description: description.trim(),
@@ -103,6 +124,22 @@ export default function StrategyForm({ initial, onSubmit, onCancel }: StrategyFo
           required
         />
       </div>
+
+      {universe === "CUSTOM" && (
+        <div>
+          <label className="block text-sm font-medium mb-1">Custom Symbols</label>
+          <textarea
+            value={customSymbols}
+            onChange={(e) => setCustomSymbols(e.target.value)}
+            className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+            rows={3}
+            placeholder="000001.SZ, 600519.SH, 300750.SZ"
+          />
+          <div className="mt-1 text-xs text-neutral-500">
+            Enter Tushare symbols separated by commas, spaces, or new lines.
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="block text-sm font-medium mb-1">Description</label>
@@ -209,7 +246,7 @@ export default function StrategyForm({ initial, onSubmit, onCancel }: StrategyFo
         </button>
         <button
           type="submit"
-          disabled={!name.trim() || factors.length === 0}
+          disabled={!name.trim() || factors.length === 0 || (universe === "CUSTOM" && !customSymbols.trim())}
           className="px-4 py-2 text-sm bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded hover:opacity-90 disabled:opacity-50"
         >
           {initial?.id ? "Update" : "Create"} Strategy
