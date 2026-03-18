@@ -28,6 +28,7 @@ from mock_data import (
 )
 
 DB_PATH = Path("/Users/ccnas/DEVELOPMENT/shared-data/tushare/tushare.db")
+BENCHMARK_CODES = ["000300.SH", "000905.SH", "000852.SH"]
 
 
 def get_connection() -> sqlite3.Connection:
@@ -111,8 +112,17 @@ def populate_mock_data(
             if (i + 1) % 10 == 0:
                 print(f"  OHLCV: {i+1}/{len(codes)} stocks done")
                 conn.commit()
+
+        for code in BENCHMARK_CODES:
+            df = generate_ohlcv(code, start_date, end_date)
+            for _, row in df.iterrows():
+                conn.execute(
+                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
+                )
+            total_ohlcv += len(df)
         conn.commit()
-        print(f"  Inserted {total_ohlcv} daily_ohlcv records")
+        print(f"  Inserted {total_ohlcv} daily_ohlcv records (including {len(BENCHMARK_CODES)} benchmark series)")
 
     if mode in ("fundamental", "history"):
         total_fina = 0
@@ -212,8 +222,20 @@ def fetch_real_data(
                         batch_count += 1
                     except Exception as e2:
                         print(f"  Warning: retry also failed for {code}: {e2}")
+
+        for code in BENCHMARK_CODES:
+            try:
+                df = pro.index_daily(ts_code=code, start_date=start_date, end_date=end_date)
+                if df is not None and len(df) > 0:
+                    for _, row in df.iterrows():
+                        conn.execute(
+                            "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
+                        )
+            except Exception as e:
+                print(f"  Warning: failed to fetch benchmark {code}: {e}")
         conn.commit()
-        print(f"  Daily OHLCV complete: {total} stocks")
+        print(f"  Daily OHLCV complete: {total} stocks + {len(BENCHMARK_CODES)} benchmarks")
 
     if mode in ("fundamental", "history"):
         print("  Fundamental data fetching via Tushare not yet implemented (requires higher-tier API access)")
