@@ -9,6 +9,8 @@ import EquityChart from "@/components/quant/equity-chart";
 import MonthlyReturnsHeatmap from "@/components/quant/monthly-returns-heatmap";
 import FactorAnalysis from "@/components/quant/factor-analysis";
 import TradeLogTable from "@/components/quant/trade-log-table";
+import YearlyPerformanceTable from "@/components/quant/yearly-performance-table";
+import DiagnosticsPanel from "@/components/quant/diagnostics-panel";
 
 type Tab = "strategies" | "backtest" | "results" | "data";
 
@@ -38,6 +40,11 @@ interface BacktestRun {
   start_date: string;
   end_date: string;
   initial_capital: number;
+  benchmark: string;
+  rebalance_freq: string;
+  top_n: number;
+  commission: number;
+  config: Record<string, unknown>;
   created_at: string;
   completed_at: string | null;
   error_message: string | null;
@@ -45,6 +52,7 @@ interface BacktestRun {
 
 interface BacktestDetail {
   run: BacktestRun;
+  strategy: Strategy | null;
   results: {
     total_return: number;
     annualized_return: number;
@@ -59,7 +67,19 @@ interface BacktestDetail {
     benchmark_curve: Array<{ date: string; value: number }> | null;
     equity_curve: Array<{ date: string; value: number }>;
     monthly_returns: Array<{ year: number; month: number; return: number }>;
+    yearly_performance: Array<{
+      year: number;
+      strategy_return: number;
+      benchmark_return: number | null;
+      excess_return: number | null;
+    }>;
     factor_importance: Record<string, number>;
+    diagnostics: {
+      rank_ic: Array<{ date: string; value: number }>;
+      score_dispersion: Array<{ date: string; mean: number; std: number; min: number; max: number }>;
+      top_bottom_spread: Array<{ date: string; value: number }>;
+      grouped_return: Array<{ bucket: string; avg_return: number }>;
+    } | null;
   } | null;
   trades: Array<{
     id: number;
@@ -72,6 +92,8 @@ interface BacktestDetail {
     amount: number;
     commission: number;
     reason: string | null;
+    realized_pnl: number | null;
+    realized_return: number | null;
   }>;
 }
 
@@ -408,6 +430,16 @@ function BacktestTab({
 // Results Tab
 // ---------------------------------------------------------------------------
 
+type ResultViewTab = "overview" | "yearly" | "features" | "trades" | "diagnostics";
+
+const RESULT_VIEW_TABS: Array<{ id: ResultViewTab; label: string }> = [
+  { id: "overview", label: "Overview" },
+  { id: "yearly", label: "Yearly" },
+  { id: "features", label: "Feature Importance" },
+  { id: "trades", label: "Trades" },
+  { id: "diagnostics", label: "Diagnostics" },
+];
+
 function ResultsTab({
   runs, selectedRunId, detail, onSelectRun,
 }: {
@@ -417,6 +449,11 @@ function ResultsTab({
   onSelectRun: (id: number) => void;
 }) {
   const completedRuns = runs.filter((r) => r.status === "completed");
+  const [view, setView] = useState<ResultViewTab>("overview");
+
+  useEffect(() => {
+    setView("overview");
+  }, [selectedRunId]);
 
   return (
     <div>
@@ -446,41 +483,106 @@ function ResultsTab({
 
       {detail?.results && (
         <div className="space-y-6">
-          <MetricsPanel
-            totalReturn={detail.results.total_return}
-            annualizedReturn={detail.results.annualized_return}
-            sharpeRatio={detail.results.sharpe_ratio}
-            maxDrawdown={detail.results.max_drawdown}
-            winRate={detail.results.win_rate}
-            profitFactor={detail.results.profit_factor}
-            totalTrades={detail.results.total_trades}
-            alpha={detail.results.alpha}
-            beta={detail.results.beta}
-          />
+          <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-lg font-semibold">
+                  {detail.strategy?.name ?? `Backtest #${detail.run.id}`}
+                </div>
+                <div className="text-sm text-neutral-500 mt-1">
+                  {detail.run.start_date} – {detail.run.end_date}
+                </div>
+              </div>
+              <StatusBadge status={detail.run.status} />
+            </div>
 
-          <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
-            <EquityChart
-              data={detail.results.equity_curve}
-              benchmarkCurve={detail.results.benchmark_curve}
-              initialCapital={detail.run.initial_capital}
-            />
+            <div className="grid grid-cols-4 gap-3 portrait:grid-cols-2">
+              <MetadataItem label="Model" value={detail.strategy?.model_type ?? "—"} />
+              <MetadataItem label="Universe" value={detail.strategy?.universe ?? "—"} />
+              <MetadataItem label="Benchmark" value={detail.run.benchmark} />
+              <MetadataItem label="Rebalance" value={detail.run.rebalance_freq} />
+              <MetadataItem label="Top N" value={String(detail.run.top_n)} />
+              <MetadataItem label="Train Window" value={`${detail.run.config.train_window_days ?? 240} days`} />
+              <MetadataItem label="Horizon" value={`${detail.run.config.prediction_horizon_days ?? 20} days`} />
+              <MetadataItem label="Factors" value={String(detail.strategy?.factors.length ?? 0)} />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 portrait:grid-cols-1">
-            <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
-              <MonthlyReturnsHeatmap data={detail.results.monthly_returns} />
+          <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-700">
+            {RESULT_VIEW_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setView(tab.id)}
+                className={`px-3 py-2 text-sm rounded-t ${
+                  view === tab.id
+                    ? "bg-white dark:bg-neutral-800 border border-b-0 border-neutral-200 dark:border-neutral-700 font-medium"
+                    : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {view === "overview" && (
+            <div className="space-y-6">
+              <MetricsPanel
+                totalReturn={detail.results.total_return}
+                annualizedReturn={detail.results.annualized_return}
+                sharpeRatio={detail.results.sharpe_ratio}
+                maxDrawdown={detail.results.max_drawdown}
+                winRate={detail.results.win_rate}
+                profitFactor={detail.results.profit_factor}
+                totalTrades={detail.results.total_trades}
+                alpha={detail.results.alpha}
+                beta={detail.results.beta}
+              />
+
+              <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
+                <EquityChart
+                  data={detail.results.equity_curve}
+                  benchmarkCurve={detail.results.benchmark_curve}
+                  initialCapital={detail.run.initial_capital}
+                />
+              </div>
+
+              <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
+                <MonthlyReturnsHeatmap data={detail.results.monthly_returns} />
+              </div>
             </div>
+          )}
+
+          {view === "yearly" && (
+            <YearlyPerformanceTable rows={detail.results.yearly_performance} />
+          )}
+
+          {view === "features" && (
             <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
               <FactorAnalysis importance={detail.results.factor_importance} />
             </div>
-          </div>
+          )}
 
-          <div>
-            <h3 className="text-sm font-semibold mb-3">Trade Log ({detail.trades.length} trades)</h3>
-            <TradeLogTable trades={detail.trades} />
-          </div>
+          {view === "trades" && (
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Trade Log ({detail.trades.length} trades)</h3>
+              <TradeLogTable trades={detail.trades} />
+            </div>
+          )}
+
+          {view === "diagnostics" && (
+            <DiagnosticsPanel diagnostics={detail.results.diagnostics} />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function MetadataItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded px-3 py-2">
+      <div className="text-[11px] uppercase tracking-wide text-neutral-400">{label}</div>
+      <div className="text-sm mt-1">{value}</div>
     </div>
   );
 }

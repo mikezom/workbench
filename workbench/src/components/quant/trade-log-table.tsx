@@ -13,6 +13,8 @@ interface Trade {
   amount: number;
   commission: number;
   reason: string | null;
+  realized_pnl: number | null;
+  realized_return: number | null;
 }
 
 interface TradeLogTableProps {
@@ -94,6 +96,8 @@ export default function TradeLogTable({ trades }: TradeLogTableProps) {
               <th className="py-2 px-3 font-medium text-right">Price</th>
               <th className="py-2 px-3 font-medium text-right">Amount</th>
               <th className="py-2 px-3 font-medium text-right">Comm.</th>
+              <th className="py-2 px-3 font-medium text-right">Realized P/L</th>
+              <th className="py-2 px-3 font-medium text-right">Realized %</th>
               <th className="py-2 px-3 font-medium">Reason</th>
             </tr>
           </thead>
@@ -121,12 +125,34 @@ export default function TradeLogTable({ trades }: TradeLogTableProps) {
                 <td className="py-1.5 px-3 text-right font-mono">{t.price.toFixed(2)}</td>
                 <td className="py-1.5 px-3 text-right font-mono">{t.amount.toLocaleString()}</td>
                 <td className="py-1.5 px-3 text-right font-mono text-neutral-400">{t.commission.toFixed(2)}</td>
+                <td
+                  className={`py-1.5 px-3 text-right font-mono ${
+                    t.realized_pnl == null
+                      ? "text-neutral-400"
+                      : t.realized_pnl >= 0
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {t.realized_pnl == null ? "—" : t.realized_pnl.toFixed(2)}
+                </td>
+                <td
+                  className={`py-1.5 px-3 text-right font-mono ${
+                    t.realized_return == null
+                      ? "text-neutral-400"
+                      : t.realized_return >= 0
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {t.realized_return == null ? "—" : `${(t.realized_return * 100).toFixed(2)}%`}
+                </td>
                 <td className="py-1.5 px-3 text-neutral-500 text-xs">{t.reason ?? ""}</td>
               </tr>
             ))}
             {filteredTrades.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-sm text-neutral-400">
+                <td colSpan={11} className="py-8 text-center text-sm text-neutral-400">
                   No matching trades
                 </td>
               </tr>
