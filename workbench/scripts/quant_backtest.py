@@ -63,6 +63,7 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
         "factors": json.loads(strategy["factors"]),
         "model_type": strategy["model_type"],
         "hyperparams": json.loads(strategy["hyperparams"]),
+        "universe": strategy["universe"],
     }
 
 
@@ -72,10 +73,56 @@ def load_stock_industries(ts_conn: sqlite3.Connection) -> dict[str, str]:
     return {r["ts_code"]: r["industry"] for r in rows}
 
 
-def load_stock_data(ts_conn: sqlite3.Connection, start_date: str, end_date: str) -> dict[str, pd.DataFrame]:
+def load_universe_codes(ts_conn: sqlite3.Connection, universe: str, as_of_date: str) -> list[str]:
+    """Approximate index universes from market-cap ranks on the latest available snapshot."""
+    rank_ranges = {
+        "HS300": (0, 300),
+        "ZZ500": (300, 800),
+        "ZZ1000": (800, 1800),
+    }
+    start, end = rank_ranges.get(universe, (0, 0))
+    if end == 0:
+        return [r["ts_code"] for r in ts_conn.execute("SELECT ts_code FROM stock_basic").fetchall()]
+
+    snapshot = ts_conn.execute(
+        """
+        SELECT MAX(trade_date) AS trade_date
+        FROM daily_basic
+        WHERE trade_date <= ?
+        """,
+        (as_of_date,),
+    ).fetchone()
+    snapshot_date = snapshot["trade_date"] if snapshot and snapshot["trade_date"] else None
+    if not snapshot_date:
+        snapshot = ts_conn.execute("SELECT MIN(trade_date) AS trade_date FROM daily_basic").fetchone()
+        snapshot_date = snapshot["trade_date"] if snapshot and snapshot["trade_date"] else None
+
+    if not snapshot_date:
+        return [r["ts_code"] for r in ts_conn.execute("SELECT ts_code FROM stock_basic").fetchall()]
+
+    rows = ts_conn.execute(
+        """
+        SELECT ts_code
+        FROM daily_basic
+        WHERE trade_date = ?
+          AND total_mv IS NOT NULL
+        ORDER BY total_mv DESC, ts_code ASC
+        LIMIT ? OFFSET ?
+        """,
+        (snapshot_date, end - start, start),
+    ).fetchall()
+    return [r["ts_code"] for r in rows]
+
+
+def load_stock_data(
+    ts_conn: sqlite3.Connection,
+    start_date: str,
+    end_date: str,
+    universe: str,
+) -> dict[str, pd.DataFrame]:
     """Load all stock OHLCV data from tushare.db."""
     stocks = {}
-    codes = [r["ts_code"] for r in ts_conn.execute("SELECT ts_code FROM stock_basic").fetchall()]
+    codes = load_universe_codes(ts_conn, universe, start_date)
 
     for code in codes:
         rows = ts_conn.execute(
@@ -152,8 +199,16 @@ def run_backtest(config: dict) -> dict:
     """Run the backtest and return results."""
     ts_conn = get_tushare_conn()
 
-    print(f"Loading stock data ({config['start_date']}–{config['end_date']})...")
-    stocks = load_stock_data(ts_conn, config["start_date"], config["end_date"])
+    print(
+        f"Loading stock data ({config['start_date']}–{config['end_date']}, "
+        f"universe={config['universe']})..."
+    )
+    stocks = load_stock_data(
+        ts_conn,
+        config["start_date"],
+        config["end_date"],
+        config["universe"],
+    )
     print(f"  Loaded {len(stocks)} stocks with sufficient data")
 
     if len(stocks) < 5:
