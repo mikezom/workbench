@@ -138,7 +138,7 @@ function reconcileStrategyStatuses(db: Database.Database): void {
 // ---------------------------------------------------------------------------
 
 const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; description: string }> = [
-  // Price (10)
+  // Price
   { id: "momentum_1m", name: "Momentum 1M", category: "price", description: "1-month price momentum" },
   { id: "momentum_3m", name: "Momentum 3M", category: "price", description: "3-month price momentum" },
   { id: "momentum_6m", name: "Momentum 6M", category: "price", description: "6-month price momentum" },
@@ -149,13 +149,23 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "volatility_60d", name: "Volatility 60D", category: "price", description: "60-day rolling volatility" },
   { id: "price_to_ma20", name: "Price/MA20", category: "price", description: "Price relative to 20-day moving average" },
   { id: "price_to_ma60", name: "Price/MA60", category: "price", description: "Price relative to 60-day moving average" },
-  // Volume (5)
+  { id: "ret_20d", name: "Return 20D", category: "price", description: "20-day price return" },
+  { id: "ret_60d", name: "Return 60D", category: "price", description: "60-day price return" },
+  { id: "ma10_bias", name: "MA10 Bias", category: "price", description: "Price deviation from 10-day moving average" },
+  { id: "ma20_bias", name: "MA20 Bias", category: "price", description: "Price deviation from 20-day moving average" },
+  { id: "ma60_bias", name: "MA60 Bias", category: "price", description: "Price deviation from 60-day moving average" },
+  { id: "ma10_slope", name: "MA10 Slope", category: "price", description: "10-day moving average slope" },
+  { id: "ma20_slope", name: "MA20 Slope", category: "price", description: "20-day moving average slope" },
+  { id: "ma60_slope", name: "MA60 Slope", category: "price", description: "60-day moving average slope" },
+  { id: "position_20d", name: "Position 20D", category: "price", description: "Position within 20-day high-low range" },
+  // Volume
   { id: "volume_ratio_5d", name: "Volume Ratio 5D", category: "volume", description: "5-day volume ratio vs 20-day average" },
   { id: "volume_ratio_20d", name: "Volume Ratio 20D", category: "volume", description: "20-day volume ratio vs 60-day average" },
   { id: "obv_slope", name: "OBV Slope", category: "volume", description: "On-balance volume trend slope" },
   { id: "vwap_deviation", name: "VWAP Deviation", category: "volume", description: "Deviation from volume-weighted average price" },
   { id: "turnover_rate", name: "Turnover Rate", category: "volume", description: "Daily turnover rate" },
-  // Fundamental (10)
+  { id: "vol_ratio", name: "Volume Ratio 5/20", category: "volume", description: "Volume ratio of 5-day average to 20-day average" },
+  // Fundamental
   { id: "pe_ratio", name: "P/E Ratio", category: "fundamental", description: "Price-to-earnings ratio" },
   { id: "pb_ratio", name: "P/B Ratio", category: "fundamental", description: "Price-to-book ratio" },
   { id: "ps_ratio", name: "P/S Ratio", category: "fundamental", description: "Price-to-sales ratio" },
@@ -166,9 +176,11 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "debt_to_equity", name: "Debt/Equity", category: "fundamental", description: "Debt-to-equity ratio" },
   { id: "dividend_yield", name: "Dividend Yield", category: "fundamental", description: "Annual dividend yield" },
   { id: "market_cap", name: "Market Cap", category: "fundamental", description: "Total market capitalization" },
-  // Technical (8)
+  // Technical
   { id: "rsi_14", name: "RSI 14", category: "technical", description: "14-day relative strength index" },
   { id: "macd_signal", name: "MACD Signal", category: "technical", description: "MACD signal line crossover" },
+  { id: "macd_dif", name: "MACD DIF", category: "technical", description: "Difference between MACD fast and slow lines" },
+  { id: "macd_hist", name: "MACD Histogram", category: "technical", description: "MACD histogram value" },
   { id: "bollinger_position", name: "Bollinger Position", category: "technical", description: "Position within Bollinger Bands" },
   { id: "atr_14", name: "ATR 14", category: "technical", description: "14-day average true range" },
   { id: "adx_14", name: "ADX 14", category: "technical", description: "14-day average directional index" },
@@ -178,11 +190,8 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
 ];
 
 function seedFactors(db: Database.Database): void {
-  const count = db.prepare("SELECT COUNT(*) as cnt FROM quant_factors").get() as { cnt: number };
-  if (count.cnt > 0) return;
-
   const insert = db.prepare(
-    "INSERT INTO quant_factors (id, name, category, description) VALUES (?, ?, ?, ?)"
+    "INSERT OR IGNORE INTO quant_factors (id, name, category, description) VALUES (?, ?, ?, ?)"
   );
   const tx = db.transaction(() => {
     for (const f of FACTOR_SEEDS) {

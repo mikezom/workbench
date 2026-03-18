@@ -48,6 +48,56 @@ def price_to_ma60(df: pd.DataFrame) -> pd.Series:
     ma = df["close"].rolling(60).mean()
     return df["close"] / ma
 
+
+def ret_20d(df: pd.DataFrame) -> pd.Series:
+    return df["close"].pct_change(20)
+
+
+def ret_60d(df: pd.DataFrame) -> pd.Series:
+    return df["close"].pct_change(60)
+
+
+def ma10_bias(df: pd.DataFrame) -> pd.Series:
+    ma = df["close"].rolling(10).mean()
+    return (df["close"] - ma) / ma
+
+
+def ma20_bias(df: pd.DataFrame) -> pd.Series:
+    ma = df["close"].rolling(20).mean()
+    return (df["close"] - ma) / ma
+
+
+def ma60_bias(df: pd.DataFrame) -> pd.Series:
+    ma = df["close"].rolling(60).mean()
+    return (df["close"] - ma) / ma
+
+
+def _rolling_slope(series: pd.Series, window: int) -> pd.Series:
+    return series.rolling(window).apply(
+        lambda values: np.polyfit(range(len(values)), values, 1)[0] if len(values) == window else np.nan
+    )
+
+
+def ma10_slope(df: pd.DataFrame) -> pd.Series:
+    ma = df["close"].rolling(10).mean()
+    return _rolling_slope(ma, 10) / ma.replace(0, np.nan)
+
+
+def ma20_slope(df: pd.DataFrame) -> pd.Series:
+    ma = df["close"].rolling(20).mean()
+    return _rolling_slope(ma, 20) / ma.replace(0, np.nan)
+
+
+def ma60_slope(df: pd.DataFrame) -> pd.Series:
+    ma = df["close"].rolling(60).mean()
+    return _rolling_slope(ma, 60) / ma.replace(0, np.nan)
+
+
+def position_20d(df: pd.DataFrame) -> pd.Series:
+    low20 = df["low"].rolling(20).min()
+    high20 = df["high"].rolling(20).max()
+    return (df["close"] - low20) / (high20 - low20).replace(0, np.nan)
+
 # ---------------------------------------------------------------------------
 # Volume factors
 # ---------------------------------------------------------------------------
@@ -69,6 +119,10 @@ def vwap_deviation(df: pd.DataFrame) -> pd.Series:
 
 def turnover_rate(df: pd.DataFrame) -> pd.Series:
     return df["vol"].rolling(5).mean()
+
+
+def vol_ratio(df: pd.DataFrame) -> pd.Series:
+    return df["vol"].rolling(5).mean() / df["vol"].rolling(20).mean()
 
 # ---------------------------------------------------------------------------
 # Fundamental factors (uses merged fundamental data)
@@ -121,6 +175,18 @@ def macd_signal(df: pd.DataFrame) -> pd.Series:
     macd = ema12 - ema26
     signal = macd.ewm(span=9).mean()
     return macd - signal
+
+
+def macd_dif(df: pd.DataFrame) -> pd.Series:
+    ema12 = df["close"].ewm(span=12).mean()
+    ema26 = df["close"].ewm(span=26).mean()
+    return ema12 - ema26
+
+
+def macd_hist(df: pd.DataFrame) -> pd.Series:
+    dif = macd_dif(df)
+    signal = dif.ewm(span=9).mean()
+    return dif - signal
 
 def bollinger_position(df: pd.DataFrame) -> pd.Series:
     ma = df["close"].rolling(20).mean()
@@ -178,12 +244,22 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "volatility_60d": volatility_60d,
     "price_to_ma20": price_to_ma20,
     "price_to_ma60": price_to_ma60,
+    "ret_20d": ret_20d,
+    "ret_60d": ret_60d,
+    "ma10_bias": ma10_bias,
+    "ma20_bias": ma20_bias,
+    "ma60_bias": ma60_bias,
+    "ma10_slope": ma10_slope,
+    "ma20_slope": ma20_slope,
+    "ma60_slope": ma60_slope,
+    "position_20d": position_20d,
     # Volume
     "volume_ratio_5d": volume_ratio_5d,
     "volume_ratio_20d": volume_ratio_20d,
     "obv_slope": obv_slope,
     "vwap_deviation": vwap_deviation,
     "turnover_rate": turnover_rate,
+    "vol_ratio": vol_ratio,
     # Fundamental
     "pe_ratio": pe_ratio,
     "pb_ratio": pb_ratio,
@@ -198,6 +274,8 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     # Technical
     "rsi_14": rsi_14,
     "macd_signal": macd_signal,
+    "macd_dif": macd_dif,
+    "macd_hist": macd_hist,
     "bollinger_position": bollinger_position,
     "atr_14": atr_14,
     "adx_14": adx_14,
