@@ -84,18 +84,49 @@ def load_universe_codes(ts_conn: sqlite3.Connection, universe: str, as_of_date: 
     if end == 0:
         return [r["ts_code"] for r in ts_conn.execute("SELECT ts_code FROM stock_basic").fetchall()]
 
+    try:
+        snapshot = ts_conn.execute(
+            """
+            SELECT MAX(trade_date) AS trade_date
+            FROM daily_basic
+            WHERE trade_date <= ?
+            """,
+            (as_of_date,),
+        ).fetchone()
+        snapshot_date = snapshot["trade_date"] if snapshot and snapshot["trade_date"] else None
+        if not snapshot_date:
+            snapshot = ts_conn.execute("SELECT MIN(trade_date) AS trade_date FROM daily_basic").fetchone()
+            snapshot_date = snapshot["trade_date"] if snapshot and snapshot["trade_date"] else None
+
+        if snapshot_date:
+            rows = ts_conn.execute(
+                """
+                SELECT ts_code
+                FROM daily_basic
+                WHERE trade_date = ?
+                  AND total_mv IS NOT NULL
+                ORDER BY total_mv DESC, ts_code ASC
+                LIMIT ? OFFSET ?
+                """,
+                (snapshot_date, end - start, start),
+            ).fetchall()
+            if rows:
+                return [r["ts_code"] for r in rows]
+    except sqlite3.OperationalError:
+        pass
+
     snapshot = ts_conn.execute(
         """
-        SELECT MAX(trade_date) AS trade_date
-        FROM daily_basic
-        WHERE trade_date <= ?
+        SELECT MAX(end_date) AS end_date
+        FROM fina_indicator
+        WHERE end_date <= ?
         """,
         (as_of_date,),
     ).fetchone()
-    snapshot_date = snapshot["trade_date"] if snapshot and snapshot["trade_date"] else None
+    snapshot_date = snapshot["end_date"] if snapshot and snapshot["end_date"] else None
     if not snapshot_date:
-        snapshot = ts_conn.execute("SELECT MIN(trade_date) AS trade_date FROM daily_basic").fetchone()
-        snapshot_date = snapshot["trade_date"] if snapshot and snapshot["trade_date"] else None
+        snapshot = ts_conn.execute("SELECT MIN(end_date) AS end_date FROM fina_indicator").fetchone()
+        snapshot_date = snapshot["end_date"] if snapshot and snapshot["end_date"] else None
 
     if not snapshot_date:
         return [r["ts_code"] for r in ts_conn.execute("SELECT ts_code FROM stock_basic").fetchall()]
@@ -103,8 +134,8 @@ def load_universe_codes(ts_conn: sqlite3.Connection, universe: str, as_of_date: 
     rows = ts_conn.execute(
         """
         SELECT ts_code
-        FROM daily_basic
-        WHERE trade_date = ?
+        FROM fina_indicator
+        WHERE end_date = ?
           AND total_mv IS NOT NULL
         ORDER BY total_mv DESC, ts_code ASC
         LIMIT ? OFFSET ?
@@ -137,10 +168,13 @@ def load_stock_data(
         df = df.set_index("trade_date").sort_index()
 
         # Merge daily_basic data (PE, PB, PS, total_mv, dividend_yield)
-        basic_rows = ts_conn.execute(
-            "SELECT trade_date, pe, pb, ps, total_mv, dv_ratio, turnover_rate FROM daily_basic WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
-            (code, start_date, end_date),
-        ).fetchall()
+        try:
+            basic_rows = ts_conn.execute(
+                "SELECT trade_date, pe, pb, ps, total_mv, dv_ratio, turnover_rate FROM daily_basic WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
+                (code, start_date, end_date),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            basic_rows = []
         if basic_rows:
             basic_df = pd.DataFrame([dict(r) for r in basic_rows])
             basic_df["trade_date"] = pd.to_datetime(basic_df["trade_date"], format="%Y%m%d")
@@ -164,6 +198,18 @@ def load_stock_data(
             for col in ["roe", "roa"]:
                 if col in fina_daily.columns:
                     df[col] = fina_daily[col]
+            for source, target in [
+                ("pe", "pe"),
+                ("pb", "pb"),
+                ("ps", "ps"),
+                ("total_mv", "total_mv"),
+                ("dividend_yield", "dividend_yield"),
+            ]:
+                if source in fina_daily.columns:
+                    if target in df.columns:
+                        df[target] = df[target].combine_first(fina_daily[source])
+                    else:
+                        df[target] = fina_daily[source]
             if "debt_to_eqt" in fina_daily.columns:
                 df["debt_to_equity"] = fina_daily["debt_to_eqt"]
             if "tr_yoy" in fina_daily.columns:
