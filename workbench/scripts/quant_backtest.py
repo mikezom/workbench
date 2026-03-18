@@ -25,6 +25,20 @@ from quant_preprocess import preprocess_factors_cross_sectional
 
 WORKBENCH_DB = Path(__file__).parent.parent / "data" / "workbench.db"
 TUSHARE_DB = Path("/Users/ccnas/DEVELOPMENT/shared-data/tushare/tushare.db")
+BENCHMARK_ALIASES = {
+    "HS300": "000300.SH",
+    "CSI 300": "000300.SH",
+    "CSI300": "000300.SH",
+    "000300": "000300.SH",
+    "ZZ500": "000905.SH",
+    "CSI 500": "000905.SH",
+    "CSI500": "000905.SH",
+    "000905": "000905.SH",
+    "ZZ1000": "000852.SH",
+    "CSI 1000": "000852.SH",
+    "CSI1000": "000852.SH",
+    "000852": "000852.SH",
+}
 
 
 def get_workbench_conn() -> sqlite3.Connection:
@@ -37,6 +51,18 @@ def get_tushare_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(str(TUSHARE_DB))
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def normalize_benchmark_code(value: str | None) -> str:
+    if not value:
+        return "000300.SH"
+
+    normalized = value.strip().upper()
+    if normalized in BENCHMARK_ALIASES:
+        return BENCHMARK_ALIASES[normalized]
+    if len(normalized) == 6 and normalized.isdigit():
+        return f"{normalized}.SH"
+    return normalized
 
 
 def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
@@ -56,7 +82,7 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
         "start_date": run["start_date"],
         "end_date": run["end_date"],
         "initial_capital": run["initial_capital"],
-        "benchmark": run["benchmark"],
+        "benchmark": normalize_benchmark_code(run["benchmark"]),
         "rebalance_freq": run["rebalance_freq"],
         "top_n": run["top_n"],
         "commission": run["commission"],

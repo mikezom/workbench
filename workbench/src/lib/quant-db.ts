@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { getDb } from "./db";
+import { normalizeBenchmarkCode } from "./quant-benchmark";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -279,6 +280,7 @@ function toStrategy(row: Record<string, unknown>): QuantStrategy {
 function toBacktestRun(row: Record<string, unknown>): QuantBacktestRun {
   return {
     ...row,
+    benchmark: normalizeBenchmarkCode(row.benchmark as string),
     config: JSON.parse(row.config as string),
   } as QuantBacktestRun;
 }
@@ -398,6 +400,7 @@ export function createBacktestRun(data: {
   config?: Record<string, unknown>;
 }): QuantBacktestRun {
   const db = getDb();
+  const benchmark = normalizeBenchmarkCode(data.benchmark);
   const result = db.prepare(`
     INSERT INTO quant_backtest_runs (strategy_id, start_date, end_date, initial_capital, benchmark, rebalance_freq, top_n, commission, config)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -406,7 +409,7 @@ export function createBacktestRun(data: {
     data.start_date,
     data.end_date,
     data.initial_capital ?? 1000000,
-    data.benchmark ?? "000300.SH",
+    benchmark,
     data.rebalance_freq ?? "weekly",
     data.top_n ?? 10,
     data.commission ?? 0.001,
