@@ -21,6 +21,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent))
 from quant_factors import compute_factors
 from quant_models import QuantModel
+from quant_preprocess import preprocess_factors_cross_sectional
 
 WORKBENCH_DB = Path(__file__).parent.parent / "data" / "workbench.db"
 TUSHARE_DB = Path("/Users/ccnas/DEVELOPMENT/shared-data/tushare/tushare.db")
@@ -63,6 +64,12 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
         "model_type": strategy["model_type"],
         "hyperparams": json.loads(strategy["hyperparams"]),
     }
+
+
+def load_stock_industries(ts_conn: sqlite3.Connection) -> dict[str, str]:
+    """Load industry mapping from stock_basic."""
+    rows = ts_conn.execute("SELECT ts_code, industry FROM stock_basic WHERE industry IS NOT NULL AND industry != ''").fetchall()
+    return {r["ts_code"]: r["industry"] for r in rows}
 
 
 def load_stock_data(ts_conn: sqlite3.Connection, start_date: str, end_date: str) -> dict[str, pd.DataFrame]:
@@ -154,14 +161,26 @@ def run_backtest(config: dict) -> dict:
     factor_ids = config["factors"]
     print(f"Computing {len(factor_ids)} factors...")
 
-    # Compute factors for all stocks
+    # Compute raw factors for all stocks
     all_factor_data: dict[str, pd.DataFrame] = {}
     all_returns: dict[str, pd.Series] = {}
+    stock_log_mcap: dict[str, pd.Series] = {}
     for code, df in stocks.items():
         factors_df = compute_factors(df, factor_ids)
         fwd_ret = compute_forward_returns(df, days=5)
         all_factor_data[code] = factors_df
         all_returns[code] = fwd_ret
+        # Compute log market cap for neutralization
+        if "total_mv" in df.columns:
+            mv = df["total_mv"].replace(0, np.nan)
+            stock_log_mcap[code] = np.log(mv)
+
+    # Cross-sectional preprocessing: winsorize → neutralize → standardize
+    stock_industry = load_stock_industries(ts_conn)
+    print("Preprocessing factors (winsorize → neutralize → standardize)...")
+    all_factor_data = preprocess_factors_cross_sectional(
+        all_factor_data, stock_industry, stock_log_mcap, factor_ids, mad_n=3.5,
+    )
 
     # Get common trading dates
     all_dates = sorted(set().union(*[df.index for df in stocks.values()]))
@@ -220,7 +239,7 @@ def run_backtest(config: dict) -> dict:
         for code in stocks:
             factors_df = all_factor_data[code]
             if date in factors_df.index:
-                x = factors_df.loc[date].values.reshape(1, -1)
+                x = factors_df.loc[date].values.astype(float).reshape(1, -1)
                 if np.isfinite(x).all():
                     scores[code] = float(model.predict(x)[0])
 
