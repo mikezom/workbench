@@ -9,9 +9,12 @@ Writes results back to workbench.db.
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import traceback
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -38,6 +41,7 @@ BENCHMARK_ALIASES = {
     "CSI1000": "000852.SH",
     "000852": "000852.SH",
 }
+DEFAULT_MAX_WORKERS = min(8, max(1, os.cpu_count() or 1))
 
 
 def get_workbench_conn() -> sqlite3.Connection:
@@ -93,7 +97,24 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
         "universe": strategy["universe"],
         "train_window_days": int(run_config.get("train_window_days", 240)),
         "prediction_horizon_days": int(run_config.get("prediction_horizon_days", 20)),
+        "max_workers": int(run_config.get("max_workers", 0) or 0),
     }
+
+
+def resolve_max_workers(task_count: int, configured_workers: int = 0) -> int:
+    if task_count <= 1:
+        return 1
+    if configured_workers > 0:
+        return min(task_count, configured_workers)
+
+    env_workers = os.getenv("QUANT_BACKTEST_WORKERS")
+    if env_workers:
+        try:
+            return min(task_count, max(1, int(env_workers)))
+        except ValueError:
+            pass
+
+    return min(task_count, DEFAULT_MAX_WORKERS)
 
 
 def load_stock_industries(ts_conn: sqlite3.Connection) -> dict[str, str]:
@@ -177,84 +198,125 @@ def load_universe_codes(ts_conn: sqlite3.Connection, universe: str, as_of_date: 
 
 
 def load_stock_data(
-    ts_conn: sqlite3.Connection,
     start_date: str,
     end_date: str,
     universe: str,
     custom_symbols: list[str] | None = None,
+    max_workers: int = 0,
 ) -> dict[str, pd.DataFrame]:
     """Load all stock OHLCV data from tushare.db."""
     stocks = {}
+    ts_conn = get_tushare_conn()
     if universe == "CUSTOM":
         codes = custom_symbols or []
     else:
         codes = load_universe_codes(ts_conn, universe, start_date)
+    ts_conn.close()
 
-    for code in codes:
-        rows = ts_conn.execute(
-            "SELECT * FROM daily_ohlcv WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
-            (code, start_date, end_date),
-        ).fetchall()
-        if len(rows) < 60:
-            continue
+    worker_count = resolve_max_workers(len(codes), max_workers)
 
-        df = pd.DataFrame([dict(r) for r in rows])
-        df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
-        df = df.set_index("trade_date").sort_index()
-
-        # Merge daily_basic data (PE, PB, PS, total_mv, dividend_yield)
+    def load_single_stock(code: str) -> tuple[str, pd.DataFrame | None]:
+        local_conn = get_tushare_conn()
         try:
-            basic_rows = ts_conn.execute(
-                "SELECT trade_date, pe, pb, ps, total_mv, dv_ratio, turnover_rate FROM daily_basic WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
+            rows = local_conn.execute(
+                "SELECT * FROM daily_ohlcv WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
                 (code, start_date, end_date),
             ).fetchall()
-        except sqlite3.OperationalError:
-            basic_rows = []
-        if basic_rows:
-            basic_df = pd.DataFrame([dict(r) for r in basic_rows])
-            basic_df["trade_date"] = pd.to_datetime(basic_df["trade_date"], format="%Y%m%d")
-            basic_df = basic_df.set_index("trade_date").sort_index()
-            for col in ["pe", "pb", "ps", "total_mv", "turnover_rate"]:
-                if col in basic_df.columns:
-                    df[col] = basic_df[col]
-            if "dv_ratio" in basic_df.columns:
-                df["dividend_yield"] = basic_df["dv_ratio"]
+            if len(rows) < 60:
+                return code, None
 
-        # Merge fina_indicator data (ROE, ROA, growth, debt — quarterly, forward-filled)
-        fina_rows = ts_conn.execute(
-            "SELECT end_date, roe, roa, debt_to_eqt, tr_yoy, netprofit_yoy FROM fina_indicator WHERE ts_code = ? ORDER BY end_date",
-            (code,),
-        ).fetchall()
-        if fina_rows:
-            fina_df = pd.DataFrame([dict(r) for r in fina_rows])
-            fina_df["end_date"] = pd.to_datetime(fina_df["end_date"], format="%Y%m%d")
-            fina_df = fina_df.set_index("end_date").sort_index()
-            fina_daily = fina_df.reindex(df.index, method="ffill")
-            for col in ["roe", "roa"]:
-                if col in fina_daily.columns:
-                    df[col] = fina_daily[col]
-            for source, target in [
-                ("pe", "pe"),
-                ("pb", "pb"),
-                ("ps", "ps"),
-                ("total_mv", "total_mv"),
-                ("dividend_yield", "dividend_yield"),
-            ]:
-                if source in fina_daily.columns:
-                    if target in df.columns:
-                        df[target] = df[target].combine_first(fina_daily[source])
-                    else:
-                        df[target] = fina_daily[source]
-            if "debt_to_eqt" in fina_daily.columns:
-                df["debt_to_equity"] = fina_daily["debt_to_eqt"]
-            if "tr_yoy" in fina_daily.columns:
-                df["revenue_yoy"] = fina_daily["tr_yoy"]
-            if "netprofit_yoy" in fina_daily.columns:
-                df["profit_yoy"] = fina_daily["netprofit_yoy"]
+            df = pd.DataFrame([dict(r) for r in rows])
+            df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
+            df = df.set_index("trade_date").sort_index()
 
+            try:
+                basic_rows = local_conn.execute(
+                    "SELECT trade_date, pe, pb, ps, total_mv, dv_ratio, turnover_rate FROM daily_basic WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
+                    (code, start_date, end_date),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                basic_rows = []
+            if basic_rows:
+                basic_df = pd.DataFrame([dict(r) for r in basic_rows])
+                basic_df["trade_date"] = pd.to_datetime(basic_df["trade_date"], format="%Y%m%d")
+                basic_df = basic_df.set_index("trade_date").sort_index()
+                for col in ["pe", "pb", "ps", "total_mv", "turnover_rate"]:
+                    if col in basic_df.columns:
+                        df[col] = basic_df[col]
+                if "dv_ratio" in basic_df.columns:
+                    df["dividend_yield"] = basic_df["dv_ratio"]
+
+            fina_rows = local_conn.execute(
+                "SELECT end_date, roe, roa, debt_to_eqt, tr_yoy, netprofit_yoy FROM fina_indicator WHERE ts_code = ? ORDER BY end_date",
+                (code,),
+            ).fetchall()
+            if fina_rows:
+                fina_df = pd.DataFrame([dict(r) for r in fina_rows])
+                fina_df["end_date"] = pd.to_datetime(fina_df["end_date"], format="%Y%m%d")
+                fina_df = fina_df.set_index("end_date").sort_index()
+                fina_daily = fina_df.reindex(df.index, method="ffill")
+                for col in ["roe", "roa"]:
+                    if col in fina_daily.columns:
+                        df[col] = fina_daily[col]
+                for source, target in [
+                    ("pe", "pe"),
+                    ("pb", "pb"),
+                    ("ps", "ps"),
+                    ("total_mv", "total_mv"),
+                    ("dividend_yield", "dividend_yield"),
+                ]:
+                    if source in fina_daily.columns:
+                        if target in df.columns:
+                            df[target] = df[target].combine_first(fina_daily[source])
+                        else:
+                            df[target] = fina_daily[source]
+                if "debt_to_eqt" in fina_daily.columns:
+                    df["debt_to_equity"] = fina_daily["debt_to_eqt"]
+                if "tr_yoy" in fina_daily.columns:
+                    df["revenue_yoy"] = fina_daily["tr_yoy"]
+                if "netprofit_yoy" in fina_daily.columns:
+                    df["profit_yoy"] = fina_daily["netprofit_yoy"]
+
+            return code, df
+        finally:
+            local_conn.close()
+
+    if worker_count == 1:
+        results = [load_single_stock(code) for code in codes]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            results = list(executor.map(load_single_stock, codes))
+
+    for code, df in results:
+        if df is None:
+            continue
         stocks[code] = df
 
     return stocks
+
+
+def compute_stock_inputs(
+    code: str,
+    df: pd.DataFrame,
+    factor_ids: list[str],
+    prediction_horizon_days: int,
+) -> tuple[str, pd.DataFrame, pd.Series, pd.Series | None]:
+    factors_df = compute_factors(df, factor_ids)
+    fwd_ret = compute_forward_returns(df, days=prediction_horizon_days)
+    log_mcap = None
+    if "total_mv" in df.columns:
+        mv = df["total_mv"].replace(0, np.nan)
+        log_mcap = np.log(mv)
+    return code, factors_df, fwd_ret, log_mcap
+
+
+def compute_stock_inputs_from_item(
+    item: tuple[str, pd.DataFrame],
+    factor_ids: list[str],
+    prediction_horizon_days: int,
+) -> tuple[str, pd.DataFrame, pd.Series, pd.Series | None]:
+    code, df = item
+    return compute_stock_inputs(code, df, factor_ids, prediction_horizon_days)
 
 
 def compute_forward_returns(df: pd.DataFrame, days: int = 5) -> pd.Series:
@@ -362,11 +424,11 @@ def run_backtest(config: dict) -> dict:
             raise ValueError("Custom universe requires at least one symbol")
 
     stocks = load_stock_data(
-        ts_conn,
         config["start_date"],
         config["end_date"],
         config["universe"],
         custom_symbols,
+        max_workers=config["max_workers"],
     )
     print(f"  Loaded {len(stocks)} stocks with sufficient data")
 
@@ -381,15 +443,33 @@ def run_backtest(config: dict) -> dict:
     all_returns: dict[str, pd.Series] = {}
     stock_log_mcap: dict[str, pd.Series] = {}
     prediction_horizon_days = max(int(config["prediction_horizon_days"]), 1)
-    for code, df in stocks.items():
-        factors_df = compute_factors(df, factor_ids)
-        fwd_ret = compute_forward_returns(df, days=prediction_horizon_days)
+    stock_items = list(stocks.items())
+    worker_count = resolve_max_workers(len(stock_items), config["max_workers"])
+    print(f"  Using up to {worker_count} worker threads")
+
+    if worker_count == 1:
+        prepared_inputs = [
+            compute_stock_inputs_from_item(item, factor_ids, prediction_horizon_days)
+            for item in stock_items
+        ]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            prepared_inputs = list(
+                executor.map(
+                    partial(
+                        compute_stock_inputs_from_item,
+                        factor_ids=factor_ids,
+                        prediction_horizon_days=prediction_horizon_days,
+                    ),
+                    stock_items,
+                )
+            )
+
+    for code, factors_df, fwd_ret, log_mcap in prepared_inputs:
         all_factor_data[code] = factors_df
         all_returns[code] = fwd_ret
-        # Compute log market cap for neutralization
-        if "total_mv" in df.columns:
-            mv = df["total_mv"].replace(0, np.nan)
-            stock_log_mcap[code] = np.log(mv)
+        if log_mcap is not None:
+            stock_log_mcap[code] = log_mcap
 
     # Cross-sectional preprocessing: winsorize → neutralize → standardize
     stock_industry = load_stock_industries(ts_conn)
