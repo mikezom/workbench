@@ -471,6 +471,16 @@ function ResultsTab({
             </option>
           ))}
         </select>
+        {selectedRunId && (
+          <a
+            href={`/api/quant/backtest/${selectedRunId}/report`}
+            target="_blank"
+            rel="noreferrer"
+            className="px-3 py-1.5 text-sm rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            Export Report
+          </a>
+        )}
       </div>
 
       {!detail?.results && (
