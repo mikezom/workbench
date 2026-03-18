@@ -12,7 +12,7 @@ import json
 import sqlite3
 import sys
 import traceback
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
@@ -76,6 +76,8 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
     if not strategy:
         raise ValueError(f"Strategy {run['strategy_id']} not found")
 
+    run_config = json.loads(run["config"]) if run["config"] else {}
+
     return {
         "run_id": run_id,
         "strategy_id": run["strategy_id"],
@@ -90,6 +92,8 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
         "model_type": strategy["model_type"],
         "hyperparams": json.loads(strategy["hyperparams"]),
         "universe": strategy["universe"],
+        "train_window_days": int(run_config.get("train_window_days", 240)),
+        "prediction_horizon_days": int(run_config.get("prediction_horizon_days", 20)),
     }
 
 
@@ -291,6 +295,44 @@ def get_rebalance_dates(dates: pd.DatetimeIndex, freq: str) -> list[pd.Timestamp
     return list(dates)
 
 
+def build_training_dataset(
+    factor_data: dict[str, pd.DataFrame],
+    returns_data: dict[str, pd.Series],
+    train_start: pd.Timestamp,
+    train_end: pd.Timestamp,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    x_train_list: list[np.ndarray] = []
+    y_train_list: list[np.ndarray] = []
+
+    for code, factors_df in factor_data.items():
+        returns = returns_data[code]
+        mask = (
+            (factors_df.index >= train_start)
+            & (factors_df.index < train_end)
+            & factors_df.notna().all(axis=1)
+            & returns.notna()
+        )
+        if mask.sum() == 0:
+            continue
+
+        x_train_list.append(factors_df.loc[mask].values)
+        y_train_list.append(returns.loc[mask].values)
+
+    if not x_train_list:
+        return None, None
+
+    x_train = np.vstack(x_train_list)
+    y_train = np.concatenate(y_train_list)
+    valid = np.isfinite(x_train).all(axis=1) & np.isfinite(y_train)
+    x_train = x_train[valid]
+    y_train = y_train[valid]
+
+    if len(x_train) == 0:
+        return None, None
+
+    return x_train, y_train
+
+
 def run_backtest(config: dict) -> dict:
     """Run the backtest and return results."""
     ts_conn = get_tushare_conn()
@@ -317,9 +359,10 @@ def run_backtest(config: dict) -> dict:
     all_factor_data: dict[str, pd.DataFrame] = {}
     all_returns: dict[str, pd.Series] = {}
     stock_log_mcap: dict[str, pd.Series] = {}
+    prediction_horizon_days = max(int(config["prediction_horizon_days"]), 1)
     for code, df in stocks.items():
         factors_df = compute_factors(df, factor_ids)
-        fwd_ret = compute_forward_returns(df, days=5)
+        fwd_ret = compute_forward_returns(df, days=prediction_horizon_days)
         all_factor_data[code] = factors_df
         all_returns[code] = fwd_ret
         # Compute log market cap for neutralization
@@ -338,43 +381,18 @@ def run_backtest(config: dict) -> dict:
     all_dates = sorted(set().union(*[df.index for df in stocks.values()]))
     all_dates = pd.DatetimeIndex(all_dates)
 
-    # Walk-forward: train on first 60% of data, then roll forward
-    split_idx = int(len(all_dates) * 0.6)
-    train_end = all_dates[split_idx]
-    test_dates = all_dates[split_idx:]
-    rebalance_dates = get_rebalance_dates(test_dates, config["rebalance_freq"])
+    train_window_days = max(int(config["train_window_days"]), 60)
+    first_train_end = all_dates[0] + pd.Timedelta(days=train_window_days)
+    candidate_dates = all_dates[all_dates >= first_train_end]
+    rebalance_dates = get_rebalance_dates(candidate_dates, config["rebalance_freq"])
 
-    print(f"Training period ends: {train_end.strftime('%Y-%m-%d')}")
-    print(f"Test period: {test_dates[0].strftime('%Y-%m-%d')} to {test_dates[-1].strftime('%Y-%m-%d')}")
+    if not rebalance_dates:
+        raise ValueError("No rebalance dates available after applying the training window")
+
+    print(f"Rolling training window: {train_window_days} calendar days")
+    print(f"Prediction horizon: {prediction_horizon_days} trading days")
+    print(f"Test period: {rebalance_dates[0].strftime('%Y-%m-%d')} to {rebalance_dates[-1].strftime('%Y-%m-%d')}")
     print(f"Rebalance dates: {len(rebalance_dates)}")
-
-    # Build training dataset
-    X_train_list, y_train_list = [], []
-    for code in stocks:
-        factors_df = all_factor_data[code]
-        returns = all_returns[code]
-        mask = (factors_df.index <= train_end) & factors_df.notna().all(axis=1) & returns.notna()
-        if mask.sum() > 0:
-            X_train_list.append(factors_df.loc[mask].values)
-            y_train_list.append(returns.loc[mask].values)
-
-    if not X_train_list:
-        raise ValueError("No valid training data available")
-
-    X_train = np.vstack(X_train_list)
-    y_train = np.concatenate(y_train_list)
-
-    # Handle NaN/Inf
-    valid = np.isfinite(X_train).all(axis=1) & np.isfinite(y_train)
-    X_train = X_train[valid]
-    y_train = y_train[valid]
-
-    print(f"Training samples: {len(X_train)}")
-
-    # Train model
-    model = QuantModel(config["model_type"], config["hyperparams"])
-    model.fit(X_train, y_train, feature_names=factor_ids)
-    print("Model trained.")
 
     # Simulate trading
     capital = config["initial_capital"]
@@ -384,8 +402,20 @@ def run_backtest(config: dict) -> dict:
     trade_log = []
     top_n = config["top_n"]
     commission_rate = config["commission"]
+    feature_importance_history: list[dict[str, float]] = []
+    trained_windows = 0
 
-    for i, date in enumerate(rebalance_dates):
+    for date in rebalance_dates:
+        train_start = date - pd.Timedelta(days=train_window_days)
+        x_train, y_train = build_training_dataset(all_factor_data, all_returns, train_start, date)
+        if x_train is None or y_train is None or len(x_train) < max(len(factor_ids) * 5, 50):
+            continue
+
+        model = QuantModel(config["model_type"], config["hyperparams"])
+        model.fit(x_train, y_train, feature_names=factor_ids)
+        feature_importance_history.append(model.feature_importance())
+        trained_windows += 1
+
         # Score all stocks on this date
         scores: dict[str, float] = {}
         for code in stocks:
@@ -457,6 +487,8 @@ def run_backtest(config: dict) -> dict:
             if date in stocks[code].index:
                 total_value += shares * stocks[code].loc[date, "close"]
         equity_curve.append({"date": date.strftime("%Y-%m-%d"), "value": round(total_value, 2)})
+
+    print(f"Trained {trained_windows} rolling windows.")
 
     if not equity_curve:
         raise ValueError("No trades were executed during the backtest period")
@@ -551,7 +583,12 @@ def run_backtest(config: dict) -> dict:
                 mr = 0
             monthly_returns.append({"year": int(year), "month": int(month), "return": round(float(mr), 4)})
 
-    factor_imp = model.feature_importance()
+    factor_imp: dict[str, float] = {}
+    if feature_importance_history:
+        for factor in factor_ids:
+            values = [window[factor] for window in feature_importance_history if factor in window]
+            if values:
+                factor_imp[factor] = round(float(np.mean(values)), 6)
 
     return {
         "total_return": round(total_return, 4),
@@ -568,6 +605,7 @@ def run_backtest(config: dict) -> dict:
         "equity_curve": equity_curve,
         "monthly_returns": monthly_returns,
         "factor_importance": factor_imp,
+        "training_windows": trained_windows,
         "trade_log": trade_log,
     }
 

@@ -20,6 +20,8 @@ interface BacktestConfigProps {
     rebalance_freq: string;
     top_n: number;
     commission: number;
+    train_window_days: number;
+    prediction_horizon_days: number;
   }) => void;
 }
 
@@ -32,6 +34,8 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
   const [rebalanceFreq, setRebalanceFreq] = useState("weekly");
   const [topN, setTopN] = useState("10");
   const [commission, setCommission] = useState("0.001");
+  const [trainWindowDays, setTrainWindowDays] = useState("240");
+  const [predictionHorizonDays, setPredictionHorizonDays] = useState("20");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -47,6 +51,8 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
       rebalance_freq: rebalanceFreq,
       top_n: parseInt(topN),
       commission: parseFloat(commission),
+      train_window_days: parseInt(trainWindowDays),
+      prediction_horizon_days: parseInt(predictionHorizonDays),
     });
     setTimeout(() => setSubmitting(false), 1000);
   };
@@ -149,6 +155,31 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
             step="0.0001"
             value={commission}
             onChange={(e) => setCommission(e.target.value)}
+            className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Train Window (Days)</label>
+          <input
+            type="number"
+            min="60"
+            step="20"
+            value={trainWindowDays}
+            onChange={(e) => setTrainWindowDays(e.target.value)}
+            className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Prediction Horizon (Days)</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={predictionHorizonDays}
+            onChange={(e) => setPredictionHorizonDays(e.target.value)}
             className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
           />
         </div>

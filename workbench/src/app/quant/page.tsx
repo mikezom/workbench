@@ -188,6 +188,8 @@ export default function QuantPage() {
     rebalance_freq: string;
     top_n: number;
     commission: number;
+    train_window_days: number;
+    prediction_horizon_days: number;
   }) => {
     await fetch("/api/quant/backtest", {
       method: "POST",
@@ -347,7 +349,18 @@ function BacktestTab({
 }: {
   strategies: Strategy[];
   runs: BacktestRun[];
-  onSubmit: (config: { strategy_id: number; start_date: string; end_date: string; initial_capital: number; benchmark: string; rebalance_freq: string; top_n: number; commission: number }) => void;
+  onSubmit: (config: {
+    strategy_id: number;
+    start_date: string;
+    end_date: string;
+    initial_capital: number;
+    benchmark: string;
+    rebalance_freq: string;
+    top_n: number;
+    commission: number;
+    train_window_days: number;
+    prediction_horizon_days: number;
+  }) => void;
   onSelectRun: (id: number) => void;
 }) {
   return (

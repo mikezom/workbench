@@ -11,7 +11,18 @@ export function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { strategy_id, start_date, end_date, initial_capital, benchmark, rebalance_freq, top_n, commission } = body;
+  const {
+    strategy_id,
+    start_date,
+    end_date,
+    initial_capital,
+    benchmark,
+    rebalance_freq,
+    top_n,
+    commission,
+    train_window_days,
+    prediction_horizon_days,
+  } = body;
 
   if (!strategy_id) {
     return NextResponse.json({ error: "strategy_id is required" }, { status: 400 });
@@ -31,6 +42,10 @@ export async function POST(req: NextRequest) {
     rebalance_freq,
     top_n,
     commission,
+    config: {
+      train_window_days,
+      prediction_horizon_days,
+    },
   });
 
   // Update strategy status
