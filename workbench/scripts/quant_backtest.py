@@ -562,6 +562,10 @@ def main():
             "UPDATE quant_backtest_runs SET status = 'completed', completed_at = datetime('now') WHERE id = ?",
             (args.run_id,),
         )
+        wb_conn.execute(
+            "UPDATE quant_strategies SET status = 'completed', updated_at = datetime('now') WHERE id = ?",
+            (config["strategy_id"],),
+        )
         wb_conn.commit()
         print(f"Backtest #{args.run_id} completed successfully.")
         print(f"  Total return: {results['total_return']:.2%}")
@@ -575,6 +579,18 @@ def main():
             "UPDATE quant_backtest_runs SET status = 'failed', error_message = ? WHERE id = ?",
             (str(e), args.run_id),
         )
+        try:
+            run = wb_conn.execute(
+                "SELECT strategy_id FROM quant_backtest_runs WHERE id = ?",
+                (args.run_id,),
+            ).fetchone()
+            if run:
+                wb_conn.execute(
+                    "UPDATE quant_strategies SET status = 'ready', updated_at = datetime('now') WHERE id = ?",
+                    (run["strategy_id"],),
+                )
+        except Exception:
+            pass
         wb_conn.commit()
         print(f"Backtest #{args.run_id} FAILED: {e}")
         sys.exit(1)

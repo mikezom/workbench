@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     });
     child.unref();
   } catch (err) {
+    updateStrategy(strategy.id, { status: "ready" });
     return NextResponse.json(
       { error: `Failed to start backtest: ${err}` },
       { status: 500 }

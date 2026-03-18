@@ -96,6 +96,7 @@ export function initQuantSchema(db: Database.Database): void {
 
   migrateQuantSchema(db);
   seedFactors(db);
+  reconcileStrategyStatuses(db);
 }
 
 function migrateQuantSchema(db: Database.Database): void {
@@ -104,6 +105,30 @@ function migrateQuantSchema(db: Database.Database): void {
 
   if (!hasBenchmarkCurve) {
     db.exec("ALTER TABLE quant_backtest_results ADD COLUMN benchmark_curve TEXT");
+  }
+}
+
+function reconcileStrategyStatuses(db: Database.Database): void {
+  const strategies = db.prepare("SELECT id, status FROM quant_strategies").all() as Array<{ id: number; status: string }>;
+  const activeRunsStmt = db.prepare(
+    "SELECT COUNT(*) as cnt FROM quant_backtest_runs WHERE strategy_id = ? AND status IN ('pending', 'running')"
+  );
+  const latestRunStmt = db.prepare(
+    "SELECT status FROM quant_backtest_runs WHERE strategy_id = ? ORDER BY created_at DESC, id DESC LIMIT 1"
+  );
+  const updateStmt = db.prepare(
+    "UPDATE quant_strategies SET status = ?, updated_at = datetime('now') WHERE id = ?"
+  );
+
+  for (const strategy of strategies) {
+    if (strategy.status !== "backtesting") continue;
+
+    const activeRuns = (activeRunsStmt.get(strategy.id) as { cnt: number }).cnt;
+    if (activeRuns > 0) continue;
+
+    const latestRun = latestRunStmt.get(strategy.id) as { status: string } | undefined;
+    const nextStatus = latestRun?.status === "completed" ? "completed" : "ready";
+    updateStmt.run(nextStatus, strategy.id);
   }
 }
 
@@ -294,15 +319,16 @@ export function createStrategy(data: {
 }): QuantStrategy {
   const db = getDb();
   const result = db.prepare(`
-    INSERT INTO quant_strategies (name, description, factors, model_type, hyperparams, universe)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO quant_strategies (name, description, factors, model_type, hyperparams, universe, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.name,
     data.description ?? null,
     JSON.stringify(data.factors),
     data.model_type,
     JSON.stringify(data.hyperparams ?? {}),
-    data.universe ?? "HS300"
+    data.universe ?? "HS300",
+    "ready"
   );
   return getStrategy(Number(result.lastInsertRowid))!;
 }
