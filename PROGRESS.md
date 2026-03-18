@@ -396,6 +396,9 @@ Full spec: `docs/quant-section.md`
 - [x] Wire Results tab with all dashboard components
 - [x] Wire Data tab with summary cards and sync button
 
+#### 13f: Bug Fixes
+- [x] Fix equity curve Plotly chart connecting last point to first (set xaxis type to "date")
+
 ## Status
 
 | Phase | Status | Notes |
@@ -436,3 +439,4 @@ Full spec: `docs/quant-section.md`
 | 11i - Interactive Study Virtual Scrolling | Complete | react-virtuoso for efficient rendering; commit `31b7966` |
 | 12 - Forester Theme TS Refactoring | Complete | graph.js monolith → 14 TS modules, shared utils, type safety; commit `9308047` |
 | 13 - Quant Section | Complete | Factor-based model training, backtesting, Plotly charts, mock data |
+| 13f - Quant Bug Fixes | Complete | Fix equity curve loop artifact; commit `636969a` |

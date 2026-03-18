@@ -1814,3 +1814,99 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 - `theme/hover-card.js` — Now build output (3.7kb minified) from src/hover-card/hover-card.ts.
 - `theme/forester.js` — Now build output (321kb minified) from src/forester/forester.ts.
 - `theme/javascript-source/forester.js` — Deleted (replaced by src/forester/forester.ts).
+
+---
+
+## 2026-03-17 — Quant Section Implementation (Phase 13)
+
+### Task 1: Foundation — page, nav, DB schema, API shell
+
+**Commit:** `f43568a`
+
+**Problem:** Adding a new Quant section for quantitative trading strategy development and backtesting. Needed page shell, navigation entry, database schema for strategies/backtests/factors, and CRUD API routes.
+
+**Changes:**
+- `workbench/src/lib/quant-db.ts` — Created schema (5 tables: quant_factors, quant_strategies, quant_backtest_runs, quant_backtest_results, quant_trade_log), seeded 33 factors across 4 categories, full CRUD for strategies and backtest runs, row converters for JSON fields.
+- `workbench/src/lib/db.ts` — Added import and call to initQuantSchema().
+- `workbench/src/components/nav.tsx` — Added Quant entry with bar chart SVG icon before Clipboard.
+- `workbench/src/app/quant/page.tsx` — Main page with 4 tabs (Strategies, Backtest, Results, Data), wired to all sub-components.
+- `workbench/src/app/api/quant/factors/route.ts` — GET endpoint for listing factors with optional category filter.
+- `workbench/src/app/api/quant/strategies/route.ts` — GET/POST for listing and creating strategies.
+- `workbench/src/app/api/quant/strategies/[id]/route.ts` — GET/PUT/DELETE for single strategy CRUD.
+
+---
+
+### Task 2: Data layer — Tushare integration with dry-run mock data
+
+**Commit:** `f43568a`
+
+**Problem:** Needed market data infrastructure: mock data generator for development, fetcher script supporting both dry-run and real Tushare API, separate tushare.db database, and API routes for data management.
+
+**Changes:**
+- `workbench/scripts/mock_data.py` — Deterministic OHLCV generator for 50 stocks (000001.SZ–000050.SZ), 3+ years of data using seeded random walk with drift. Also generates mock fundamental data (PE, PB, ROE, etc.).
+- `workbench/scripts/tushare_fetcher.py` — Data fetcher with --dry-run default, --mode (daily/history/fundamental), writes to shared-data/tushare/tushare.db with UPSERT and WAL mode.
+- `workbench/src/lib/tushare-db.ts` — Read-only better-sqlite3 accessor for tushare.db with getOhlcv(), getStockList(), getDataSummary(), getFundamentals().
+- `workbench/src/app/api/quant/data/route.ts` — GET for data summary, POST to trigger sync (spawns tushare_fetcher.py subprocess).
+- `workbench/src/app/api/quant/data/ohlcv/route.ts` — GET endpoint for OHLCV data by stock code and date range.
+- `workbench/scripts/requirements-quant.txt` — Python dependencies (pandas, numpy, scikit-learn, xgboost, tushare).
+
+---
+
+### Task 3: Strategy management UI components
+
+**Commit:** `f43568a`
+
+**Problem:** Needed interactive UI for creating, editing, and managing quant strategies with factor selection, model configuration, and hyperparameter tuning.
+
+**Changes:**
+- `workbench/src/components/quant/factor-picker.tsx` — Multi-select grouped by category (price/volume/fundamental/technical) with category-level toggle and indeterminate checkbox state.
+- `workbench/src/components/quant/strategy-form.tsx` — Create/edit form with name, description, model type dropdown, universe selector, conditional hyperparameter fields (alpha for Ridge/Lasso, n_estimators/max_depth for RF/XGBoost, learning_rate for XGBoost).
+- `workbench/src/components/quant/strategy-list.tsx` — Table with columns for name, model type, universe, factor count, status badge, created date, and action buttons (edit, backtest, delete).
+
+---
+
+### Task 4: Backtesting engine (Python) and API
+
+**Commit:** `f43568a`
+
+**Problem:** Needed a complete backtesting pipeline: factor computation, model training with walk-forward validation, trade simulation with portfolio rebalancing, and metrics computation.
+
+**Changes:**
+- `workbench/scripts/quant_factors.py` — Factor computation library with 33 registered functions mapped by ID. Each takes a DataFrame and returns a Series. Includes compute_factors() for batch computation.
+- `workbench/scripts/quant_models.py` — QuantModel class wrapping sklearn/xgboost with uniform fit/predict/feature_importance interface. Graceful XGBoost fallback to RandomForest.
+- `workbench/scripts/quant_backtest.py` — Core engine: loads config from workbench.db, reads market data from tushare.db, computes factors, trains model (60/40 walk-forward split), simulates trades (rank top N stocks, lot-of-100 sizing, commission), computes metrics (return, Sharpe, drawdown, etc.), writes results back to DB.
+- `workbench/src/app/api/quant/backtest/route.ts` — GET to list runs, POST to create run + spawn quant_backtest.py as detached subprocess.
+- `workbench/src/app/api/quant/backtest/[id]/route.ts` — GET for run status + results + trade log, DELETE to remove run.
+- `workbench/src/components/quant/backtest-config.tsx` — Config form with strategy selector, date range, initial capital, benchmark, rebalance frequency, top N, commission.
+
+---
+
+### Task 5: Results dashboard with Plotly charts
+
+**Commit:** `f43568a`
+
+**Problem:** Needed a comprehensive results visualization dashboard with performance metrics, equity curves, monthly returns, factor importance, and trade log display.
+
+**Changes:**
+- `workbench/src/components/quant/equity-chart.tsx` — Plotly line chart showing strategy equity curve vs benchmark with dark mode support.
+- `workbench/src/components/quant/candlestick-chart.tsx` — Plotly OHLCV candlestick with volume bars and optional buy/sell signal overlay (Chinese market coloring: red=up, green=down).
+- `workbench/src/components/quant/metrics-panel.tsx` — Grid of 9 metric cards (total return, annualized return, Sharpe, max drawdown, win rate, profit factor, total trades, alpha, beta) with green/red color coding.
+- `workbench/src/components/quant/monthly-returns-heatmap.tsx` — Plotly heatmap (months × years) with green-red diverging color scale centered at 0.
+- `workbench/src/components/quant/factor-analysis.tsx` — Horizontal bar chart of factor importance sorted by absolute value with blue/red coloring.
+- `workbench/src/components/quant/trade-log-table.tsx` — Scrollable table with sticky header and custom-scrollbar class, showing date, symbol, direction, quantity, price, amount, commission, reason.
+- `workbench/package.json` — Added react-plotly.js and plotly.js-dist-min dependencies.
+- `docs/quant-section.md` — Full technical documentation following existing doc pattern.
+- `PROGRESS.md` — Added Phase 13 task breakdown and status entry.
+
+---
+
+## 2026-03-18 — Quant equity curve loop fix
+
+### Task 1: Fix equity curve last-to-first point loop
+
+**Commit:** `636969a`
+
+**Problem:** The equity curve chart in the Quant Results tab drew a line from the last data point back to the first for both strategy and benchmark lines, creating a visual loop artifact.
+
+**Changes:**
+- `workbench/src/components/quant/equity-chart.tsx` — Added `type: "date"` to Plotly xaxis config to prevent categorical axis treatment of date strings.
