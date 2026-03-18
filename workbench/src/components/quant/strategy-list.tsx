@@ -6,6 +6,7 @@ interface Strategy {
   description: string | null;
   factors: string[];
   model_type: string;
+  hyperparams: Record<string, unknown>;
   universe: string;
   status: string;
   created_at: string;

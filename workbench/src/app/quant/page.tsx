@@ -55,7 +55,8 @@ interface BacktestDetail {
     total_trades: number;
     alpha: number;
     beta: number;
-    benchmark_return: number;
+    benchmark_return: number | null;
+    benchmark_curve: Array<{ date: string; value: number }> | null;
     equity_curve: Array<{ date: string; value: number }>;
     monthly_returns: Array<{ year: number; month: number; return: number }>;
     factor_importance: Record<string, number>;
@@ -64,6 +65,7 @@ interface BacktestDetail {
     id: number;
     date: string;
     symbol: string;
+    name: string;
     direction: string;
     quantity: number;
     price: number;
@@ -446,7 +448,7 @@ function ResultsTab({
           <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
             <EquityChart
               data={detail.results.equity_curve}
-              benchmarkReturn={detail.results.benchmark_return}
+              benchmarkCurve={detail.results.benchmark_curve}
               initialCapital={detail.run.initial_capital}
             />
           </div>

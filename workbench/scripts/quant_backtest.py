@@ -181,6 +181,30 @@ def compute_forward_returns(df: pd.DataFrame, days: int = 5) -> pd.Series:
     return df["close"].pct_change(days).shift(-days)
 
 
+def load_benchmark_close(
+    ts_conn: sqlite3.Connection,
+    benchmark_code: str,
+    start_date: str,
+    end_date: str,
+) -> pd.Series | None:
+    """Load benchmark close prices if the benchmark exists in the market-data DB."""
+    rows = ts_conn.execute(
+        """
+        SELECT trade_date, close
+        FROM daily_ohlcv
+        WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        (benchmark_code, start_date, end_date),
+    ).fetchall()
+    if not rows:
+        return None
+
+    df = pd.DataFrame([dict(r) for r in rows])
+    df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
+    return df.set_index("trade_date")["close"].sort_index()
+
+
 def get_rebalance_dates(dates: pd.DatetimeIndex, freq: str) -> list[pd.Timestamp]:
     """Get rebalance dates based on frequency."""
     if freq == "daily":
@@ -367,12 +391,13 @@ def run_backtest(config: dict) -> dict:
 
     # Compute metrics
     equity_values = [e["value"] for e in equity_curve]
-    returns_series = pd.Series(equity_values).pct_change().dropna()
+    eq_dates = pd.DatetimeIndex(pd.to_datetime([e["date"] for e in equity_curve]))
+    equity_series = pd.Series(equity_values, index=eq_dates)
+    returns_series = equity_series.pct_change().dropna()
 
     total_return = (equity_values[-1] / capital - 1) if equity_values else 0
 
     # Calculate n_years from actual date range, not point count
-    eq_dates = pd.to_datetime([e["date"] for e in equity_curve])
     n_years = (eq_dates[-1] - eq_dates[0]).days / 365.25 if len(eq_dates) > 1 else 0
     annualized_return = (1 + total_return) ** (1 / max(n_years, 0.01)) - 1 if n_years > 0 else 0
 
@@ -385,6 +410,44 @@ def run_backtest(config: dict) -> dict:
     peak = pd.Series(equity_values).cummax()
     drawdown = (pd.Series(equity_values) - peak) / peak
     max_drawdown = float(drawdown.min()) if len(drawdown) > 0 else 0
+
+    benchmark_return = None
+    benchmark_curve = None
+    alpha = None
+    beta = None
+    benchmark_close = load_benchmark_close(
+        ts_conn,
+        config["benchmark"],
+        config["start_date"],
+        config["end_date"],
+    )
+    if benchmark_close is not None and not benchmark_close.empty:
+        aligned_benchmark = benchmark_close.reindex(eq_dates, method="ffill")
+        aligned_benchmark = aligned_benchmark.bfill()
+
+        if aligned_benchmark.notna().all():
+            benchmark_curve_series = capital * aligned_benchmark / aligned_benchmark.iloc[0]
+            benchmark_curve = [
+                {"date": date.strftime("%Y-%m-%d"), "value": round(float(value), 2)}
+                for date, value in benchmark_curve_series.items()
+            ]
+            benchmark_return = float(benchmark_curve_series.iloc[-1] / capital - 1)
+
+            benchmark_returns = benchmark_curve_series.pct_change().dropna()
+            aligned_returns = pd.concat(
+                [returns_series.rename("strategy"), benchmark_returns.rename("benchmark")],
+                axis=1,
+                join="inner",
+            ).dropna()
+            if len(aligned_returns) > 1:
+                bench_var = aligned_returns["benchmark"].var()
+                if bench_var > 0:
+                    cov = aligned_returns["strategy"].cov(aligned_returns["benchmark"])
+                    beta = float(cov / bench_var)
+                    alpha = float(
+                        (aligned_returns["strategy"].mean() - beta * aligned_returns["benchmark"].mean())
+                        * periods_per_year
+                    )
 
     # Win rate: match buy/sell pairs per stock and compare sell price vs buy price
     # Build cost basis from buy trades
@@ -426,9 +489,10 @@ def run_backtest(config: dict) -> dict:
         "win_rate": round(win_rate, 4),
         "profit_factor": round(abs(total_return / max(abs(max_drawdown), 0.0001)), 4),
         "total_trades": len(trade_log),
-        "alpha": round(annualized_return - 0.08, 4),  # Simplified: excess over 8% benchmark
-        "beta": 1.0,  # Simplified
-        "benchmark_return": 0.08,  # Placeholder
+        "alpha": round(alpha, 4) if alpha is not None else None,
+        "beta": round(beta, 4) if beta is not None else None,
+        "benchmark_return": round(benchmark_return, 4) if benchmark_return is not None else None,
+        "benchmark_curve": benchmark_curve,
         "equity_curve": equity_curve,
         "monthly_returns": monthly_returns,
         "factor_importance": factor_imp,
@@ -462,8 +526,8 @@ def main():
             """INSERT INTO quant_backtest_results
                (run_id, total_return, annualized_return, sharpe_ratio, max_drawdown,
                 win_rate, profit_factor, total_trades, alpha, beta, benchmark_return,
-                equity_curve, monthly_returns, factor_importance)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                benchmark_curve, equity_curve, monthly_returns, factor_importance)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 args.run_id,
                 results["total_return"],
@@ -476,6 +540,7 @@ def main():
                 results["alpha"],
                 results["beta"],
                 results["benchmark_return"],
+                json.dumps(results["benchmark_curve"]) if results["benchmark_curve"] is not None else None,
                 json.dumps(results["equity_curve"]),
                 json.dumps(results["monthly_returns"]),
                 json.dumps(results["factor_importance"]),

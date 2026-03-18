@@ -66,6 +66,7 @@ export function initQuantSchema(db: Database.Database): void {
       alpha REAL,
       beta REAL,
       benchmark_return REAL,
+      benchmark_curve TEXT,
       equity_curve TEXT,
       monthly_returns TEXT,
       factor_importance TEXT,
@@ -93,7 +94,17 @@ export function initQuantSchema(db: Database.Database): void {
       ON quant_trade_log(run_id, date);
   `);
 
+  migrateQuantSchema(db);
   seedFactors(db);
+}
+
+function migrateQuantSchema(db: Database.Database): void {
+  const resultColumns = db.prepare("PRAGMA table_info(quant_backtest_results)").all() as Array<{ name: string }>;
+  const hasBenchmarkCurve = resultColumns.some((column) => column.name === "benchmark_curve");
+
+  if (!hasBenchmarkCurve) {
+    db.exec("ALTER TABLE quant_backtest_results ADD COLUMN benchmark_curve TEXT");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +220,7 @@ export interface QuantBacktestResult {
   alpha: number | null;
   beta: number | null;
   benchmark_return: number | null;
+  benchmark_curve: Array<{ date: string; value: number }> | null;
   equity_curve: Array<{ date: string; value: number }> | null;
   monthly_returns: Array<{ year: number; month: number; return: number }> | null;
   factor_importance: Record<string, number> | null;
@@ -249,6 +261,7 @@ function toBacktestRun(row: Record<string, unknown>): QuantBacktestRun {
 function toBacktestResult(row: Record<string, unknown>): QuantBacktestResult {
   return {
     ...row,
+    benchmark_curve: row.benchmark_curve ? JSON.parse(row.benchmark_curve as string) : null,
     equity_curve: row.equity_curve ? JSON.parse(row.equity_curve as string) : null,
     monthly_returns: row.monthly_returns ? JSON.parse(row.monthly_returns as string) : null,
     factor_importance: row.factor_importance ? JSON.parse(row.factor_importance as string) : null,

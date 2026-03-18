@@ -6,11 +6,11 @@ const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 interface EquityChartProps {
   data: Array<{ date: string; value: number }>;
-  benchmarkReturn?: number;
+  benchmarkCurve?: Array<{ date: string; value: number }> | null;
   initialCapital?: number;
 }
 
-export default function EquityChart({ data, benchmarkReturn, initialCapital = 1000000 }: EquityChartProps) {
+export default function EquityChart({ data, benchmarkCurve, initialCapital = 1000000 }: EquityChartProps) {
   if (!data || data.length === 0) {
     return <div className="text-neutral-400 text-sm text-center py-8">No equity data</div>;
   }
@@ -29,15 +29,10 @@ export default function EquityChart({ data, benchmarkReturn, initialCapital = 10
     },
   ];
 
-  // Benchmark line (simplified linear growth)
-  if (benchmarkReturn !== undefined && initialCapital) {
-    const benchmarkValues = dates.map((_, i) => {
-      const progress = i / Math.max(dates.length - 1, 1);
-      return initialCapital * (1 + benchmarkReturn * progress);
-    });
+  if (benchmarkCurve && benchmarkCurve.length > 0 && initialCapital) {
     traces.push({
-      x: dates,
-      y: benchmarkValues,
+      x: benchmarkCurve.map((point) => point.date),
+      y: benchmarkCurve.map((point) => point.value),
       type: "scatter",
       mode: "lines",
       name: "Benchmark",
