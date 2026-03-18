@@ -46,6 +46,8 @@ export function initQuantSchema(db: Database.Database): void {
       top_n INTEGER NOT NULL DEFAULT 10,
       commission REAL NOT NULL DEFAULT 0.001,
       config TEXT NOT NULL DEFAULT '{}',
+      progress_percent REAL NOT NULL DEFAULT 0,
+      progress_message TEXT,
       error_message TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       completed_at TEXT
@@ -141,9 +143,12 @@ function migrateQuantSchema(db: Database.Database): void {
   }
 
   const resultColumns = db.prepare("PRAGMA table_info(quant_backtest_results)").all() as Array<{ name: string }>;
+  const runColumns = db.prepare("PRAGMA table_info(quant_backtest_runs)").all() as Array<{ name: string }>;
   const hasBenchmarkCurve = resultColumns.some((column) => column.name === "benchmark_curve");
   const hasYearlyPerformance = resultColumns.some((column) => column.name === "yearly_performance");
   const hasDiagnostics = resultColumns.some((column) => column.name === "diagnostics");
+  const hasProgressPercent = runColumns.some((column) => column.name === "progress_percent");
+  const hasProgressMessage = runColumns.some((column) => column.name === "progress_message");
 
   if (!hasBenchmarkCurve) {
     db.exec("ALTER TABLE quant_backtest_results ADD COLUMN benchmark_curve TEXT");
@@ -153,6 +158,12 @@ function migrateQuantSchema(db: Database.Database): void {
   }
   if (!hasDiagnostics) {
     db.exec("ALTER TABLE quant_backtest_results ADD COLUMN diagnostics TEXT");
+  }
+  if (!hasProgressPercent) {
+    db.exec("ALTER TABLE quant_backtest_runs ADD COLUMN progress_percent REAL NOT NULL DEFAULT 0");
+  }
+  if (!hasProgressMessage) {
+    db.exec("ALTER TABLE quant_backtest_runs ADD COLUMN progress_message TEXT");
   }
 }
 
@@ -284,6 +295,8 @@ export interface QuantBacktestRun {
   top_n: number;
   commission: number;
   config: Record<string, unknown>;
+  progress_percent: number;
+  progress_message: string | null;
   error_message: string | null;
   created_at: string;
   completed_at: string | null;

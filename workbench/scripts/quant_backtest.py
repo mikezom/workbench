@@ -406,14 +406,44 @@ def round_value(value: float | None, digits: int = 4) -> float | None:
     return round(float(value), digits)
 
 
-def run_backtest(config: dict) -> dict:
+def make_progress_updater(wb_conn: sqlite3.Connection, run_id: int):
+    last_percent = -1.0
+    last_message = None
+
+    def update(percent: float, message: str) -> None:
+        nonlocal last_percent, last_message
+        percent = max(0.0, min(100.0, percent))
+        rounded_percent = round(percent, 1)
+        if rounded_percent == last_percent and message == last_message:
+            return
+        wb_conn.execute(
+            """
+            UPDATE quant_backtest_runs
+            SET progress_percent = ?, progress_message = ?
+            WHERE id = ?
+            """,
+            (rounded_percent, message, run_id),
+        )
+        wb_conn.commit()
+        last_percent = rounded_percent
+        last_message = message
+
+    return update
+
+
+def run_backtest(config: dict, progress_callback=None) -> dict:
     """Run the backtest and return results."""
     ts_conn = get_tushare_conn()
+
+    def update_progress(percent: float, message: str) -> None:
+        if progress_callback:
+            progress_callback(percent, message)
 
     print(
         f"Loading stock data ({config['start_date']}–{config['end_date']}, "
         f"universe={config['universe']})..."
     )
+    update_progress(5, "Loading stock data")
     custom_symbols = None
     if config["universe"] == "CUSTOM":
         raw_symbols = config["hyperparams"].get("universe_symbols", [])
@@ -431,12 +461,14 @@ def run_backtest(config: dict) -> dict:
         max_workers=config["max_workers"],
     )
     print(f"  Loaded {len(stocks)} stocks with sufficient data")
+    update_progress(20, f"Loaded {len(stocks)} symbols")
 
     if len(stocks) < 5:
         raise ValueError("Not enough stocks with data for backtesting")
 
     factor_ids = config["factors"]
     print(f"Computing {len(factor_ids)} factors...")
+    update_progress(25, "Computing factors")
 
     # Compute raw factors for all stocks
     all_factor_data: dict[str, pd.DataFrame] = {}
@@ -470,6 +502,7 @@ def run_backtest(config: dict) -> dict:
         all_returns[code] = fwd_ret
         if log_mcap is not None:
             stock_log_mcap[code] = log_mcap
+    update_progress(45, "Preprocessing factors")
 
     # Cross-sectional preprocessing: winsorize → neutralize → standardize
     stock_industry = load_stock_industries(ts_conn)
@@ -477,6 +510,7 @@ def run_backtest(config: dict) -> dict:
     all_factor_data = preprocess_factors_cross_sectional(
         all_factor_data, stock_industry, stock_log_mcap, factor_ids, mad_n=3.5,
     )
+    update_progress(55, "Running rolling backtest")
 
     # Get common trading dates
     all_dates = sorted(set().union(*[df.index for df in stocks.values()]))
@@ -511,10 +545,14 @@ def run_backtest(config: dict) -> dict:
     grouped_return_sums = [0.0] * 5
     grouped_return_counts = [0] * 5
 
-    for date in rebalance_dates:
+    total_rebalances = max(len(rebalance_dates), 1)
+    for index, date in enumerate(rebalance_dates, start=1):
         train_start = date - pd.Timedelta(days=train_window_days)
         x_train, y_train = build_training_dataset(all_factor_data, all_returns, train_start, date)
         if x_train is None or y_train is None or len(x_train) < max(len(factor_ids) * 5, 50):
+            if index == 1 or index == total_rebalances or index % 5 == 0:
+                loop_progress = 55 + (index / total_rebalances) * 35
+                update_progress(loop_progress, f"Backtesting rebalance {index}/{total_rebalances}")
             continue
 
         model = QuantModel(config["model_type"], config["hyperparams"])
@@ -639,12 +677,16 @@ def run_backtest(config: dict) -> dict:
             if date in stocks[code].index:
                 total_value += shares * stocks[code].loc[date, "close"]
         equity_curve.append({"date": date.strftime("%Y-%m-%d"), "value": round(total_value, 2)})
+        if index == 1 or index == total_rebalances or index % 5 == 0:
+            loop_progress = 55 + (index / total_rebalances) * 35
+            update_progress(loop_progress, f"Backtesting rebalance {index}/{total_rebalances}")
 
     print(f"Trained {trained_windows} rolling windows.")
 
     if not equity_curve:
         raise ValueError("No trades were executed during the backtest period")
 
+    update_progress(92, "Calculating performance metrics")
     # Compute metrics
     equity_values = [e["value"] for e in equity_curve]
     eq_dates = pd.DatetimeIndex(pd.to_datetime([e["date"] for e in equity_curve]))
@@ -776,6 +818,7 @@ def run_backtest(config: dict) -> dict:
         "top_bottom_spread": top_bottom_spread_series,
         "grouped_return": grouped_return,
     }
+    update_progress(97, "Saving results")
 
     return {
         "total_return": round(total_return, 4),
@@ -809,15 +852,20 @@ def main():
     try:
         # Set status to running
         wb_conn.execute(
-            "UPDATE quant_backtest_runs SET status = 'running' WHERE id = ?",
+            """
+            UPDATE quant_backtest_runs
+            SET status = 'running', progress_percent = 1, progress_message = 'Initializing backtest'
+            WHERE id = ?
+            """,
             (args.run_id,),
         )
         wb_conn.commit()
+        progress_callback = make_progress_updater(wb_conn, args.run_id)
 
         config = load_run_config(wb_conn, args.run_id)
         print(f"Running backtest #{args.run_id}: {config['model_type']} with {len(config['factors'])} factors")
 
-        results = run_backtest(config)
+        results = run_backtest(config, progress_callback=progress_callback)
         trade_log = results.pop("trade_log")
 
         # Write results
@@ -861,7 +909,12 @@ def main():
 
         # Update run status
         wb_conn.execute(
-            "UPDATE quant_backtest_runs SET status = 'completed', completed_at = datetime('now') WHERE id = ?",
+            """
+            UPDATE quant_backtest_runs
+            SET status = 'completed', completed_at = datetime('now'),
+                progress_percent = 100, progress_message = 'Backtest complete'
+            WHERE id = ?
+            """,
             (args.run_id,),
         )
         wb_conn.execute(
@@ -878,7 +931,11 @@ def main():
     except Exception as e:
         traceback.print_exc()
         wb_conn.execute(
-            "UPDATE quant_backtest_runs SET status = 'failed', error_message = ? WHERE id = ?",
+            """
+            UPDATE quant_backtest_runs
+            SET status = 'failed', error_message = ?, progress_message = 'Backtest failed'
+            WHERE id = ?
+            """,
             (str(e), args.run_id),
         )
         try:

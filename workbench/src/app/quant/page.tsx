@@ -45,6 +45,8 @@ interface BacktestRun {
   top_n: number;
   commission: number;
   config: Record<string, unknown>;
+  progress_percent: number;
+  progress_message: string | null;
   created_at: string;
   completed_at: string | null;
   error_message: string | null;
@@ -397,25 +399,49 @@ function BacktestTab({
             {runs.slice(0, 10).map((run) => (
               <div
                 key={run.id}
-                className="flex items-center justify-between border border-neutral-200 dark:border-neutral-700 rounded px-4 py-2 text-sm"
+                className="border border-neutral-200 dark:border-neutral-700 rounded px-4 py-3 text-sm"
               >
-                <div className="flex items-center gap-3">
-                  <span className="font-mono">#{run.id}</span>
-                  <StatusBadge status={run.status} />
-                  <span className="text-neutral-500">{run.start_date} – {run.end_date}</span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-mono">#{run.id}</span>
+                    <StatusBadge status={run.status} />
+                    <span className="text-neutral-500">{run.start_date} – {run.end_date}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {(run.status === "running" || run.status === "pending") && (
+                      <span className="text-xs text-neutral-500 font-mono">
+                        {Math.round(run.progress_percent ?? 0)}%
+                      </span>
+                    )}
+                    {run.status === "completed" && (
+                      <button
+                        onClick={() => onSelectRun(run.id)}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        View Results
+                      </button>
+                    )}
+                    {run.status === "failed" && run.error_message && (
+                      <span className="text-xs text-red-500 truncate max-w-xs" title={run.error_message}>
+                        {run.error_message}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {run.status === "completed" && (
-                  <button
-                    onClick={() => onSelectRun(run.id)}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    View Results
-                  </button>
-                )}
-                {run.status === "failed" && run.error_message && (
-                  <span className="text-xs text-red-500 truncate max-w-xs" title={run.error_message}>
-                    {run.error_message}
-                  </span>
+
+                {(run.status === "running" || run.status === "pending") && (
+                  <div className="mt-3 space-y-1">
+                    <div className="flex items-center justify-between text-xs text-neutral-500">
+                      <span>{run.progress_message ?? "Preparing backtest..."}</span>
+                      <span>{Math.round(run.progress_percent ?? 0)}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-600 dark:bg-blue-400 transition-all"
+                        style={{ width: `${Math.max(0, Math.min(100, run.progress_percent ?? 0))}%` }}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             ))}
