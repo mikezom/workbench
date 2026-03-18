@@ -82,20 +82,40 @@ def load_stock_data(ts_conn: sqlite3.Connection, start_date: str, end_date: str)
         df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
         df = df.set_index("trade_date").sort_index()
 
-        # Merge fundamental data
+        # Merge daily_basic data (PE, PB, PS, total_mv, dividend_yield)
+        basic_rows = ts_conn.execute(
+            "SELECT trade_date, pe, pb, ps, total_mv, dv_ratio, turnover_rate FROM daily_basic WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
+            (code, start_date, end_date),
+        ).fetchall()
+        if basic_rows:
+            basic_df = pd.DataFrame([dict(r) for r in basic_rows])
+            basic_df["trade_date"] = pd.to_datetime(basic_df["trade_date"], format="%Y%m%d")
+            basic_df = basic_df.set_index("trade_date").sort_index()
+            for col in ["pe", "pb", "ps", "total_mv", "turnover_rate"]:
+                if col in basic_df.columns:
+                    df[col] = basic_df[col]
+            if "dv_ratio" in basic_df.columns:
+                df["dividend_yield"] = basic_df["dv_ratio"]
+
+        # Merge fina_indicator data (ROE, ROA, growth, debt — quarterly, forward-filled)
         fina_rows = ts_conn.execute(
-            "SELECT * FROM fina_indicator WHERE ts_code = ? ORDER BY end_date",
+            "SELECT end_date, roe, roa, debt_to_eqt, tr_yoy, netprofit_yoy FROM fina_indicator WHERE ts_code = ? ORDER BY end_date",
             (code,),
         ).fetchall()
         if fina_rows:
             fina_df = pd.DataFrame([dict(r) for r in fina_rows])
             fina_df["end_date"] = pd.to_datetime(fina_df["end_date"], format="%Y%m%d")
             fina_df = fina_df.set_index("end_date").sort_index()
-            # Forward-fill fundamental data to daily frequency
             fina_daily = fina_df.reindex(df.index, method="ffill")
-            for col in fina_df.columns:
-                if col != "ts_code":
+            for col in ["roe", "roa"]:
+                if col in fina_daily.columns:
                     df[col] = fina_daily[col]
+            if "debt_to_eqt" in fina_daily.columns:
+                df["debt_to_equity"] = fina_daily["debt_to_eqt"]
+            if "tr_yoy" in fina_daily.columns:
+                df["revenue_yoy"] = fina_daily["tr_yoy"]
+            if "netprofit_yoy" in fina_daily.columns:
+                df["profit_yoy"] = fina_daily["netprofit_yoy"]
 
         stocks[code] = df
 

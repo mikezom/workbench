@@ -66,16 +66,22 @@ export function getDataSummary(): {
   stockCount: number;
   ohlcvCount: number;
   finaCount: number;
+  dailyBasicCount: number;
   dateRange: { min: string; max: string } | null;
 } {
   const db = getTushareDb();
   if (!db) {
-    return { stockCount: 0, ohlcvCount: 0, finaCount: 0, dateRange: null };
+    return { stockCount: 0, ohlcvCount: 0, finaCount: 0, dailyBasicCount: 0, dateRange: null };
   }
 
   const stockCount = (db.prepare("SELECT COUNT(*) as cnt FROM stock_basic").get() as { cnt: number }).cnt;
   const ohlcvCount = (db.prepare("SELECT COUNT(*) as cnt FROM daily_ohlcv").get() as { cnt: number }).cnt;
   const finaCount = (db.prepare("SELECT COUNT(*) as cnt FROM fina_indicator").get() as { cnt: number }).cnt;
+
+  let dailyBasicCount = 0;
+  try {
+    dailyBasicCount = (db.prepare("SELECT COUNT(*) as cnt FROM daily_basic").get() as { cnt: number }).cnt;
+  } catch { /* table may not exist yet */ }
 
   const range = db.prepare(
     "SELECT MIN(trade_date) as min_date, MAX(trade_date) as max_date FROM daily_ohlcv"
@@ -85,6 +91,7 @@ export function getDataSummary(): {
     stockCount,
     ohlcvCount,
     finaCount,
+    dailyBasicCount,
     dateRange: range.min_date ? { min: range.min_date, max: range.max_date! } : null,
   };
 }
