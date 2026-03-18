@@ -12,7 +12,6 @@ import json
 import sqlite3
 import sys
 import traceback
-from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
@@ -333,6 +332,12 @@ def build_training_dataset(
     return x_train, y_train
 
 
+def round_value(value: float | None, digits: int = 4) -> float | None:
+    if value is None or not np.isfinite(value):
+        return None
+    return round(float(value), digits)
+
+
 def run_backtest(config: dict) -> dict:
     """Run the backtest and return results."""
     ts_conn = get_tushare_conn()
@@ -404,6 +409,11 @@ def run_backtest(config: dict) -> dict:
     commission_rate = config["commission"]
     feature_importance_history: list[dict[str, float]] = []
     trained_windows = 0
+    rank_ic_series: list[dict[str, float]] = []
+    score_dispersion_series: list[dict[str, float]] = []
+    top_bottom_spread_series: list[dict[str, float]] = []
+    grouped_return_sums = [0.0] * 5
+    grouped_return_counts = [0] * 5
 
     for date in rebalance_dates:
         train_start = date - pd.Timedelta(days=train_window_days)
@@ -427,6 +437,52 @@ def run_backtest(config: dict) -> dict:
 
         if not scores:
             continue
+
+        realized_pairs: list[tuple[float, float]] = []
+        for code, score in scores.items():
+            realized = all_returns[code].get(date)
+            if realized is None or not np.isfinite(realized):
+                continue
+            realized_pairs.append((score, float(realized)))
+
+        if len(realized_pairs) >= 5:
+            diag_df = pd.DataFrame(realized_pairs, columns=["score", "return"])
+            rank_ic = diag_df["score"].corr(diag_df["return"], method="spearman")
+            if rank_ic is not None and np.isfinite(rank_ic):
+                rank_ic_series.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": round(float(rank_ic), 4),
+                })
+
+            score_dispersion_series.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "mean": round(float(diag_df["score"].mean()), 4),
+                "std": round(float(diag_df["score"].std(ddof=0)), 4),
+                "min": round(float(diag_df["score"].min()), 4),
+                "max": round(float(diag_df["score"].max()), 4),
+            })
+
+            ranked_diag = diag_df.sort_values("score").reset_index(drop=True)
+            bucket_ids = pd.qcut(
+                ranked_diag.index,
+                q=min(5, len(ranked_diag)),
+                labels=False,
+                duplicates="drop",
+            )
+            ranked_diag["bucket"] = bucket_ids
+            bucket_means = ranked_diag.groupby("bucket")["return"].mean()
+            if len(bucket_means) >= 2:
+                spread = bucket_means.iloc[-1] - bucket_means.iloc[0]
+                if np.isfinite(spread):
+                    top_bottom_spread_series.append({
+                        "date": date.strftime("%Y-%m-%d"),
+                        "value": round(float(spread), 4),
+                    })
+            for bucket, avg_return in bucket_means.items():
+                bucket_index = int(bucket)
+                if 0 <= bucket_index < len(grouped_return_sums) and np.isfinite(avg_return):
+                    grouped_return_sums[bucket_index] += float(avg_return)
+                    grouped_return_counts[bucket_index] += 1
 
         # Rank and select top N
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -517,6 +573,7 @@ def run_backtest(config: dict) -> dict:
 
     benchmark_return = None
     benchmark_curve = None
+    benchmark_curve_series = None
     alpha = None
     beta = None
     benchmark_close = load_benchmark_close(
@@ -552,6 +609,23 @@ def run_backtest(config: dict) -> dict:
                         (aligned_returns["strategy"].mean() - beta * aligned_returns["benchmark"].mean())
                         * periods_per_year
                     )
+
+    yearly_performance = []
+    for year, group in equity_series.groupby(equity_series.index.year):
+        strategy_return = group.iloc[-1] / group.iloc[0] - 1 if len(group) > 1 else 0
+        benchmark_year_return = None
+        excess_return = None
+        if benchmark_curve_series is not None:
+            benchmark_group = benchmark_curve_series[benchmark_curve_series.index.year == year]
+            if len(benchmark_group) > 1:
+                benchmark_year_return = benchmark_group.iloc[-1] / benchmark_group.iloc[0] - 1
+                excess_return = strategy_return - benchmark_year_return
+        yearly_performance.append({
+            "year": int(year),
+            "strategy_return": round(float(strategy_return), 4),
+            "benchmark_return": round_value(benchmark_year_return),
+            "excess_return": round_value(excess_return),
+        })
 
     # Win rate: match buy/sell pairs per stock and compare sell price vs buy price
     # Build cost basis from buy trades
@@ -590,6 +664,23 @@ def run_backtest(config: dict) -> dict:
             if values:
                 factor_imp[factor] = round(float(np.mean(values)), 6)
 
+    grouped_return = []
+    for bucket_index, total in enumerate(grouped_return_sums):
+        count = grouped_return_counts[bucket_index]
+        if count == 0:
+            continue
+        grouped_return.append({
+            "bucket": f"Q{bucket_index + 1}",
+            "avg_return": round(total / count, 4),
+        })
+
+    diagnostics = {
+        "rank_ic": rank_ic_series,
+        "score_dispersion": score_dispersion_series,
+        "top_bottom_spread": top_bottom_spread_series,
+        "grouped_return": grouped_return,
+    }
+
     return {
         "total_return": round(total_return, 4),
         "annualized_return": round(annualized_return, 4),
@@ -604,7 +695,9 @@ def run_backtest(config: dict) -> dict:
         "benchmark_curve": benchmark_curve,
         "equity_curve": equity_curve,
         "monthly_returns": monthly_returns,
+        "yearly_performance": yearly_performance,
         "factor_importance": factor_imp,
+        "diagnostics": diagnostics,
         "training_windows": trained_windows,
         "trade_log": trade_log,
     }
@@ -636,8 +729,9 @@ def main():
             """INSERT INTO quant_backtest_results
                (run_id, total_return, annualized_return, sharpe_ratio, max_drawdown,
                 win_rate, profit_factor, total_trades, alpha, beta, benchmark_return,
-                benchmark_curve, equity_curve, monthly_returns, factor_importance)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                benchmark_curve, equity_curve, monthly_returns, yearly_performance,
+                factor_importance, diagnostics)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 args.run_id,
                 results["total_return"],
@@ -653,7 +747,9 @@ def main():
                 json.dumps(results["benchmark_curve"]) if results["benchmark_curve"] is not None else None,
                 json.dumps(results["equity_curve"]),
                 json.dumps(results["monthly_returns"]),
+                json.dumps(results["yearly_performance"]),
                 json.dumps(results["factor_importance"]),
+                json.dumps(results["diagnostics"]),
             ),
         )
 

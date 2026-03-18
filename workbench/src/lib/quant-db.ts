@@ -70,7 +70,9 @@ export function initQuantSchema(db: Database.Database): void {
       benchmark_curve TEXT,
       equity_curve TEXT,
       monthly_returns TEXT,
+      yearly_performance TEXT,
       factor_importance TEXT,
+      diagnostics TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -103,9 +105,17 @@ export function initQuantSchema(db: Database.Database): void {
 function migrateQuantSchema(db: Database.Database): void {
   const resultColumns = db.prepare("PRAGMA table_info(quant_backtest_results)").all() as Array<{ name: string }>;
   const hasBenchmarkCurve = resultColumns.some((column) => column.name === "benchmark_curve");
+  const hasYearlyPerformance = resultColumns.some((column) => column.name === "yearly_performance");
+  const hasDiagnostics = resultColumns.some((column) => column.name === "diagnostics");
 
   if (!hasBenchmarkCurve) {
     db.exec("ALTER TABLE quant_backtest_results ADD COLUMN benchmark_curve TEXT");
+  }
+  if (!hasYearlyPerformance) {
+    db.exec("ALTER TABLE quant_backtest_results ADD COLUMN yearly_performance TEXT");
+  }
+  if (!hasDiagnostics) {
+    db.exec("ALTER TABLE quant_backtest_results ADD COLUMN diagnostics TEXT");
   }
 }
 
@@ -258,7 +268,19 @@ export interface QuantBacktestResult {
   benchmark_curve: Array<{ date: string; value: number }> | null;
   equity_curve: Array<{ date: string; value: number }> | null;
   monthly_returns: Array<{ year: number; month: number; return: number }> | null;
+  yearly_performance: Array<{
+    year: number;
+    strategy_return: number;
+    benchmark_return: number | null;
+    excess_return: number | null;
+  }> | null;
   factor_importance: Record<string, number> | null;
+  diagnostics: {
+    rank_ic: Array<{ date: string; value: number }>;
+    score_dispersion: Array<{ date: string; mean: number; std: number; min: number; max: number }>;
+    top_bottom_spread: Array<{ date: string; value: number }>;
+    grouped_return: Array<{ bucket: string; avg_return: number }>;
+  } | null;
 }
 
 export interface QuantTradeLogEntry {
@@ -300,7 +322,9 @@ function toBacktestResult(row: Record<string, unknown>): QuantBacktestResult {
     benchmark_curve: row.benchmark_curve ? JSON.parse(row.benchmark_curve as string) : null,
     equity_curve: row.equity_curve ? JSON.parse(row.equity_curve as string) : null,
     monthly_returns: row.monthly_returns ? JSON.parse(row.monthly_returns as string) : null,
+    yearly_performance: row.yearly_performance ? JSON.parse(row.yearly_performance as string) : null,
     factor_importance: row.factor_importance ? JSON.parse(row.factor_importance as string) : null,
+    diagnostics: row.diagnostics ? JSON.parse(row.diagnostics as string) : null,
   } as QuantBacktestResult;
 }
 
