@@ -314,20 +314,37 @@ def run_backtest(config: dict) -> dict:
     returns_series = pd.Series(equity_values).pct_change().dropna()
 
     total_return = (equity_values[-1] / capital - 1) if equity_values else 0
-    n_years = len(equity_values) / 52 if config["rebalance_freq"] == "weekly" else len(equity_values) / 252
+
+    # Calculate n_years from actual date range, not point count
+    eq_dates = pd.to_datetime([e["date"] for e in equity_curve])
+    n_years = (eq_dates[-1] - eq_dates[0]).days / 365.25 if len(eq_dates) > 1 else 0
     annualized_return = (1 + total_return) ** (1 / max(n_years, 0.01)) - 1 if n_years > 0 else 0
 
-    sharpe = (returns_series.mean() / returns_series.std() * np.sqrt(52)) if len(returns_series) > 1 and returns_series.std() > 0 else 0
+    # Sharpe: annualize based on actual rebalance frequency
+    freq = config["rebalance_freq"]
+    periods_per_year = {"daily": 252, "weekly": 52, "monthly": 12}.get(freq, 252)
+    sharpe = (returns_series.mean() / returns_series.std() * np.sqrt(periods_per_year)) if len(returns_series) > 1 and returns_series.std() > 0 else 0
 
     # Max drawdown
     peak = pd.Series(equity_values).cummax()
     drawdown = (pd.Series(equity_values) - peak) / peak
     max_drawdown = float(drawdown.min()) if len(drawdown) > 0 else 0
 
-    # Win rate
-    buy_trades = [t for t in trade_log if t["direction"] == "buy"]
+    # Win rate: match buy/sell pairs per stock and compare sell price vs buy price
+    # Build cost basis from buy trades
+    cost_basis: dict[str, list[float]] = {}  # code -> list of buy prices
+    for t in trade_log:
+        if t["direction"] == "buy":
+            cost_basis.setdefault(t["symbol"], []).append(t["price"])
+
     sell_trades = [t for t in trade_log if t["direction"] == "sell"]
-    wins = sum(1 for t in sell_trades if t["amount"] > t.get("buy_amount", t["amount"]))
+    wins = 0
+    for t in sell_trades:
+        buy_prices = cost_basis.get(t["symbol"], [])
+        if buy_prices:
+            avg_buy_price = buy_prices.pop(0)  # FIFO matching
+            if t["price"] > avg_buy_price:
+                wins += 1
     win_rate = wins / max(len(sell_trades), 1)
 
     # Monthly returns
