@@ -50,7 +50,7 @@ export default function EquityChart({ data, benchmarkReturn, initialCapital = 10
       data={traces}
       layout={{
         title: { text: "Equity Curve", font: { size: 14 } },
-        xaxis: { title: "Date", gridcolor: "rgba(128,128,128,0.1)" },
+        xaxis: { title: "Date", type: "date", gridcolor: "rgba(128,128,128,0.1)" },
         yaxis: { title: "Portfolio Value", gridcolor: "rgba(128,128,128,0.1)" },
         paper_bgcolor: "transparent",
         plot_bgcolor: "transparent",
