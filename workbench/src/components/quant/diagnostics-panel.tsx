@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { ReactNode } from "react";
 
 const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
@@ -14,6 +15,13 @@ interface DiagnosticsData {
 interface DiagnosticsPanelProps {
   diagnostics: DiagnosticsData | null;
 }
+
+const EXPLANATIONS = {
+  rankIc: "Rank IC measures how well the model's ranking matches future returns on each rebalance date. Higher and more stable values usually indicate stronger stock selection skill.",
+  predictionDispersion: "Prediction dispersion shows how spread out the model scores are. Higher dispersion means the model is making more differentiated bets instead of clustering around the same score.",
+  topBottomSpread: "Top vs Bottom spread tracks the forward return gap between the highest-ranked and lowest-ranked groups. A consistently positive spread suggests the ranking is economically useful.",
+  groupedReturn: "Grouped forward return buckets assets from weakest to strongest model score. A monotonic rise from low to high buckets usually means the signal quality is improving.",
+} as const;
 
 export default function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps) {
   if (!diagnostics) {
@@ -32,7 +40,10 @@ export default function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps)
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4 portrait:grid-cols-1">
-        <div className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
+        <IndicatorCard
+          title="Rank IC"
+          explanation={EXPLANATIONS.rankIc}
+        >
           <Plot
             data={[
               {
@@ -54,9 +65,12 @@ export default function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps)
             config={{ responsive: true, displayModeBar: false }}
             style={{ width: "100%" }}
           />
-        </div>
+        </IndicatorCard>
 
-        <div className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
+        <IndicatorCard
+          title="Prediction Dispersion"
+          explanation={EXPLANATIONS.predictionDispersion}
+        >
           <Plot
             data={[
               {
@@ -88,11 +102,14 @@ export default function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps)
             config={{ responsive: true, displayModeBar: false }}
             style={{ width: "100%" }}
           />
-        </div>
+        </IndicatorCard>
       </div>
 
       <div className="grid grid-cols-2 gap-4 portrait:grid-cols-1">
-        <div className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
+        <IndicatorCard
+          title="Top vs Bottom Spread"
+          explanation={EXPLANATIONS.topBottomSpread}
+        >
           <Plot
             data={[
               {
@@ -114,9 +131,12 @@ export default function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps)
             config={{ responsive: true, displayModeBar: false }}
             style={{ width: "100%" }}
           />
-        </div>
+        </IndicatorCard>
 
-        <div className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
+        <IndicatorCard
+          title="Grouped Forward Return"
+          explanation={EXPLANATIONS.groupedReturn}
+        >
           <Plot
             data={[
               {
@@ -141,8 +161,28 @@ export default function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps)
             config={{ responsive: true, displayModeBar: false }}
             style={{ width: "100%" }}
           />
-        </div>
+        </IndicatorCard>
       </div>
+    </div>
+  );
+}
+
+function IndicatorCard({
+  title,
+  explanation,
+  children,
+}: {
+  title: string;
+  explanation: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
+      <div className="mb-3">
+        <div className="text-sm font-semibold">{title}</div>
+        <div className="text-xs text-neutral-500 mt-1 leading-5">{explanation}</div>
+      </div>
+      {children}
     </div>
   );
 }
