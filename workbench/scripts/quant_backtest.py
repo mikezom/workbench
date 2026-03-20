@@ -374,21 +374,22 @@ def compute_stock_inputs(
     df: pd.DataFrame,
     factor_ids: list[str],
     prediction_horizon_days: int,
-) -> tuple[str, pd.DataFrame, pd.Series, pd.Series | None]:
+) -> tuple[str, pd.DataFrame, pd.Series, pd.Series, pd.Series | None]:
     factors_df = compute_factors(df, factor_ids)
     fwd_ret = compute_forward_returns(df, days=prediction_horizon_days)
+    return_end_dates = compute_forward_return_end_dates(df, days=prediction_horizon_days)
     log_mcap = None
     if "total_mv" in df.columns:
         mv = df["total_mv"].replace(0, np.nan)
         log_mcap = np.log(mv)
-    return code, factors_df, fwd_ret, log_mcap
+    return code, factors_df, fwd_ret, return_end_dates, log_mcap
 
 
 def compute_stock_inputs_from_item(
     item: tuple[str, pd.DataFrame],
     factor_ids: list[str],
     prediction_horizon_days: int,
-) -> tuple[str, pd.DataFrame, pd.Series, pd.Series | None]:
+) -> tuple[str, pd.DataFrame, pd.Series, pd.Series, pd.Series | None]:
     code, df = item
     return compute_stock_inputs(code, df, factor_ids, prediction_horizon_days)
 
@@ -396,6 +397,11 @@ def compute_stock_inputs_from_item(
 def compute_forward_returns(df: pd.DataFrame, days: int = 5) -> pd.Series:
     """Compute forward returns for prediction target."""
     return df["close"].pct_change(days).shift(-days)
+
+
+def compute_forward_return_end_dates(df: pd.DataFrame, days: int = 5) -> pd.Series:
+    """Return the label end date for each forward-return observation."""
+    return pd.Series(df.index, index=df.index).shift(-days)
 
 
 def load_benchmark_close(
@@ -439,6 +445,7 @@ def get_rebalance_dates(dates: pd.DatetimeIndex, freq: str) -> list[pd.Timestamp
 def build_training_dataset(
     factor_data: dict[str, pd.DataFrame],
     returns_data: dict[str, pd.Series],
+    return_end_dates: dict[str, pd.Series],
     train_start: pd.Timestamp,
     train_end: pd.Timestamp,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
@@ -447,11 +454,14 @@ def build_training_dataset(
 
     for code, factors_df in factor_data.items():
         returns = returns_data[code]
+        label_end_dates = return_end_dates[code]
         mask = (
             (factors_df.index >= train_start)
             & (factors_df.index < train_end)
             & factors_df.notna().all(axis=1)
             & returns.notna()
+            & label_end_dates.notna()
+            & (label_end_dates < train_end)
         )
         if mask.sum() == 0:
             continue
@@ -569,6 +579,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     # Compute raw factors for all stocks
     all_factor_data: dict[str, pd.DataFrame] = {}
     all_returns: dict[str, pd.Series] = {}
+    all_return_end_dates: dict[str, pd.Series] = {}
     stock_log_mcap: dict[str, pd.Series] = {}
     prediction_horizon_days = max(int(config["prediction_horizon_days"]), 1)
     stock_items = list(stocks.items())
@@ -593,9 +604,10 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
                 )
             )
 
-    for code, factors_df, fwd_ret, log_mcap in prepared_inputs:
+    for code, factors_df, fwd_ret, return_end_dates, log_mcap in prepared_inputs:
         all_factor_data[code] = factors_df
         all_returns[code] = fwd_ret
+        all_return_end_dates[code] = return_end_dates
         if log_mcap is not None:
             stock_log_mcap[code] = log_mcap
     update_progress(45, "Preprocessing factors")
@@ -644,7 +656,13 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     total_rebalances = max(len(rebalance_dates), 1)
     for index, date in enumerate(rebalance_dates, start=1):
         train_start = date - pd.Timedelta(days=train_window_days)
-        x_train, y_train = build_training_dataset(all_factor_data, all_returns, train_start, date)
+        x_train, y_train = build_training_dataset(
+            all_factor_data,
+            all_returns,
+            all_return_end_dates,
+            train_start,
+            date,
+        )
         if x_train is None or y_train is None or len(x_train) < max(len(factor_ids) * 5, 50):
             if index == 1 or index == total_rebalances or index % 5 == 0:
                 loop_progress = 55 + (index / total_rebalances) * 35
