@@ -78,6 +78,7 @@ note.md
 
 # Agent config (contains API keys)
 workbench/data/agent-config.json
+workbench/data/tushare.env
 
 # Injected CLAUDE.md (agents write this dynamically at runtime)
 CLAUDE.md
