@@ -48,6 +48,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
             high REAL,
             low REAL,
             close REAL,
+            pre_close REAL,
+            pct_chg REAL,
             vol INTEGER,
             amount REAL,
             PRIMARY KEY (ts_code, trade_date)
@@ -81,6 +83,18 @@ def init_schema(conn: sqlite3.Connection) -> None:
     """)
 
 
+def migrate_schema(conn: sqlite3.Connection) -> None:
+    """Add pre_close and pct_chg columns to existing databases."""
+    cursor = conn.execute("PRAGMA table_info(daily_ohlcv)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "pre_close" not in columns:
+        conn.execute("ALTER TABLE daily_ohlcv ADD COLUMN pre_close REAL")
+        print("  Migrated: added pre_close column to daily_ohlcv")
+    if "pct_chg" not in columns:
+        conn.execute("ALTER TABLE daily_ohlcv ADD COLUMN pct_chg REAL")
+        print("  Migrated: added pct_chg column to daily_ohlcv")
+
+
 def populate_mock_data(
     conn: sqlite3.Connection,
     start_date: str = "20210101",
@@ -105,8 +119,8 @@ def populate_mock_data(
             df = generate_ohlcv(code, start_date, end_date)
             for _, row in df.iterrows():
                 conn.execute(
-                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
+                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], row.get("pre_close"), row.get("pct_chg"), int(row["vol"]), row["amount"]),
                 )
             total_ohlcv += len(df)
             if (i + 1) % 10 == 0:
@@ -117,8 +131,8 @@ def populate_mock_data(
             df = generate_ohlcv(code, start_date, end_date)
             for _, row in df.iterrows():
                 conn.execute(
-                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
+                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], row.get("pre_close"), row.get("pct_chg"), int(row["vol"]), row["amount"]),
                 )
             total_ohlcv += len(df)
         conn.commit()
@@ -257,6 +271,7 @@ def main():
 
     conn = get_connection()
     init_schema(conn)
+    migrate_schema(conn)
 
     if use_mock:
         print("Running in DRY-RUN mode (mock data)")

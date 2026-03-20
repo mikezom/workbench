@@ -44,6 +44,12 @@ def generate_ohlcv(
     # Amount (approximate)
     amount = volume * close * (1 + rng.normal(0, 0.01, n))
 
+    # Compute pre_close and pct_chg
+    pre_close = np.empty(n)
+    pre_close[0] = base_price
+    pre_close[1:] = close[:-1]
+    pct_chg = (close - pre_close) / pre_close * 100
+
     df = pd.DataFrame({
         "ts_code": ts_code,
         "trade_date": [d.strftime("%Y%m%d") for d in dates],
@@ -51,6 +57,8 @@ def generate_ohlcv(
         "high": np.round(high, 2),
         "low": np.round(low, 2),
         "close": np.round(close, 2),
+        "pre_close": np.round(pre_close, 2),
+        "pct_chg": np.round(pct_chg, 2),
         "vol": volume,
         "amount": np.round(amount, 2),
     })

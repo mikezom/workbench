@@ -56,6 +56,47 @@ def get_tushare_conn() -> sqlite3.Connection:
     return conn
 
 
+def load_stock_names(ts_conn: sqlite3.Connection) -> dict[str, str]:
+    """Load stock names from stock_basic for ST detection."""
+    rows = ts_conn.execute("SELECT ts_code, name FROM stock_basic").fetchall()
+    return {r["ts_code"]: r["name"] for r in rows}
+
+
+def get_limit_pct(ts_code: str, stock_name: str) -> float:
+    """Return the daily price limit percentage for a stock.
+
+    A-share rules:
+    - ST / *ST stocks: 5%
+    - ChiNext (300xxx.SZ) and STAR (688xxx.SH): 20%
+    - Beijing exchange (8xxxxx.BJ, 4xxxxx.BJ): 30%
+    - Main board (otherwise): 10%
+    """
+    if "ST" in stock_name.upper():
+        return 0.05
+    code_prefix = ts_code[:3]
+    if code_prefix == "300" or code_prefix == "688":
+        return 0.20
+    if ts_code.endswith(".BJ"):
+        return 0.30
+    return 0.10
+
+
+def is_limit_up(close: float, pre_close: float, limit_pct: float) -> bool:
+    """Check if stock hit limit-up (涨停). Uses 0.1% tolerance."""
+    if pre_close <= 0:
+        return False
+    limit_price = round(pre_close * (1 + limit_pct), 2)
+    return close >= limit_price - 0.01
+
+
+def is_limit_down(close: float, pre_close: float, limit_pct: float) -> bool:
+    """Check if stock hit limit-down (跌停). Uses 0.1% tolerance."""
+    if pre_close <= 0:
+        return False
+    limit_price = round(pre_close * (1 - limit_pct), 2)
+    return close <= limit_price + 0.01
+
+
 def normalize_benchmark_code(value: str | None) -> str:
     if not value:
         return "000300.SH"
@@ -461,6 +502,23 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         max_workers=config["max_workers"],
     )
     print(f"  Loaded {len(stocks)} stocks with sufficient data")
+
+    # Load stock names for limit-up/limit-down detection
+    ts_conn_names = get_tushare_conn()
+    stock_names = load_stock_names(ts_conn_names)
+    ts_conn_names.close()
+
+    # Precompute limit percentages per stock
+    stock_limit_pcts: dict[str, float] = {}
+    for code in stocks:
+        name = stock_names.get(code, "")
+        stock_limit_pcts[code] = get_limit_pct(code, name)
+
+    # Ensure pre_close exists in stock data (fallback for legacy databases)
+    for code, df in stocks.items():
+        if "pre_close" not in df.columns or df["pre_close"].isna().all():
+            df["pre_close"] = df["close"].shift(1)
+
     update_progress(20, f"Loaded {len(stocks)} symbols")
 
     if len(stocks) < 5:
@@ -628,10 +686,14 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
             if date in stocks[code].index:
                 portfolio_value += shares * stocks[code].loc[date, "close"]
 
-        # Sell positions not in target
+        # Sell positions not in target (skip if limit-down: no buyers)
         for code in list(positions.keys()):
             if code not in target_codes and code in stocks and date in stocks[code].index:
-                price = stocks[code].loc[date, "close"]
+                row_data = stocks[code].loc[date]
+                price = row_data["close"]
+                pre_cl = row_data.get("pre_close", np.nan)
+                if pd.notna(pre_cl) and is_limit_down(price, pre_cl, stock_limit_pcts.get(code, 0.10)):
+                    continue  # Cannot sell at limit-down
                 shares = positions.pop(code)
                 amount = shares * price
                 comm = amount * commission_rate
@@ -647,12 +709,22 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
                     "reason": "rebalance",
                 })
 
-        # Buy target positions
+        # Buy target positions (skip if limit-up: no sellers)
         if target_codes:
-            allocation = cash / len(target_codes)
+            # Count buyable targets first for even allocation
+            buyable = []
             for code in target_codes:
                 if code not in positions and code in stocks and date in stocks[code].index:
-                    price = stocks[code].loc[date, "close"]
+                    row_data = stocks[code].loc[date]
+                    price = row_data["close"]
+                    pre_cl = row_data.get("pre_close", np.nan)
+                    if pd.notna(pre_cl) and is_limit_up(price, pre_cl, stock_limit_pcts.get(code, 0.10)):
+                        continue  # Cannot buy at limit-up
+                    buyable.append((code, price))
+
+            if buyable:
+                allocation = cash / len(buyable)
+                for code, price in buyable:
                     shares = int(allocation / price / 100) * 100  # Round to lots of 100
                     if shares > 0:
                         amount = shares * price
