@@ -62,8 +62,25 @@ def load_stock_names(ts_conn: sqlite3.Connection) -> dict[str, str]:
     return {r["ts_code"]: r["name"] for r in rows}
 
 
+def load_stk_limit_data(ts_conn: sqlite3.Connection, start_date: str, end_date: str) -> dict[tuple[str, str], tuple[float, float]]:
+    """Load exact limit prices from stk_limit table.
+
+    Returns dict of (ts_code, trade_date) -> (up_limit, down_limit).
+    Returns empty dict if table doesn't exist.
+    """
+    try:
+        rows = ts_conn.execute(
+            "SELECT ts_code, trade_date, up_limit, down_limit FROM stk_limit "
+            "WHERE trade_date >= ? AND trade_date <= ?",
+            (start_date, end_date),
+        ).fetchall()
+        return {(r["ts_code"], r["trade_date"]): (r["up_limit"], r["down_limit"]) for r in rows}
+    except sqlite3.OperationalError:
+        return {}
+
+
 def get_limit_pct(ts_code: str, stock_name: str) -> float:
-    """Return the daily price limit percentage for a stock.
+    """Return the daily price limit percentage for a stock (fallback when stk_limit unavailable).
 
     A-share rules:
     - ST / *ST stocks: 5%
@@ -82,7 +99,7 @@ def get_limit_pct(ts_code: str, stock_name: str) -> float:
 
 
 def is_limit_up(close: float, pre_close: float, limit_pct: float) -> bool:
-    """Check if stock hit limit-up (涨停). Uses 0.1% tolerance."""
+    """Check if stock hit limit-up (涨停) using computed threshold. Uses 0.01 tolerance."""
     if pre_close <= 0:
         return False
     limit_price = round(pre_close * (1 + limit_pct), 2)
@@ -90,11 +107,27 @@ def is_limit_up(close: float, pre_close: float, limit_pct: float) -> bool:
 
 
 def is_limit_down(close: float, pre_close: float, limit_pct: float) -> bool:
-    """Check if stock hit limit-down (跌停). Uses 0.1% tolerance."""
+    """Check if stock hit limit-down (跌停) using computed threshold. Uses 0.01 tolerance."""
     if pre_close <= 0:
         return False
     limit_price = round(pre_close * (1 - limit_pct), 2)
     return close <= limit_price + 0.01
+
+
+def check_limit_up(close: float, pre_close: float, limit_pct: float,
+                    exact_up_limit: float | None) -> bool:
+    """Check limit-up using exact limit price if available, else compute from pre_close."""
+    if exact_up_limit is not None:
+        return close >= exact_up_limit - 0.01
+    return is_limit_up(close, pre_close, limit_pct)
+
+
+def check_limit_down(close: float, pre_close: float, limit_pct: float,
+                      exact_down_limit: float | None) -> bool:
+    """Check limit-down using exact limit price if available, else compute from pre_close."""
+    if exact_down_limit is not None:
+        return close <= exact_down_limit + 0.01
+    return is_limit_down(close, pre_close, limit_pct)
 
 
 def normalize_benchmark_code(value: str | None) -> str:
@@ -503,12 +536,17 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     )
     print(f"  Loaded {len(stocks)} stocks with sufficient data")
 
-    # Load stock names for limit-up/limit-down detection
-    ts_conn_names = get_tushare_conn()
-    stock_names = load_stock_names(ts_conn_names)
-    ts_conn_names.close()
+    # Load stock names and limit price data for limit-up/limit-down detection
+    ts_conn_limits = get_tushare_conn()
+    stock_names = load_stock_names(ts_conn_limits)
+    stk_limit_data = load_stk_limit_data(ts_conn_limits, config["start_date"], config["end_date"])
+    ts_conn_limits.close()
+    if stk_limit_data:
+        print(f"  Loaded {len(stk_limit_data)} exact limit prices from stk_limit table")
+    else:
+        print("  No stk_limit data available, using computed limit thresholds")
 
-    # Precompute limit percentages per stock
+    # Precompute limit percentages per stock (fallback when stk_limit unavailable)
     stock_limit_pcts: dict[str, float] = {}
     for code in stocks:
         name = stock_names.get(code, "")
@@ -687,12 +725,16 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
                 portfolio_value += shares * stocks[code].loc[date, "close"]
 
         # Sell positions not in target (skip if limit-down: no buyers)
+        date_str = date.strftime("%Y%m%d")
         for code in list(positions.keys()):
             if code not in target_codes and code in stocks and date in stocks[code].index:
                 row_data = stocks[code].loc[date]
                 price = row_data["close"]
                 pre_cl = row_data.get("pre_close", np.nan)
-                if pd.notna(pre_cl) and is_limit_down(price, pre_cl, stock_limit_pcts.get(code, 0.10)):
+                limit_key = (code, date_str)
+                exact_limits = stk_limit_data.get(limit_key)
+                exact_down = exact_limits[1] if exact_limits else None
+                if pd.notna(pre_cl) and check_limit_down(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_down):
                     continue  # Cannot sell at limit-down
                 shares = positions.pop(code)
                 amount = shares * price
@@ -718,7 +760,10 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
                     row_data = stocks[code].loc[date]
                     price = row_data["close"]
                     pre_cl = row_data.get("pre_close", np.nan)
-                    if pd.notna(pre_cl) and is_limit_up(price, pre_cl, stock_limit_pcts.get(code, 0.10)):
+                    limit_key = (code, date_str)
+                    exact_limits = stk_limit_data.get(limit_key)
+                    exact_up = exact_limits[0] if exact_limits else None
+                    if pd.notna(pre_cl) and check_limit_up(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_up):
                         continue  # Cannot buy at limit-up
                     buyable.append((code, price))
 

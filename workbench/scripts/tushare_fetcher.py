@@ -5,6 +5,8 @@ Usage:
     python tushare_fetcher.py --mode daily            # Fetch daily OHLCV
     python tushare_fetcher.py --mode history          # Fetch full history
     python tushare_fetcher.py --mode fundamental      # Fetch fundamentals
+    python tushare_fetcher.py --mode backfill-daily   # Backfill pre_close/pct_chg by date
+    python tushare_fetcher.py --mode stk-limit        # Fetch daily limit prices
     python tushare_fetcher.py --start 20210101 --end 20241231
 
 When TUSHARE_TOKEN env var is set, uses real tushare API.
@@ -80,6 +82,17 @@ def init_schema(conn: sqlite3.Connection) -> None:
             total_mv REAL,
             PRIMARY KEY (ts_code, end_date)
         );
+
+        CREATE TABLE IF NOT EXISTS stk_limit (
+            ts_code TEXT NOT NULL,
+            trade_date TEXT NOT NULL,
+            pre_close REAL,
+            up_limit REAL,
+            down_limit REAL,
+            PRIMARY KEY (ts_code, trade_date)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_stk_limit_date ON stk_limit(trade_date);
     """)
 
 
@@ -198,8 +211,8 @@ def fetch_real_data(
                 if df is not None and len(df) > 0:
                     for _, row in df.iterrows():
                         conn.execute(
-                            "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                            (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
+                            "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], row.get("pre_close"), row.get("pct_chg"), int(row["vol"]), row["amount"]),
                         )
                 batch_count += 1
 
@@ -243,8 +256,8 @@ def fetch_real_data(
                 if df is not None and len(df) > 0:
                     for _, row in df.iterrows():
                         conn.execute(
-                            "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                            (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
+                            "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], row.get("pre_close"), row.get("pct_chg"), int(row["vol"]), row["amount"]),
                         )
             except Exception as e:
                 print(f"  Warning: failed to fetch benchmark {code}: {e}")
@@ -257,10 +270,168 @@ def fetch_real_data(
     print("Real data fetch complete.")
 
 
+def backfill_daily_by_date(
+    conn: sqlite3.Connection,
+    token: str,
+    start_date: str,
+    end_date: str,
+) -> None:
+    """Backfill pre_close/pct_chg into existing daily_ohlcv by fetching daily API per trade_date."""
+    try:
+        import tushare as ts
+    except ImportError:
+        print("ERROR: tushare package not installed. Run: pip install tushare")
+        sys.exit(1)
+
+    pro = ts.pro_api(token)
+
+    # Get all trade dates that need backfilling
+    rows = conn.execute(
+        "SELECT DISTINCT trade_date FROM daily_ohlcv "
+        "WHERE trade_date >= ? AND trade_date <= ? AND pre_close IS NULL "
+        "ORDER BY trade_date",
+        (start_date, end_date),
+    ).fetchall()
+    dates = [r[0] for r in rows]
+
+    if not dates:
+        print("  No dates need backfilling (pre_close already populated)")
+        return
+
+    print(f"  Backfilling pre_close/pct_chg for {len(dates)} trade dates")
+    print(f"  Rate limit: 480 calls/min (daily API)")
+
+    BATCH_SIZE = 480
+    batch_start_time = time.time()
+    batch_count = 0
+    total_updated = 0
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.daily(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                for _, row in df.iterrows():
+                    conn.execute(
+                        "UPDATE daily_ohlcv SET pre_close = ?, pct_chg = ? "
+                        "WHERE ts_code = ? AND trade_date = ? AND pre_close IS NULL",
+                        (row.get("pre_close"), row.get("pct_chg"), row["ts_code"], row["trade_date"]),
+                    )
+                total_updated += len(df)
+            batch_count += 1
+
+            if batch_count >= BATCH_SIZE:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 100 == 0:
+                conn.commit()
+                print(f"  Backfill: {i+1}/{len(dates)} dates done ({total_updated} rows updated)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch date {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower():
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    print(f"  Backfill complete: {total_updated} rows updated across {len(dates)} dates")
+
+
+def fetch_stk_limit(
+    conn: sqlite3.Connection,
+    token: str,
+    start_date: str,
+    end_date: str,
+) -> None:
+    """Fetch daily limit-up/limit-down prices from stk_limit API (requires 2000 score)."""
+    try:
+        import tushare as ts
+    except ImportError:
+        print("ERROR: tushare package not installed. Run: pip install tushare")
+        sys.exit(1)
+
+    pro = ts.pro_api(token)
+
+    # Get all trade dates in range from existing OHLCV data
+    rows = conn.execute(
+        "SELECT DISTINCT trade_date FROM daily_ohlcv "
+        "WHERE trade_date >= ? AND trade_date <= ? "
+        "ORDER BY trade_date",
+        (start_date, end_date),
+    ).fetchall()
+    all_dates = [r[0] for r in rows]
+
+    # Skip dates already fetched
+    existing = conn.execute(
+        "SELECT DISTINCT trade_date FROM stk_limit "
+        "WHERE trade_date >= ? AND trade_date <= ?",
+        (start_date, end_date),
+    ).fetchall()
+    existing_dates = {r[0] for r in existing}
+    dates = [d for d in all_dates if d not in existing_dates]
+
+    if not dates:
+        print("  stk_limit data already up to date")
+        return
+
+    print(f"  Fetching stk_limit for {len(dates)} trade dates ({len(existing_dates)} already cached)")
+    print(f"  stk_limit API: max 5800 records/call, rate limited per minute")
+
+    # Use conservative rate limit since exact rate at 2000 score is unknown
+    BATCH_SIZE = 200
+    batch_start_time = time.time()
+    batch_count = 0
+    total_inserted = 0
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.stk_limit(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                for _, row in df.iterrows():
+                    conn.execute(
+                        "INSERT OR REPLACE INTO stk_limit (ts_code, trade_date, pre_close, up_limit, down_limit) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (row["ts_code"], row["trade_date"], row.get("pre_close"), row["up_limit"], row["down_limit"]),
+                    )
+                total_inserted += len(df)
+            batch_count += 1
+
+            if batch_count >= BATCH_SIZE:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 50 == 0:
+                conn.commit()
+                print(f"  stk_limit: {i+1}/{len(dates)} dates done ({total_inserted} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch stk_limit for {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    print(f"  stk_limit complete: {total_inserted} rows across {len(dates)} dates")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Tushare data fetcher")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Use mock data instead of real API")
-    parser.add_argument("--mode", choices=["daily", "history", "fundamental"], default="history", help="Fetch type")
+    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "backfill-daily", "stk-limit"], default="history", help="Fetch type")
     parser.add_argument("--start", default="20210101", help="Start date (YYYYMMDD)")
     parser.add_argument("--end", default="20241231", help="End date (YYYYMMDD)")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of stocks to fetch (0 = default)")
@@ -273,7 +444,17 @@ def main():
     init_schema(conn)
     migrate_schema(conn)
 
-    if use_mock:
+    if args.mode in ("backfill-daily", "stk-limit") and not token:
+        print("ERROR: TUSHARE_TOKEN required for backfill-daily and stk-limit modes")
+        sys.exit(1)
+
+    if args.mode == "backfill-daily":
+        print(f"Backfilling pre_close/pct_chg ({args.start}–{args.end})")
+        backfill_daily_by_date(conn, token, args.start, args.end)
+    elif args.mode == "stk-limit":
+        print(f"Fetching stk_limit data ({args.start}–{args.end})")
+        fetch_stk_limit(conn, token, args.start, args.end)
+    elif use_mock:
         print("Running in DRY-RUN mode (mock data)")
         populate_mock_data(conn, args.start, args.end, args.mode)
     else:
