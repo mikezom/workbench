@@ -455,3 +455,15 @@ return result;
 **Prevention**: When using a library loaded via CDN (not bundled) in TypeScript modules, always create a local type re-export file rather than relying on ambient namespace declarations. Check whether @types packages use `export =` (module) vs `declare global` (ambient) — the former requires explicit imports in ES module files.
 
 **Commit**: `9308047`
+
+## 2026-03-20 - Background fetch failed due to missing TUSHARE_TOKEN env var
+
+**Problem**: First background fetch attempt (`backfill-daily`) failed immediately with "ERROR: TUSHARE_TOKEN required". Wasted a process launch and had to re-run.
+
+**Root Cause**: Assumed `TUSHARE_TOKEN` was set in the shell environment because `import tushare` succeeded. But tushare loads as a Python package regardless of token — the token is only needed at `pro_api()` call time. The token was neither in `$TUSHARE_TOKEN`, `~/.tushare/`, nor any `.env` file.
+
+**Solution**: Asked user for the token and passed it inline via `TUSHARE_TOKEN=... python3 scripts/...` in the command.
+
+**Prevention**: Before running any API-dependent fetch script, always verify the token is actually reachable by the script (test with a small API call first, e.g. `pro.trade_cal()`), rather than assuming library import success means credentials are configured.
+
+**Commit**: N/A (runtime issue, no code fix needed)

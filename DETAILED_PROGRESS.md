@@ -1910,3 +1910,35 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 
 **Changes:**
 - `workbench/src/components/quant/equity-chart.tsx` — Added `type: "date"` to Plotly xaxis config to prevent categorical axis treatment of date strings.
+
+---
+
+## 2026-03-20 — Quant backtest limit-up/limit-down fix and data fetch
+
+### Task 1: Add limit-up/limit-down trade filtering to backtest engine
+
+**Commit:** `d3bf50a`
+
+**Problem:** Backtest result #12 showed unrealistically high Sharpe (3.37) because the engine executed trades at close price unconditionally, including buying stocks at limit-up (no sellers) and selling at limit-down (no buyers), which is impossible in real A-share trading.
+
+**Changes:**
+- `workbench/scripts/quant_backtest.py` — Added `is_limit_up`/`is_limit_down` detection with per-board thresholds (5% ST, 10% main, 20% ChiNext/STAR, 30% BJ). Skip buy orders at limit-up, skip sell orders at limit-down. Allocate cash evenly among buyable stocks only. Fallback pre_close computation for legacy databases.
+- `workbench/scripts/tushare_fetcher.py` — Added `pre_close` and `pct_chg` columns to `daily_ohlcv` schema. Added `migrate_schema()` for existing databases.
+- `workbench/scripts/mock_data.py` — Mock OHLCV generator now produces `pre_close` and `pct_chg` fields.
+
+---
+
+### Task 2: Add stk_limit table, backfill modes, and fetch data from Tushare API
+
+**Commit:** `42830b5`
+
+**Problem:** Computed limit thresholds from pre_close + board type are approximations. Exact limit prices from the `stk_limit` API account for ST transitions, IPO rules, and exchange-specific rounding.
+
+**Changes:**
+- `workbench/scripts/tushare_fetcher.py` — Added `stk_limit` table schema. Added `--mode backfill-daily` (fetches daily API by trade_date to UPDATE pre_close/pct_chg). Added `--mode stk-limit` (fetches exact up_limit/down_limit from stk_limit API). Conservative rate limiting (480/min daily, 200/min stk_limit).
+- `workbench/scripts/quant_backtest.py` — Added `load_stk_limit_data()` to load exact limit prices. Added `check_limit_up`/`check_limit_down` that prefer exact stk_limit prices over computed thresholds. Trading loop uses exact limit prices when available.
+
+### Data Fetch (runtime, no code changes)
+- Backfilled `pre_close`/`pct_chg` for 6,382,565 rows across 1,357 trade dates via `daily` API.
+- Fetched 8,086,159 `stk_limit` rows across 1,357 trade dates via `stk_limit` API.
+- Confirmed 69,801 limit-up and 25,377 limit-down stock-days in backtest #12 period (2022–2026).
