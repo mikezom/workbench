@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getDefaultBacktestDateRange } from "@/lib/quant-defaults";
 
 interface Strategy {
   id: number;
@@ -26,9 +27,10 @@ interface BacktestConfigProps {
 }
 
 export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigProps) {
+  const [defaultDateRange] = useState(getDefaultBacktestDateRange);
   const [strategyId, setStrategyId] = useState<number>(strategies[0]?.id ?? 0);
-  const [startDate, setStartDate] = useState("20220101");
-  const [endDate, setEndDate] = useState("20241231");
+  const [startDate, setStartDate] = useState(defaultDateRange.startDate);
+  const [endDate, setEndDate] = useState(defaultDateRange.endDate);
   const [initialCapital, setInitialCapital] = useState("1000000");
   const [benchmark, setBenchmark] = useState("000300.SH");
   const [rebalanceFreq, setRebalanceFreq] = useState("weekly");

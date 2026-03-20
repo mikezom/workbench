@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createBacktestRun, listBacktestRuns, getStrategy, updateStrategy } from "@/lib/quant-db";
+import { getDefaultBacktestDateRange } from "@/lib/quant-defaults";
 import { spawn } from "child_process";
 import path from "path";
 
@@ -28,6 +29,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "strategy_id is required" }, { status: 400 });
   }
 
+  const defaultDateRange = getDefaultBacktestDateRange();
+
   const strategy = getStrategy(Number(strategy_id));
   if (!strategy) {
     return NextResponse.json({ error: "Strategy not found" }, { status: 404 });
@@ -35,8 +38,8 @@ export async function POST(req: NextRequest) {
 
   const run = createBacktestRun({
     strategy_id: Number(strategy_id),
-    start_date: start_date ?? "20210101",
-    end_date: end_date ?? "20241231",
+    start_date: start_date ?? defaultDateRange.startDate,
+    end_date: end_date ?? defaultDateRange.endDate,
     initial_capital,
     benchmark,
     rebalance_freq,
