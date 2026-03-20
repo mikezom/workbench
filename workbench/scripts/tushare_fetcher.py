@@ -5,6 +5,7 @@ Usage:
     python tushare_fetcher.py --mode daily            # Fetch daily OHLCV
     python tushare_fetcher.py --mode history          # Fetch full history
     python tushare_fetcher.py --mode fundamental      # Fetch fundamentals
+    python tushare_fetcher.py --mode incremental      # Refresh latest cached date through today
     python tushare_fetcher.py --mode backfill-daily   # Backfill pre_close/pct_chg by date
     python tushare_fetcher.py --mode stk-limit        # Fetch daily limit prices
     python tushare_fetcher.py --start 20210101 --end 20241231
@@ -18,7 +19,9 @@ import os
 import sqlite3
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 # Add scripts dir to path for mock_data import
 sys.path.insert(0, str(Path(__file__).parent))
@@ -31,6 +34,27 @@ from mock_data import (
 
 DB_PATH = Path("/Users/ccnas/DEVELOPMENT/shared-data/tushare/tushare.db")
 BENCHMARK_CODES = ["000300.SH", "000905.SH", "000852.SH"]
+
+
+def format_yyyymmdd(value: datetime) -> str:
+    return value.strftime("%Y%m%d")
+
+
+def parse_yyyymmdd(value: str) -> datetime:
+    return datetime.strptime(value, "%Y%m%d")
+
+
+def iter_calendar_dates(start_date: str, end_date: str) -> list[str]:
+    start = parse_yyyymmdd(start_date)
+    end = parse_yyyymmdd(end_date)
+    current = start
+    dates = []
+
+    while current <= end:
+        dates.append(format_yyyymmdd(current))
+        current += timedelta(days=1)
+
+    return dates
 
 
 def get_connection() -> sqlite3.Connection:
@@ -112,10 +136,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_stk_limit_date ON stk_limit(trade_date);
     """)
+    ensure_analytic_indexes(conn)
 
 
 def migrate_schema(conn: sqlite3.Connection) -> None:
-    """Add pre_close and pct_chg columns to existing databases."""
+    """Apply additive schema updates for existing databases."""
     cursor = conn.execute("PRAGMA table_info(daily_ohlcv)")
     columns = {row[1] for row in cursor.fetchall()}
     if "pre_close" not in columns:
@@ -124,6 +149,47 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
     if "pct_chg" not in columns:
         conn.execute("ALTER TABLE daily_ohlcv ADD COLUMN pct_chg REAL")
         print("  Migrated: added pct_chg column to daily_ohlcv")
+    ensure_analytic_indexes(conn)
+
+
+def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def ensure_analytic_indexes(conn: sqlite3.Connection) -> None:
+    if table_exists(conn, "daily_basic"):
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_daily_basic_trade_date_total_mv
+            ON daily_basic(trade_date, total_mv DESC, ts_code)
+            WHERE total_mv IS NOT NULL
+            """
+        )
+
+    if table_exists(conn, "fina_indicator"):
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_fina_indicator_end_date_total_mv
+            ON fina_indicator(end_date, total_mv DESC, ts_code)
+            WHERE total_mv IS NOT NULL
+            """
+        )
+
+
+def refresh_stock_basic(conn: sqlite3.Connection, pro):
+    stock_df = pro.stock_basic(exchange="", list_status="L", fields="ts_code,name,industry,market,list_date")
+    for _, row in stock_df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO stock_basic (ts_code, name, industry, market, list_date) VALUES (?, ?, ?, ?, ?)",
+            (row["ts_code"], row["name"], row.get("industry", ""), row.get("market", ""), row.get("list_date", "")),
+        )
+    conn.commit()
+    print(f"  Fetched {len(stock_df)} stocks from Tushare")
+    return stock_df
 
 
 def upsert_daily_ohlcv_rows(conn: sqlite3.Connection, df) -> None:
@@ -267,15 +333,7 @@ def fetch_real_data(
     pro = ts.pro_api(token)
 
     if mode in ("daily", "history"):
-        # Fetch stock list
-        stock_df = pro.stock_basic(exchange="", list_status="L", fields="ts_code,name,industry,market,list_date")
-        for _, row in stock_df.iterrows():
-            conn.execute(
-                "INSERT OR REPLACE INTO stock_basic (ts_code, name, industry, market, list_date) VALUES (?, ?, ?, ?, ?)",
-                (row["ts_code"], row["name"], row.get("industry", ""), row.get("market", ""), row.get("list_date", "")),
-            )
-        conn.commit()
-        print(f"  Fetched {len(stock_df)} stocks from Tushare")
+        stock_df = refresh_stock_basic(conn, pro)
 
         # Fetch daily OHLCV with rate limiting (max 480/min to stay under 500/min)
         codes = stock_df["ts_code"].tolist()
@@ -342,6 +400,166 @@ def fetch_real_data(
         print("  Fundamental data fetching via Tushare not yet implemented (requires higher-tier API access)")
 
     print("Real data fetch complete.")
+
+
+def fetch_daily_by_trade_date(
+    conn: sqlite3.Connection,
+    pro,
+    start_date: str,
+    end_date: str,
+) -> tuple[int, int]:
+    dates = iter_calendar_dates(start_date, end_date)
+    if not dates:
+        return 0, 0
+
+    print(f"  Refreshing daily OHLCV by trade date for {len(dates)} calendar days")
+
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+    populated_dates = 0
+    batch_size = 480
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.daily(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                conn.execute("DELETE FROM daily_ohlcv WHERE trade_date = ?", (trade_date,))
+                upsert_daily_ohlcv_rows(conn, df)
+                total_rows += len(df)
+                populated_dates += 1
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 20 == 0 or i == len(dates) - 1:
+                conn.commit()
+                print(f"  Daily by date: {i+1}/{len(dates)} dates done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch daily data for {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower():
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    return total_rows, populated_dates
+
+
+def resolve_incremental_start_date(conn: sqlite3.Connection, end_date: str) -> str:
+    row = conn.execute("SELECT MAX(trade_date) FROM daily_ohlcv").fetchone()
+    max_trade_date = row[0] if row and row[0] else None
+    if not max_trade_date:
+        return end_date
+    return min(max_trade_date, end_date)
+
+
+def fetch_stk_limit_by_trade_date(
+    conn: sqlite3.Connection,
+    pro,
+    start_date: str,
+    end_date: str,
+) -> tuple[int, int]:
+    dates = iter_calendar_dates(start_date, end_date)
+    if not dates:
+        return 0, 0
+
+    print(f"  Refreshing stk_limit data for {len(dates)} calendar days")
+
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+    populated_dates = 0
+    batch_size = 200
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.stk_limit(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                conn.execute("DELETE FROM stk_limit WHERE trade_date = ?", (trade_date,))
+                for _, row in df.iterrows():
+                    conn.execute(
+                        "INSERT OR REPLACE INTO stk_limit (ts_code, trade_date, pre_close, up_limit, down_limit) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (row["ts_code"], row["trade_date"], row.get("pre_close"), row["up_limit"], row["down_limit"]),
+                    )
+                total_rows += len(df)
+                populated_dates += 1
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} stk_limit dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 20 == 0 or i == len(dates) - 1:
+                conn.commit()
+                print(f"  stk_limit by date: {i+1}/{len(dates)} dates done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch stk_limit for {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    return total_rows, populated_dates
+
+
+def fetch_incremental_update(
+    conn: sqlite3.Connection,
+    token: str,
+    start_date: Optional[str],
+    end_date: str,
+) -> None:
+    try:
+        import tushare as ts
+    except ImportError:
+        print("ERROR: tushare package not installed. Run: pip install tushare")
+        sys.exit(1)
+
+    pro = ts.pro_api(token)
+
+    effective_start_date = start_date or resolve_incremental_start_date(conn, end_date)
+    print(f"Running incremental Tushare update ({effective_start_date}–{end_date})")
+
+    refresh_stock_basic(conn, pro)
+    daily_rows, daily_dates = fetch_daily_by_trade_date(conn, pro, effective_start_date, end_date)
+
+    try:
+        benchmark_rows = fetch_benchmark_data(conn, pro, effective_start_date, end_date)
+    except Exception as e:
+        print(f"  Warning: failed to fetch benchmark indexes: {e}")
+        benchmark_rows = 0
+
+    try:
+        stk_limit_rows, stk_limit_dates = fetch_stk_limit_by_trade_date(conn, pro, effective_start_date, end_date)
+    except Exception as e:
+        print(f"  Warning: failed to refresh stk_limit data: {e}")
+        stk_limit_rows = 0
+        stk_limit_dates = 0
+
+    print(
+        "Incremental update complete: "
+        f"{daily_rows} daily rows across {daily_dates} trade dates, "
+        f"{benchmark_rows} benchmark rows, "
+        f"{stk_limit_rows} stk_limit rows across {stk_limit_dates} trade dates"
+    )
 
 
 def backfill_daily_by_date(
@@ -505,7 +723,7 @@ def fetch_stk_limit(
 def main():
     parser = argparse.ArgumentParser(description="Tushare data fetcher")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Use mock data instead of real API")
-    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "benchmark-daily", "backfill-daily", "stk-limit"], default="history", help="Fetch type")
+    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "incremental", "benchmark-daily", "backfill-daily", "stk-limit"], default="history", help="Fetch type")
     parser.add_argument("--start", default="20210101", help="Start date (YYYYMMDD)")
     parser.add_argument("--end", default="20241231", help="End date (YYYYMMDD)")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of stocks to fetch (0 = default)")
@@ -518,11 +736,15 @@ def main():
     init_schema(conn)
     migrate_schema(conn)
 
-    if args.mode in ("benchmark-daily", "backfill-daily", "stk-limit") and not token:
+    if args.mode in ("incremental", "benchmark-daily", "backfill-daily", "stk-limit") and not token:
         print(f"ERROR: TUSHARE_TOKEN required for {args.mode} mode")
         sys.exit(1)
 
-    if args.mode == "benchmark-daily":
+    if args.mode == "incremental":
+        incremental_start = args.start if args.start != "20210101" else None
+        print(f"Running incremental update through {args.end}")
+        fetch_incremental_update(conn, token, incremental_start, args.end)
+    elif args.mode == "benchmark-daily":
         print(f"Fetching benchmark index data ({args.start}–{args.end})")
         fetch_real_data(conn, token, args.start, args.end, args.mode, args.limit)
     elif args.mode == "backfill-daily":
