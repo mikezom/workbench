@@ -59,6 +59,24 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_ohlcv_date ON daily_ohlcv(trade_date);
 
+        CREATE TABLE IF NOT EXISTS index_daily (
+            ts_code TEXT NOT NULL,
+            trade_date TEXT NOT NULL,
+            open REAL,
+            high REAL,
+            low REAL,
+            close REAL,
+            pre_close REAL,
+            pct_chg REAL,
+            vol INTEGER,
+            amount REAL,
+            source TEXT NOT NULL DEFAULT 'tushare_index_daily',
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (ts_code, trade_date)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_index_daily_date ON index_daily(trade_date);
+
         CREATE TABLE IF NOT EXISTS stock_basic (
             ts_code TEXT PRIMARY KEY,
             name TEXT,
@@ -108,6 +126,82 @@ def migrate_schema(conn: sqlite3.Connection) -> None:
         print("  Migrated: added pct_chg column to daily_ohlcv")
 
 
+def upsert_daily_ohlcv_rows(conn: sqlite3.Connection, df) -> None:
+    for _, row in df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_ohlcv "
+            "(ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["ts_code"],
+                row["trade_date"],
+                row["open"],
+                row["high"],
+                row["low"],
+                row["close"],
+                row.get("pre_close"),
+                row.get("pct_chg"),
+                int(row["vol"]),
+                row["amount"],
+            ),
+        )
+
+
+def upsert_index_daily_rows(conn: sqlite3.Connection, df, source: str = "tushare_index_daily") -> None:
+    for _, row in df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO index_daily "
+            "(ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount, source, fetched_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
+            (
+                row["ts_code"],
+                row["trade_date"],
+                row["open"],
+                row["high"],
+                row["low"],
+                row["close"],
+                row.get("pre_close"),
+                row.get("pct_chg"),
+                int(row["vol"]),
+                row["amount"],
+                source,
+            ),
+        )
+
+
+def purge_benchmark_rows_from_daily_ohlcv(conn: sqlite3.Connection) -> int:
+    placeholders = ",".join("?" for _ in BENCHMARK_CODES)
+    cursor = conn.execute(
+        f"DELETE FROM daily_ohlcv WHERE ts_code IN ({placeholders})",
+        BENCHMARK_CODES,
+    )
+    return cursor.rowcount
+
+
+def fetch_benchmark_data(
+    conn: sqlite3.Connection,
+    pro,
+    start_date: str,
+    end_date: str,
+) -> int:
+    total_rows = 0
+    for code in BENCHMARK_CODES:
+        df = pro.index_daily(ts_code=code, start_date=start_date, end_date=end_date)
+        conn.execute(
+            "DELETE FROM index_daily WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?",
+            (code, start_date, end_date),
+        )
+        if df is None or len(df) == 0:
+            continue
+        upsert_index_daily_rows(conn, df)
+        total_rows += len(df)
+    if total_rows > 0:
+        removed = purge_benchmark_rows_from_daily_ohlcv(conn)
+        if removed > 0:
+            print(f"  Removed {removed} benchmark rows from daily_ohlcv after index refresh")
+    return total_rows
+
+
 def populate_mock_data(
     conn: sqlite3.Connection,
     start_date: str = "20210101",
@@ -130,26 +224,15 @@ def populate_mock_data(
         total_ohlcv = 0
         for i, code in enumerate(codes):
             df = generate_ohlcv(code, start_date, end_date)
-            for _, row in df.iterrows():
-                conn.execute(
-                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], row.get("pre_close"), row.get("pct_chg"), int(row["vol"]), row["amount"]),
-                )
+            upsert_daily_ohlcv_rows(conn, df)
             total_ohlcv += len(df)
             if (i + 1) % 10 == 0:
                 print(f"  OHLCV: {i+1}/{len(codes)} stocks done")
                 conn.commit()
 
-        for code in BENCHMARK_CODES:
-            df = generate_ohlcv(code, start_date, end_date)
-            for _, row in df.iterrows():
-                conn.execute(
-                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], row.get("pre_close"), row.get("pct_chg"), int(row["vol"]), row["amount"]),
-                )
-            total_ohlcv += len(df)
         conn.commit()
-        print(f"  Inserted {total_ohlcv} daily_ohlcv records (including {len(BENCHMARK_CODES)} benchmark series)")
+        print(f"  Inserted {total_ohlcv} stock daily_ohlcv records")
+        print("  Skipped benchmark index generation in mock mode")
 
     if mode in ("fundamental", "history"):
         total_fina = 0
@@ -209,11 +292,7 @@ def fetch_real_data(
             try:
                 df = pro.daily(ts_code=code, start_date=start_date, end_date=end_date)
                 if df is not None and len(df) > 0:
-                    for _, row in df.iterrows():
-                        conn.execute(
-                            "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], row.get("pre_close"), row.get("pct_chg"), int(row["vol"]), row["amount"]),
-                        )
+                    upsert_daily_ohlcv_rows(conn, df)
                 batch_count += 1
 
                 # Rate limiting: after every BATCH_SIZE calls, ensure 60s have passed
@@ -241,28 +320,23 @@ def fetch_real_data(
                     try:
                         df = pro.daily(ts_code=code, start_date=start_date, end_date=end_date)
                         if df is not None and len(df) > 0:
-                            for _, row in df.iterrows():
-                                conn.execute(
-                                    "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                    (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], int(row["vol"]), row["amount"]),
-                                )
+                            upsert_daily_ohlcv_rows(conn, df)
                         batch_count += 1
                     except Exception as e2:
                         print(f"  Warning: retry also failed for {code}: {e2}")
 
-        for code in BENCHMARK_CODES:
-            try:
-                df = pro.index_daily(ts_code=code, start_date=start_date, end_date=end_date)
-                if df is not None and len(df) > 0:
-                    for _, row in df.iterrows():
-                        conn.execute(
-                            "INSERT OR REPLACE INTO daily_ohlcv (ts_code, trade_date, open, high, low, close, pre_close, pct_chg, vol, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (row["ts_code"], row["trade_date"], row["open"], row["high"], row["low"], row["close"], row.get("pre_close"), row.get("pct_chg"), int(row["vol"]), row["amount"]),
-                        )
-            except Exception as e:
-                print(f"  Warning: failed to fetch benchmark {code}: {e}")
+        try:
+            benchmark_rows = fetch_benchmark_data(conn, pro, start_date, end_date)
+        except Exception as e:
+            print(f"  Warning: failed to fetch benchmark indexes: {e}")
+            benchmark_rows = 0
         conn.commit()
-        print(f"  Daily OHLCV complete: {total} stocks + {len(BENCHMARK_CODES)} benchmarks")
+        print(f"  Daily OHLCV complete: {total} stocks + {benchmark_rows} benchmark index rows")
+
+    elif mode == "benchmark-daily":
+        benchmark_rows = fetch_benchmark_data(conn, pro, start_date, end_date)
+        conn.commit()
+        print(f"  Benchmark index refresh complete: {benchmark_rows} rows")
 
     if mode in ("fundamental", "history"):
         print("  Fundamental data fetching via Tushare not yet implemented (requires higher-tier API access)")
@@ -431,7 +505,7 @@ def fetch_stk_limit(
 def main():
     parser = argparse.ArgumentParser(description="Tushare data fetcher")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Use mock data instead of real API")
-    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "backfill-daily", "stk-limit"], default="history", help="Fetch type")
+    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "benchmark-daily", "backfill-daily", "stk-limit"], default="history", help="Fetch type")
     parser.add_argument("--start", default="20210101", help="Start date (YYYYMMDD)")
     parser.add_argument("--end", default="20241231", help="End date (YYYYMMDD)")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of stocks to fetch (0 = default)")
@@ -444,11 +518,14 @@ def main():
     init_schema(conn)
     migrate_schema(conn)
 
-    if args.mode in ("backfill-daily", "stk-limit") and not token:
-        print("ERROR: TUSHARE_TOKEN required for backfill-daily and stk-limit modes")
+    if args.mode in ("benchmark-daily", "backfill-daily", "stk-limit") and not token:
+        print(f"ERROR: TUSHARE_TOKEN required for {args.mode} mode")
         sys.exit(1)
 
-    if args.mode == "backfill-daily":
+    if args.mode == "benchmark-daily":
+        print(f"Fetching benchmark index data ({args.start}–{args.end})")
+        fetch_real_data(conn, token, args.start, args.end, args.mode, args.limit)
+    elif args.mode == "backfill-daily":
         print(f"Backfilling pre_close/pct_chg ({args.start}–{args.end})")
         backfill_daily_by_date(conn, token, args.start, args.end)
     elif args.mode == "stk-limit":
