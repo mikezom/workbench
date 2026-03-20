@@ -399,6 +399,22 @@ Full spec: `docs/quant-section.md`
 #### 13f: Bug Fixes
 - [x] Fix equity curve Plotly chart connecting last point to first (set xaxis type to "date")
 
+#### 13g: Backtest Realism — Limit-Up/Limit-Down
+- [x] Add limit-up/limit-down detection to backtest engine (per-board thresholds)
+- [x] Skip buy orders at limit-up, skip sell orders at limit-down
+- [x] Add pre_close/pct_chg columns to daily_ohlcv schema + migration
+- [x] Add stk_limit table with exact up_limit/down_limit prices
+- [x] Add backfill-daily and stk-limit fetch modes to tushare_fetcher.py
+- [x] Backtest prefers exact stk_limit prices over computed thresholds
+- [x] Fetch real data: 6.4M pre_close rows + 8.1M stk_limit rows from Tushare API
+
+#### 13h: Quant UX Tweaks
+- [x] Change Backtest tab default start/end dates to a rolling recent three-year window
+
+#### 13i: Quant Data Automation
+- [x] Add incremental Tushare update mode for daily catch-up by trade date
+- [x] Add launchd-friendly Tushare update wrapper and 18:00 scheduler installer
+
 ## Status
 
 | Phase | Status | Notes |
@@ -440,3 +456,5 @@ Full spec: `docs/quant-section.md`
 | 12 - Forester Theme TS Refactoring | Complete | graph.js monolith → 14 TS modules, shared utils, type safety; commit `9308047` |
 | 13 - Quant Section | Complete | Factor-based model training, backtesting, Plotly charts, mock data |
 | 13f - Quant Bug Fixes | Complete | Fix equity curve loop artifact; commit `636969a` |
+| 13g - Backtest Limit-Up/Down | Complete | Trade filtering + stk_limit data; commits `d3bf50a`, `42830b5` |
+| 13i - Quant Data Automation | Complete | Incremental Tushare updater + daily 18:00 launchd installer |
