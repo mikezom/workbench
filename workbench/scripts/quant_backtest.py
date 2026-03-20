@@ -455,14 +455,7 @@ def build_training_dataset(
     for code, factors_df in factor_data.items():
         returns = returns_data[code]
         label_end_dates = return_end_dates[code]
-        mask = (
-            (factors_df.index >= train_start)
-            & (factors_df.index < train_end)
-            & factors_df.notna().all(axis=1)
-            & returns.notna()
-            & label_end_dates.notna()
-            & (label_end_dates < train_end)
-        )
+        mask = build_training_mask(factors_df, returns, label_end_dates, train_start, train_end)
         if mask.sum() == 0:
             continue
 
@@ -482,6 +475,71 @@ def build_training_dataset(
         return None, None
 
     return x_train, y_train
+
+
+def build_training_mask(
+    factors_df: pd.DataFrame,
+    returns: pd.Series,
+    label_end_dates: pd.Series,
+    train_start: pd.Timestamp,
+    train_end: pd.Timestamp,
+    *,
+    exclude_future_overlap: bool = True,
+) -> pd.Series:
+    mask = (
+        (factors_df.index >= train_start)
+        & (factors_df.index < train_end)
+        & factors_df.notna().all(axis=1)
+        & returns.notna()
+        & label_end_dates.notna()
+    )
+    if exclude_future_overlap:
+        mask = mask & (label_end_dates < train_end)
+    return mask
+
+
+def summarize_future_label_overlap(
+    factor_data: dict[str, pd.DataFrame],
+    returns_data: dict[str, pd.Series],
+    return_end_dates: dict[str, pd.Series],
+    train_start: pd.Timestamp,
+    train_end: pd.Timestamp,
+) -> dict[str, int]:
+    candidate_rows = 0
+    blocked_overlap_rows = 0
+
+    for code, factors_df in factor_data.items():
+        returns = returns_data[code]
+        label_end_dates = return_end_dates[code]
+        raw_mask = build_training_mask(
+            factors_df,
+            returns,
+            label_end_dates,
+            train_start,
+            train_end,
+            exclude_future_overlap=False,
+        )
+        overlap_mask = raw_mask & (label_end_dates >= train_end)
+        candidate_rows += int(raw_mask.sum())
+        blocked_overlap_rows += int(overlap_mask.sum())
+
+    return {
+        "candidate_rows": candidate_rows,
+        "blocked_overlap_rows": blocked_overlap_rows,
+    }
+
+
+def build_execution_schedule(
+    signal_dates: list[pd.Timestamp],
+    all_dates: pd.DatetimeIndex,
+) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+    schedule: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    for signal_date in signal_dates:
+        future_dates = all_dates[all_dates > signal_date]
+        if len(future_dates) == 0:
+            continue
+        schedule.append((signal_date, future_dates[0]))
+    return schedule
 
 
 def round_value(value: float | None, digits: int = 4) -> float | None:
@@ -628,14 +686,24 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     first_train_end = all_dates[0] + pd.Timedelta(days=train_window_days)
     candidate_dates = all_dates[all_dates >= first_train_end]
     rebalance_dates = get_rebalance_dates(candidate_dates, config["rebalance_freq"])
+    execution_schedule = build_execution_schedule(rebalance_dates, all_dates)
 
     if not rebalance_dates:
         raise ValueError("No rebalance dates available after applying the training window")
+    if not execution_schedule:
+        raise ValueError("No executable rebalance dates available after applying execution lag")
 
     print(f"Rolling training window: {train_window_days} calendar days")
     print(f"Prediction horizon: {prediction_horizon_days} trading days")
-    print(f"Test period: {rebalance_dates[0].strftime('%Y-%m-%d')} to {rebalance_dates[-1].strftime('%Y-%m-%d')}")
-    print(f"Rebalance dates: {len(rebalance_dates)}")
+    print(
+        f"Signal period: {execution_schedule[0][0].strftime('%Y-%m-%d')} "
+        f"to {execution_schedule[-1][0].strftime('%Y-%m-%d')}"
+    )
+    print(
+        f"Execution period: {execution_schedule[0][1].strftime('%Y-%m-%d')} "
+        f"to {execution_schedule[-1][1].strftime('%Y-%m-%d')}"
+    )
+    print(f"Tradable rebalance dates: {len(execution_schedule)}")
 
     # Simulate trading
     capital = config["initial_capital"]
@@ -652,16 +720,37 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     top_bottom_spread_series: list[dict[str, float]] = []
     grouped_return_sums = [0.0] * 5
     grouped_return_counts = [0] * 5
+    overlap_audit_rows = 0
+    overlap_audit_candidate_rows = 0
+    overlap_audit_flagged_windows = 0
+    overlap_audit_samples: list[dict[str, int | str]] = []
 
-    total_rebalances = max(len(rebalance_dates), 1)
-    for index, date in enumerate(rebalance_dates, start=1):
-        train_start = date - pd.Timedelta(days=train_window_days)
+    total_rebalances = max(len(execution_schedule), 1)
+    for index, (signal_date, execution_date) in enumerate(execution_schedule, start=1):
+        train_start = signal_date - pd.Timedelta(days=train_window_days)
+        overlap_summary = summarize_future_label_overlap(
+            all_factor_data,
+            all_returns,
+            all_return_end_dates,
+            train_start,
+            signal_date,
+        )
+        overlap_audit_candidate_rows += overlap_summary["candidate_rows"]
+        overlap_audit_rows += overlap_summary["blocked_overlap_rows"]
+        if overlap_summary["blocked_overlap_rows"] > 0:
+            overlap_audit_flagged_windows += 1
+            if len(overlap_audit_samples) < 5:
+                overlap_audit_samples.append({
+                    "signal_date": signal_date.strftime("%Y-%m-%d"),
+                    "blocked_overlap_rows": overlap_summary["blocked_overlap_rows"],
+                })
+
         x_train, y_train = build_training_dataset(
             all_factor_data,
             all_returns,
             all_return_end_dates,
             train_start,
-            date,
+            signal_date,
         )
         if x_train is None or y_train is None or len(x_train) < max(len(factor_ids) * 5, 50):
             if index == 1 or index == total_rebalances or index % 5 == 0:
@@ -678,8 +767,8 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         scores: dict[str, float] = {}
         for code in stocks:
             factors_df = all_factor_data[code]
-            if date in factors_df.index:
-                x = factors_df.loc[date].values.astype(float).reshape(1, -1)
+            if signal_date in factors_df.index:
+                x = factors_df.loc[signal_date].values.astype(float).reshape(1, -1)
                 if np.isfinite(x).all():
                     scores[code] = float(model.predict(x)[0])
 
@@ -688,7 +777,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
 
         realized_pairs: list[tuple[float, float]] = []
         for code, score in scores.items():
-            realized = all_returns[code].get(date)
+            realized = all_returns[code].get(signal_date)
             if realized is None or not np.isfinite(realized):
                 continue
             realized_pairs.append((score, float(realized)))
@@ -698,12 +787,12 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
             rank_ic = diag_df["score"].corr(diag_df["return"], method="spearman")
             if rank_ic is not None and np.isfinite(rank_ic):
                 rank_ic_series.append({
-                    "date": date.strftime("%Y-%m-%d"),
+                    "date": signal_date.strftime("%Y-%m-%d"),
                     "value": round(float(rank_ic), 4),
                 })
 
             score_dispersion_series.append({
-                "date": date.strftime("%Y-%m-%d"),
+                "date": signal_date.strftime("%Y-%m-%d"),
                 "mean": round(float(diag_df["score"].mean()), 4),
                 "std": round(float(diag_df["score"].std(ddof=0)), 4),
                 "min": round(float(diag_df["score"].min()), 4),
@@ -723,7 +812,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
                 spread = bucket_means.iloc[-1] - bucket_means.iloc[0]
                 if np.isfinite(spread):
                     top_bottom_spread_series.append({
-                        "date": date.strftime("%Y-%m-%d"),
+                        "date": signal_date.strftime("%Y-%m-%d"),
                         "value": round(float(spread), 4),
                     })
             for bucket, avg_return in bucket_means.items():
@@ -739,17 +828,17 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         # Calculate portfolio value
         portfolio_value = cash
         for code, shares in positions.items():
-            if date in stocks[code].index:
-                portfolio_value += shares * stocks[code].loc[date, "close"]
+            if execution_date in stocks[code].index:
+                portfolio_value += shares * stocks[code].loc[execution_date, "close"]
 
         # Sell positions not in target (skip if limit-down: no buyers)
-        date_str = date.strftime("%Y%m%d")
+        execution_date_str = execution_date.strftime("%Y%m%d")
         for code in list(positions.keys()):
-            if code not in target_codes and code in stocks and date in stocks[code].index:
-                row_data = stocks[code].loc[date]
-                price = row_data["close"]
+            if code not in target_codes and code in stocks and execution_date in stocks[code].index:
+                row_data = stocks[code].loc[execution_date]
+                price = row_data["open"]
                 pre_cl = row_data.get("pre_close", np.nan)
-                limit_key = (code, date_str)
+                limit_key = (code, execution_date_str)
                 exact_limits = stk_limit_data.get(limit_key)
                 exact_down = exact_limits[1] if exact_limits else None
                 if pd.notna(pre_cl) and check_limit_down(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_down):
@@ -759,7 +848,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
                 comm = amount * commission_rate
                 cash += amount - comm
                 trade_log.append({
-                    "date": date.strftime("%Y-%m-%d"),
+                    "date": execution_date.strftime("%Y-%m-%d"),
                     "symbol": code,
                     "direction": "sell",
                     "quantity": shares,
@@ -774,11 +863,11 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
             # Count buyable targets first for even allocation
             buyable = []
             for code in target_codes:
-                if code not in positions and code in stocks and date in stocks[code].index:
-                    row_data = stocks[code].loc[date]
-                    price = row_data["close"]
+                if code not in positions and code in stocks and execution_date in stocks[code].index:
+                    row_data = stocks[code].loc[execution_date]
+                    price = row_data["open"]
                     pre_cl = row_data.get("pre_close", np.nan)
-                    limit_key = (code, date_str)
+                    limit_key = (code, execution_date_str)
                     exact_limits = stk_limit_data.get(limit_key)
                     exact_up = exact_limits[0] if exact_limits else None
                     if pd.notna(pre_cl) and check_limit_up(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_up):
@@ -796,7 +885,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
                             positions[code] = positions.get(code, 0) + shares
                             cash -= amount + comm
                             trade_log.append({
-                                "date": date.strftime("%Y-%m-%d"),
+                                "date": execution_date.strftime("%Y-%m-%d"),
                                 "symbol": code,
                                 "direction": "buy",
                                 "quantity": shares,
@@ -809,9 +898,9 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         # Record equity
         total_value = cash
         for code, shares in positions.items():
-            if date in stocks[code].index:
-                total_value += shares * stocks[code].loc[date, "close"]
-        equity_curve.append({"date": date.strftime("%Y-%m-%d"), "value": round(total_value, 2)})
+            if execution_date in stocks[code].index:
+                total_value += shares * stocks[code].loc[execution_date, "close"]
+        equity_curve.append({"date": execution_date.strftime("%Y-%m-%d"), "value": round(total_value, 2)})
         if index == 1 or index == total_rebalances or index % 5 == 0:
             loop_progress = 55 + (index / total_rebalances) * 35
             update_progress(loop_progress, f"Backtesting rebalance {index}/{total_rebalances}")
@@ -952,6 +1041,22 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         "score_dispersion": score_dispersion_series,
         "top_bottom_spread": top_bottom_spread_series,
         "grouped_return": grouped_return,
+        "audit": {
+            "future_label_overlap": {
+                "status": "pass" if overlap_audit_rows == 0 else "blocked",
+                "checked_windows": total_rebalances,
+                "candidate_rows": overlap_audit_candidate_rows,
+                "blocked_overlap_rows": overlap_audit_rows,
+                "flagged_windows": overlap_audit_flagged_windows,
+                "sample_windows": overlap_audit_samples,
+            },
+            "execution_timing": {
+                "status": "pass",
+                "signal_source": "rebalance_close",
+                "execution_source": "next_session_open",
+                "bars_between_signal_and_execution": 1,
+            },
+        },
     }
     update_progress(97, "Saving results")
 

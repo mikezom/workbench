@@ -10,6 +10,25 @@ interface DiagnosticsData {
   score_dispersion: Array<{ date: string; mean: number; std: number; min: number; max: number }>;
   top_bottom_spread: Array<{ date: string; value: number }>;
   grouped_return: Array<{ bucket: string; avg_return: number }>;
+  audit?: {
+    future_label_overlap?: {
+      status: string;
+      checked_windows: number;
+      candidate_rows: number;
+      blocked_overlap_rows: number;
+      flagged_windows: number;
+      sample_windows: Array<{
+        signal_date: string;
+        blocked_overlap_rows: number;
+      }>;
+    };
+    execution_timing?: {
+      status: string;
+      signal_source: string;
+      execution_source: string;
+      bars_between_signal_and_execution: number;
+    };
+  };
 }
 
 interface DiagnosticsPanelProps {
@@ -28,10 +47,14 @@ export default function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps)
     return <div className="text-neutral-400 text-sm text-center py-8">No diagnostics data</div>;
   }
 
+  const overlapAudit = diagnostics.audit?.future_label_overlap;
+  const executionAudit = diagnostics.audit?.execution_timing;
   const hasData = diagnostics.rank_ic.length > 0
     || diagnostics.score_dispersion.length > 0
     || diagnostics.top_bottom_spread.length > 0
-    || diagnostics.grouped_return.length > 0;
+    || diagnostics.grouped_return.length > 0
+    || Boolean(overlapAudit)
+    || Boolean(executionAudit);
 
   if (!hasData) {
     return <div className="text-neutral-400 text-sm text-center py-8">No diagnostics data</div>;
@@ -39,6 +62,48 @@ export default function DiagnosticsPanel({ diagnostics }: DiagnosticsPanelProps)
 
   return (
     <div className="space-y-4">
+      {(overlapAudit || executionAudit) && (
+        <div className="grid grid-cols-2 gap-4 portrait:grid-cols-1">
+          {overlapAudit && (
+            <IndicatorCard
+              title="Future-Label Overlap Audit"
+              explanation="Checks whether any training label would extend past the rebalance signal date. Blocked overlaps indicate the engine prevented lookahead leakage."
+            >
+              <AuditList
+                items={[
+                  ["Status", overlapAudit.status.toUpperCase()],
+                  ["Checked windows", String(overlapAudit.checked_windows)],
+                  ["Candidate rows", overlapAudit.candidate_rows.toLocaleString()],
+                  ["Blocked overlap rows", overlapAudit.blocked_overlap_rows.toLocaleString()],
+                  ["Flagged windows", String(overlapAudit.flagged_windows)],
+                  ["Sample windows", overlapAudit.sample_windows.length
+                    ? overlapAudit.sample_windows.map((sample) => (
+                      `${sample.signal_date} (${sample.blocked_overlap_rows.toLocaleString()} rows)`
+                    )).join(", ")
+                    : "None"],
+                ]}
+              />
+            </IndicatorCard>
+          )}
+
+          {executionAudit && (
+            <IndicatorCard
+              title="Execution Timing Audit"
+              explanation="Confirms the engine no longer trades on the same bar that generated close-based factors."
+            >
+              <AuditList
+                items={[
+                  ["Status", executionAudit.status.toUpperCase()],
+                  ["Signal source", executionAudit.signal_source],
+                  ["Execution source", executionAudit.execution_source],
+                  ["Lag bars", String(executionAudit.bars_between_signal_and_execution)],
+                ]}
+              />
+            </IndicatorCard>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 portrait:grid-cols-1">
         <IndicatorCard
           title="Rank IC"
@@ -184,5 +249,18 @@ function IndicatorCard({
       </div>
       {children}
     </div>
+  );
+}
+
+function AuditList({ items }: { items: Array<[string, string]> }) {
+  return (
+    <dl className="space-y-2 text-sm">
+      {items.map(([label, value]) => (
+        <div key={label} className="flex items-start justify-between gap-4">
+          <dt className="text-neutral-500">{label}</dt>
+          <dd className="text-right font-medium text-neutral-800 dark:text-neutral-100">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

@@ -82,6 +82,25 @@ interface BacktestDetail {
       score_dispersion: Array<{ date: string; mean: number; std: number; min: number; max: number }>;
       top_bottom_spread: Array<{ date: string; value: number }>;
       grouped_return: Array<{ bucket: string; avg_return: number }>;
+      audit?: {
+        future_label_overlap?: {
+          status: string;
+          checked_windows: number;
+          candidate_rows: number;
+          blocked_overlap_rows: number;
+          flagged_windows: number;
+          sample_windows: Array<{
+            signal_date: string;
+            blocked_overlap_rows: number;
+          }>;
+        };
+        execution_timing?: {
+          status: string;
+          signal_source: string;
+          execution_source: string;
+          bars_between_signal_and_execution: number;
+        };
+      };
     } | null;
   } | null;
   trades: Array<{
