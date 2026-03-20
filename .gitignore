@@ -88,4 +88,6 @@ CLAUDE.md
 
 # Agent daemon logs
 workbench/logs/
+logs/
 DECOMPOSE_REFLECTION.md
+workbench/scripts/__pycache__/
