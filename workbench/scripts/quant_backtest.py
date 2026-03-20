@@ -410,22 +410,80 @@ def load_benchmark_close(
     start_date: str,
     end_date: str,
 ) -> pd.Series | None:
-    """Load benchmark close prices if the benchmark exists in the market-data DB."""
-    rows = ts_conn.execute(
-        """
-        SELECT trade_date, close
-        FROM daily_ohlcv
-        WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
-        ORDER BY trade_date
-        """,
-        (benchmark_code, start_date, end_date),
-    ).fetchall()
+    """Load benchmark close prices from dedicated index data after validation."""
+    stock_calendar = load_stock_trade_calendar(ts_conn, start_date, end_date)
+    if not stock_calendar:
+        raise ValueError("No stock trading calendar available to validate benchmark data")
+
+    try:
+        rows = ts_conn.execute(
+            """
+            SELECT trade_date, close, pre_close, pct_chg
+            FROM index_daily
+            WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+            ORDER BY trade_date
+            """,
+            (benchmark_code, start_date, end_date),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        raise ValueError(
+            "Benchmark index table `index_daily` is unavailable. "
+            "Run `python scripts/tushare_fetcher.py --mode benchmark-daily` to create and populate it."
+        ) from exc
     if not rows:
-        return None
+        raise ValueError(
+            f"Benchmark {benchmark_code} is missing from index_daily. "
+            "Run `python scripts/tushare_fetcher.py --mode benchmark-daily` to refresh it."
+        )
+
+    benchmark_dates = [r["trade_date"] for r in rows]
+    benchmark_date_set = set(benchmark_dates)
+    missing_dates = sorted(stock_calendar - benchmark_date_set)
+    extra_dates = sorted(benchmark_date_set - stock_calendar)
+    pre_close_missing = sum(1 for r in rows if r["pre_close"] is None)
+    pct_chg_missing = sum(1 for r in rows if r["pct_chg"] is None)
+
+    if missing_dates:
+        preview = ", ".join(missing_dates[:5])
+        raise ValueError(
+            f"Benchmark {benchmark_code} is incomplete: {len(missing_dates)} stock trading dates are missing "
+            f"(e.g. {preview})."
+        )
+    if extra_dates:
+        preview = ", ".join(extra_dates[:5])
+        raise ValueError(
+            f"Benchmark {benchmark_code} is contaminated with {len(extra_dates)} non-trading dates "
+            f"(e.g. {preview})."
+        )
+    if pre_close_missing > 1 or pct_chg_missing > 1:
+        raise ValueError(
+            f"Benchmark {benchmark_code} is incomplete: pre_close missing on {pre_close_missing} rows and "
+            f"pct_chg missing on {pct_chg_missing} rows."
+        )
 
     df = pd.DataFrame([dict(r) for r in rows])
     df["trade_date"] = pd.to_datetime(df["trade_date"], format="%Y%m%d")
     return df.set_index("trade_date")["close"].sort_index()
+
+
+def load_stock_trade_calendar(
+    ts_conn: sqlite3.Connection,
+    start_date: str,
+    end_date: str,
+) -> set[str]:
+    benchmark_codes = tuple(dict.fromkeys(BENCHMARK_ALIASES.values()))
+    placeholders = ",".join("?" for _ in benchmark_codes)
+    rows = ts_conn.execute(
+        f"""
+        SELECT DISTINCT trade_date
+        FROM daily_ohlcv
+        WHERE ts_code NOT IN ({placeholders})
+          AND trade_date >= ? AND trade_date <= ?
+        ORDER BY trade_date
+        """,
+        (*benchmark_codes, start_date, end_date),
+    ).fetchall()
+    return {r["trade_date"] for r in rows}
 
 
 def get_rebalance_dates(dates: pd.DatetimeIndex, freq: str) -> list[pd.Timestamp]:
