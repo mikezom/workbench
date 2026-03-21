@@ -4,24 +4,23 @@ import { join } from "path";
 describe("CrawlPage", () => {
   const pageContent = readFileSync(join(__dirname, "page.tsx"), "utf-8");
 
-  it("should have 6 panel components defined", () => {
-    // Count panel component definitions (ArxivPanel + 5 new panels)
+  it("should have 7 panel components defined", () => {
+    // Count panel component definitions (6 source panels + 1 placeholder panel)
     // Use capital letter after "function " to exclude helper functions like getInitialPanel
     const panelFunctionMatches = pageContent.match(/function [A-Z]\w+Panel\(\)/g);
     expect(panelFunctionMatches).toBeTruthy();
-    expect(panelFunctionMatches!.length).toBe(6);
+    expect(panelFunctionMatches!.length).toBe(7);
   });
 
-  it("should render all 6 panels in the grid", () => {
-    // Verify the grid contains 6 panel components (3 functional + 3 stubs)
+  it("should render all 7 panels in the grid", () => {
+    // Verify the grid contains 7 panel components
     const gridSection = pageContent.match(/<div className="grid[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*\);/);
     expect(gridSection).toBeTruthy();
 
-    // Count panel component usages - should still have 6 panels
-    // (3 functional panels wrapped in divs + 3 stub panels wrapped in divs)
+    // Count panel component usages - should match the current panel set
     const panelUsages = gridSection![1].match(/<\w+Panel\s*\/>/g);
     expect(panelUsages).toBeTruthy();
-    expect(panelUsages!.length).toBe(6);
+    expect(panelUsages!.length).toBe(7);
   });
 
   it("should have panel titles for all 6 sources", () => {
