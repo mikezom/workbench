@@ -44,7 +44,7 @@ Or install the daily 18:00 launchd job:
 ./scripts/install-tushare-update-launch-agent.sh 18 0
 ```
 
-The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest cached trade date through today, refreshes benchmark index rows, refreshes `stk_limit`, refreshes `moneyflow`, refreshes `margin_detail`, and refreshes `adj_factor` for the same window. Logs are written to `workbench/logs/tushare-update.out.log` and `workbench/logs/tushare-update.err.log`.
+The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest cached trade date through today, refreshes benchmark index rows, refreshes `stk_limit`, refreshes `moneyflow`, refreshes `margin_detail`, refreshes `adj_factor`, refreshes `hk_hold`, refreshes `top_list`, and refreshes `stk_holdertrade` for the same window. Logs are written to `workbench/logs/tushare-update.out.log` and `workbench/logs/tushare-update.err.log`.
 
 ## 2. Create a Strategy (Strategies Tab)
 
@@ -52,10 +52,10 @@ The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest c
 2. Fill in:
    - **Name** — e.g., "Momentum + Value"
    - **Description** (optional)
-   - **Factors** — select from 75 factors across 4 categories:
+   - **Factors** — select from 81 factors across 4 categories:
      - *Price*: momentum, mean reversion, volatility, moving-average shape, limit-price distance/counts, beta, benchmark-relative strength, and adjusted-close signals
-     - *Volume*: volume ratios, OBV slope, VWAP deviation, turnover, free-float turnover, market volume ratio, money-flow imbalances, and margin-trading pressure
-     - *Fundamental*: valuation, TTM yields, market-cap structure, profitability, liquidity, growth, and listing age
+     - *Volume*: volume ratios, OBV slope, VWAP deviation, turnover, free-float turnover, market volume ratio, money-flow imbalances, margin-trading pressure, and dragon-tiger list signals
+     - *Fundamental*: valuation, TTM yields, market-cap structure, profitability, liquidity, growth, listing age, northbound ownership, insider accumulation, and ownership concentration
      - *Technical*: RSI, MACD, Bollinger, ATR, ADX, CCI, Stochastic, and Williams %R
    - **Model Type** — Linear Regression, Ridge, Lasso, Random Forest, or XGBoost
    - **Hyperparameters** — appear based on model type (e.g., alpha for Ridge/Lasso, n_estimators for RF/XGBoost)

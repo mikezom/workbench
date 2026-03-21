@@ -246,6 +246,8 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "margin_balance_to_float_mv", name: "Margin Balance / Float MV", category: "volume", description: "Margin balance relative to circulating market cap" },
   { id: "financing_buy_shock", name: "Financing Buy Shock", category: "volume", description: "Financing buy amount relative to its 20-day average" },
   { id: "short_pressure", name: "Short Pressure", category: "volume", description: "Securities-lending balance as a share of total margin balance" },
+  { id: "top_list_flag", name: "Top List Flag", category: "volume", description: "Whether the stock appeared on the daily dragon-tiger list" },
+  { id: "top_list_net_buy_ratio", name: "Top List Net Buy Ratio", category: "volume", description: "Average dragon-tiger list net-buy ratio for the day" },
   // Fundamental
   { id: "pe_ratio", name: "P/E Ratio", category: "fundamental", description: "Price-to-earnings ratio" },
   { id: "pb_ratio", name: "P/B Ratio", category: "fundamental", description: "Price-to-book ratio" },
@@ -269,6 +271,10 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "quick_ratio", name: "Quick Ratio", category: "fundamental", description: "Quick ratio liquidity measure" },
   { id: "operating_revenue_yoy", name: "Operating Revenue YoY", category: "fundamental", description: "Year-over-year operating revenue growth" },
   { id: "listing_age", name: "Listing Age", category: "fundamental", description: "Days since listing" },
+  { id: "northbound_holding_ratio", name: "Northbound Holding Ratio", category: "fundamental", description: "沪深股通持股占比" },
+  { id: "northbound_holding_change_20d", name: "Northbound Holding Change 20D", category: "fundamental", description: "20-day change in northbound holding ratio" },
+  { id: "insider_accumulation", name: "Insider Accumulation", category: "fundamental", description: "Rolling 180-day net insider shareholding change ratio" },
+  { id: "ownership_concentration", name: "Ownership Concentration", category: "fundamental", description: "Top-10 float-holder ownership concentration" },
   // Technical
   { id: "rsi_14", name: "RSI 14", category: "technical", description: "14-day relative strength index" },
   { id: "macd_signal", name: "MACD Signal", category: "technical", description: "MACD signal line crossover" },

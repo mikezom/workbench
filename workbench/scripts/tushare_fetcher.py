@@ -11,6 +11,10 @@ Usage:
     python tushare_fetcher.py --mode moneyflow        # Fetch daily money-flow data
     python tushare_fetcher.py --mode margin-detail    # Fetch daily margin detail
     python tushare_fetcher.py --mode adj-factor       # Fetch daily adjustment factors
+    python tushare_fetcher.py --mode hk-hold          # Fetch northbound holding data
+    python tushare_fetcher.py --mode top-list         # Fetch dragon-tiger list detail
+    python tushare_fetcher.py --mode holder-trade     # Fetch holder trade disclosures
+    python tushare_fetcher.py --mode top10-floatholders # Fetch top-10 float-holder detail
     python tushare_fetcher.py --start 20210101 --end 20241231
 
 When TUSHARE_TOKEN env var is set, uses real tushare API.
@@ -171,6 +175,53 @@ def init_schema(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_adj_factor_date ON adj_factor(trade_date);
+
+        CREATE TABLE IF NOT EXISTS hk_hold (
+            ts_code TEXT NOT NULL,
+            trade_date TEXT NOT NULL,
+            vol REAL,
+            ratio REAL,
+            exchange TEXT,
+            PRIMARY KEY (ts_code, trade_date)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_hk_hold_date ON hk_hold(trade_date);
+
+        CREATE TABLE IF NOT EXISTS top_list (
+            ts_code TEXT NOT NULL,
+            trade_date TEXT NOT NULL,
+            net_rate REAL,
+            net_amount REAL,
+            amount_rate REAL,
+            reason TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (ts_code, trade_date, reason)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_top_list_date ON top_list(trade_date);
+
+        CREATE TABLE IF NOT EXISTS holder_trade (
+            ts_code TEXT NOT NULL,
+            ann_date TEXT NOT NULL,
+            holder_name TEXT NOT NULL,
+            in_de TEXT,
+            change_ratio REAL,
+            begin_date TEXT,
+            close_date TEXT,
+            PRIMARY KEY (ts_code, ann_date, holder_name, in_de, begin_date, close_date)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_holder_trade_ann_date ON holder_trade(ann_date);
+
+        CREATE TABLE IF NOT EXISTS top10_floatholders (
+            ts_code TEXT NOT NULL,
+            ann_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            holder_name TEXT NOT NULL,
+            hold_float_ratio REAL,
+            PRIMARY KEY (ts_code, end_date, holder_name)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_top10_floatholders_end_date ON top10_floatholders(end_date);
     """)
     ensure_analytic_indexes(conn)
 
@@ -310,6 +361,63 @@ def upsert_adj_factor_rows(conn: sqlite3.Connection, df) -> None:
         conn.execute(
             "INSERT OR REPLACE INTO adj_factor (ts_code, trade_date, adj_factor) VALUES (?, ?, ?)",
             (row["ts_code"], row["trade_date"], row.get("adj_factor")),
+        )
+
+
+def upsert_hk_hold_rows(conn: sqlite3.Connection, df) -> None:
+    for _, row in df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO hk_hold (ts_code, trade_date, vol, ratio, exchange) VALUES (?, ?, ?, ?, ?)",
+            (row["ts_code"], row["trade_date"], row.get("vol"), row.get("ratio"), row.get("exchange")),
+        )
+
+
+def upsert_top_list_rows(conn: sqlite3.Connection, df) -> None:
+    for _, row in df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO top_list (ts_code, trade_date, net_rate, net_amount, amount_rate, reason) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                row["ts_code"],
+                row["trade_date"],
+                row.get("net_rate"),
+                row.get("net_amount"),
+                row.get("amount_rate"),
+                row.get("reason", ""),
+            ),
+        )
+
+
+def upsert_holder_trade_rows(conn: sqlite3.Connection, df) -> None:
+    for _, row in df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO holder_trade "
+            "(ts_code, ann_date, holder_name, in_de, change_ratio, begin_date, close_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["ts_code"],
+                row["ann_date"],
+                row["holder_name"],
+                row.get("in_de"),
+                row.get("change_ratio"),
+                row.get("begin_date"),
+                row.get("close_date"),
+            ),
+        )
+
+
+def upsert_top10_floatholders_rows(conn: sqlite3.Connection, df) -> None:
+    for _, row in df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO top10_floatholders "
+            "(ts_code, ann_date, end_date, holder_name, hold_float_ratio) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                row["ts_code"],
+                row["ann_date"],
+                row["end_date"],
+                row["holder_name"],
+                row.get("hold_float_ratio"),
+            ),
         )
 
 
@@ -706,6 +814,27 @@ def fetch_incremental_update(
         adj_rows = 0
         adj_dates = 0
 
+    try:
+        hk_hold_rows, hk_hold_dates = fetch_hk_hold_by_trade_date(conn, pro, effective_start_date, end_date)
+    except Exception as e:
+        print(f"  Warning: failed to refresh hk_hold data: {e}")
+        hk_hold_rows = 0
+        hk_hold_dates = 0
+
+    try:
+        top_list_rows, top_list_dates = fetch_top_list_by_trade_date(conn, pro, effective_start_date, end_date)
+    except Exception as e:
+        print(f"  Warning: failed to refresh top_list data: {e}")
+        top_list_rows = 0
+        top_list_dates = 0
+
+    try:
+        holder_trade_rows, holder_trade_dates = fetch_holder_trade_by_ann_date(conn, pro, effective_start_date, end_date)
+    except Exception as e:
+        print(f"  Warning: failed to refresh holder_trade data: {e}")
+        holder_trade_rows = 0
+        holder_trade_dates = 0
+
     print(
         "Incremental update complete: "
         f"{daily_rows} daily rows across {daily_dates} trade dates, "
@@ -713,7 +842,10 @@ def fetch_incremental_update(
         f"{stk_limit_rows} stk_limit rows across {stk_limit_dates} trade dates, "
         f"{moneyflow_rows} moneyflow rows across {moneyflow_dates} trade dates, "
         f"{margin_rows} margin_detail rows across {margin_dates} trade dates, "
-        f"{adj_rows} adj_factor rows across {adj_dates} trade dates"
+        f"{adj_rows} adj_factor rows across {adj_dates} trade dates, "
+        f"{hk_hold_rows} hk_hold rows across {hk_hold_dates} trade dates, "
+        f"{top_list_rows} top_list rows across {top_list_dates} trade dates, "
+        f"{holder_trade_rows} holder_trade rows across {holder_trade_dates} calendar dates"
     )
 
 
@@ -1209,10 +1341,286 @@ def fetch_adj_factor(
     print(f"  adj_factor complete: {total_inserted} rows across {len(dates)} dates")
 
 
+def fetch_hk_hold_by_trade_date(
+    conn: sqlite3.Connection,
+    pro,
+    start_date: str,
+    end_date: str,
+) -> tuple[int, int]:
+    dates = iter_calendar_dates(start_date, end_date)
+    if not dates:
+        return 0, 0
+
+    print(f"  Refreshing hk_hold data for {len(dates)} calendar days")
+
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+    populated_dates = 0
+    batch_size = 200
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.hk_hold(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                conn.execute("DELETE FROM hk_hold WHERE trade_date = ?", (trade_date,))
+                upsert_hk_hold_rows(conn, df)
+                total_rows += len(df)
+                populated_dates += 1
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} hk_hold dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 20 == 0 or i == len(dates) - 1:
+                conn.commit()
+                print(f"  hk_hold by date: {i+1}/{len(dates)} dates done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch hk_hold for {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    return total_rows, populated_dates
+
+
+def fetch_top_list_by_trade_date(
+    conn: sqlite3.Connection,
+    pro,
+    start_date: str,
+    end_date: str,
+) -> tuple[int, int]:
+    dates = iter_calendar_dates(start_date, end_date)
+    if not dates:
+        return 0, 0
+
+    print(f"  Refreshing top_list data for {len(dates)} calendar days")
+
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+    populated_dates = 0
+    batch_size = 200
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.top_list(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                conn.execute("DELETE FROM top_list WHERE trade_date = ?", (trade_date,))
+                upsert_top_list_rows(conn, df)
+                total_rows += len(df)
+                populated_dates += 1
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} top_list dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 20 == 0 or i == len(dates) - 1:
+                conn.commit()
+                print(f"  top_list by date: {i+1}/{len(dates)} dates done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch top_list for {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    return total_rows, populated_dates
+
+
+def fetch_holder_trade_by_ann_date(
+    conn: sqlite3.Connection,
+    pro,
+    start_date: str,
+    end_date: str,
+) -> tuple[int, int]:
+    dates = iter_calendar_dates(start_date, end_date)
+    if not dates:
+        return 0, 0
+
+    print(f"  Refreshing holder_trade data for {len(dates)} calendar days")
+
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+    populated_dates = 0
+    batch_size = 200
+
+    for i, ann_date in enumerate(dates):
+        try:
+            df = pro.stk_holdertrade(ann_date=ann_date)
+            if df is not None and len(df) > 0:
+                conn.execute("DELETE FROM holder_trade WHERE ann_date = ?", (ann_date,))
+                upsert_holder_trade_rows(conn, df)
+                total_rows += len(df)
+                populated_dates += 1
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} holder_trade dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 20 == 0 or i == len(dates) - 1:
+                conn.commit()
+                print(f"  holder_trade by date: {i+1}/{len(dates)} dates done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch holder_trade for {ann_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    return total_rows, populated_dates
+
+
+def fetch_hk_hold(
+    conn: sqlite3.Connection,
+    token: str,
+    start_date: str,
+    end_date: str,
+) -> None:
+    try:
+        import tushare as ts
+    except ImportError:
+        print("ERROR: tushare package not installed. Run: pip install tushare")
+        sys.exit(1)
+
+    pro = ts.pro_api(token)
+    rows, dates = fetch_hk_hold_by_trade_date(conn, pro, start_date, end_date)
+    print(f"  hk_hold complete: {rows} rows across {dates} dates")
+
+
+def fetch_top_list(
+    conn: sqlite3.Connection,
+    token: str,
+    start_date: str,
+    end_date: str,
+) -> None:
+    try:
+        import tushare as ts
+    except ImportError:
+        print("ERROR: tushare package not installed. Run: pip install tushare")
+        sys.exit(1)
+
+    pro = ts.pro_api(token)
+    rows, dates = fetch_top_list_by_trade_date(conn, pro, start_date, end_date)
+    print(f"  top_list complete: {rows} rows across {dates} dates")
+
+
+def fetch_holder_trade(
+    conn: sqlite3.Connection,
+    token: str,
+    start_date: str,
+    end_date: str,
+) -> None:
+    try:
+        import tushare as ts
+    except ImportError:
+        print("ERROR: tushare package not installed. Run: pip install tushare")
+        sys.exit(1)
+
+    pro = ts.pro_api(token)
+    rows, dates = fetch_holder_trade_by_ann_date(conn, pro, start_date, end_date)
+    print(f"  holder_trade complete: {rows} rows across {dates} calendar dates")
+
+
+def fetch_top10_floatholders(
+    conn: sqlite3.Connection,
+    token: str,
+    start_date: str,
+    end_date: str,
+    limit: int = 0,
+) -> None:
+    try:
+        import tushare as ts
+    except ImportError:
+        print("ERROR: tushare package not installed. Run: pip install tushare")
+        sys.exit(1)
+
+    pro = ts.pro_api(token)
+    stock_rows = conn.execute("SELECT ts_code FROM stock_basic ORDER BY ts_code").fetchall()
+    codes = [r[0] for r in stock_rows]
+    if limit > 0:
+        codes = codes[:limit]
+
+    if not codes:
+        print("  No stock codes available for top10_floatholders fetch")
+        return
+
+    print(f"  Fetching top10_floatholders for {len(codes)} stocks")
+    batch_size = 200
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+
+    for i, code in enumerate(codes):
+        try:
+            df = pro.top10_floatholders(ts_code=code, start_date=start_date, end_date=end_date)
+            if df is not None and len(df) > 0:
+                conn.execute(
+                    "DELETE FROM top10_floatholders WHERE ts_code = ? AND end_date >= ? AND end_date <= ?",
+                    (code, start_date, end_date),
+                )
+                upsert_top10_floatholders_rows(conn, df)
+                total_rows += len(df)
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(codes)} stocks done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 50 == 0 or i == len(codes) - 1:
+                conn.commit()
+                print(f"  top10_floatholders: {i+1}/{len(codes)} stocks done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch top10_floatholders for {code}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    print(f"  top10_floatholders complete: {total_rows} rows across {len(codes)} stocks")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Tushare data fetcher")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Use mock data instead of real API")
-    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "incremental", "benchmark-daily", "backfill-daily", "stk-limit", "moneyflow", "margin-detail", "adj-factor"], default="history", help="Fetch type")
+    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "incremental", "benchmark-daily", "backfill-daily", "stk-limit", "moneyflow", "margin-detail", "adj-factor", "hk-hold", "top-list", "holder-trade", "top10-floatholders"], default="history", help="Fetch type")
     parser.add_argument("--start", default="20210101", help="Start date (YYYYMMDD)")
     parser.add_argument("--end", default="20241231", help="End date (YYYYMMDD)")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of stocks to fetch (0 = default)")
@@ -1225,7 +1633,7 @@ def main():
     init_schema(conn)
     migrate_schema(conn)
 
-    if args.mode in ("incremental", "benchmark-daily", "backfill-daily", "stk-limit", "moneyflow", "margin-detail", "adj-factor") and not token:
+    if args.mode in ("incremental", "benchmark-daily", "backfill-daily", "stk-limit", "moneyflow", "margin-detail", "adj-factor", "hk-hold", "top-list", "holder-trade", "top10-floatholders") and not token:
         print(f"ERROR: TUSHARE_TOKEN required for {args.mode} mode")
         sys.exit(1)
 
@@ -1251,6 +1659,18 @@ def main():
     elif args.mode == "adj-factor":
         print(f"Fetching adj_factor data ({args.start}–{args.end})")
         fetch_adj_factor(conn, token, args.start, args.end)
+    elif args.mode == "hk-hold":
+        print(f"Fetching hk_hold data ({args.start}–{args.end})")
+        fetch_hk_hold(conn, token, args.start, args.end)
+    elif args.mode == "top-list":
+        print(f"Fetching top_list data ({args.start}–{args.end})")
+        fetch_top_list(conn, token, args.start, args.end)
+    elif args.mode == "holder-trade":
+        print(f"Fetching holder_trade data ({args.start}–{args.end})")
+        fetch_holder_trade(conn, token, args.start, args.end)
+    elif args.mode == "top10-floatholders":
+        print(f"Fetching top10_floatholders data ({args.start}–{args.end}, limit={args.limit or 'all'})")
+        fetch_top10_floatholders(conn, token, args.start, args.end, args.limit)
     elif use_mock:
         print("Running in DRY-RUN mode (mock data)")
         populate_mock_data(conn, args.start, args.end, args.mode)

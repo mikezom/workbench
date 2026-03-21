@@ -493,6 +493,112 @@ def load_stock_data(
                 if "adj_factor" in adj_df.columns:
                     df["adj_factor"] = adj_df["adj_factor"]
 
+            try:
+                hk_hold_rows = local_conn.execute(
+                    """
+                    SELECT trade_date, ratio
+                    FROM hk_hold
+                    WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+                    ORDER BY trade_date
+                    """,
+                    (code, start_date, end_date),
+                ).fetchall()
+                hk_hold_query_ok = True
+            except sqlite3.OperationalError:
+                hk_hold_rows = []
+                hk_hold_query_ok = False
+            if hk_hold_query_ok:
+                northbound_series = pd.Series(0.0, index=df.index, dtype=float)
+                if hk_hold_rows:
+                    hk_hold_df = pd.DataFrame([dict(r) for r in hk_hold_rows])
+                    hk_hold_df["trade_date"] = pd.to_datetime(hk_hold_df["trade_date"], format="%Y%m%d")
+                    hk_hold_df = hk_hold_df.set_index("trade_date").sort_index()
+                    northbound_series = hk_hold_df["ratio"].reindex(df.index, method="ffill").fillna(0.0)
+                df["northbound_holding_ratio"] = northbound_series
+
+            try:
+                top_list_rows = local_conn.execute(
+                    """
+                    SELECT trade_date, 1.0 AS top_list_flag, AVG(net_rate) AS top_list_net_buy_ratio
+                    FROM top_list
+                    WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+                    GROUP BY trade_date
+                    ORDER BY trade_date
+                    """,
+                    (code, start_date, end_date),
+                ).fetchall()
+                top_list_query_ok = True
+            except sqlite3.OperationalError:
+                top_list_rows = []
+                top_list_query_ok = False
+            if top_list_query_ok:
+                top_list_flag_series = pd.Series(0.0, index=df.index, dtype=float)
+                top_list_ratio_series = pd.Series(0.0, index=df.index, dtype=float)
+                if top_list_rows:
+                    top_list_df = pd.DataFrame([dict(r) for r in top_list_rows])
+                    top_list_df["trade_date"] = pd.to_datetime(top_list_df["trade_date"], format="%Y%m%d")
+                    top_list_df = top_list_df.set_index("trade_date").sort_index()
+                    top_list_flag_series.update(top_list_df["top_list_flag"])
+                    top_list_ratio_series.update(top_list_df["top_list_net_buy_ratio"].fillna(0.0))
+                df["top_list_flag"] = top_list_flag_series
+                df["top_list_net_buy_ratio"] = top_list_ratio_series
+
+            try:
+                holder_trade_rows = local_conn.execute(
+                    """
+                    SELECT
+                        ann_date,
+                        SUM(
+                            CASE
+                                WHEN in_de = 'IN' THEN COALESCE(change_ratio, 0)
+                                WHEN in_de = 'DE' THEN -COALESCE(change_ratio, 0)
+                                ELSE 0
+                            END
+                        ) AS insider_net_change_ratio
+                    FROM holder_trade
+                    WHERE ts_code = ? AND ann_date >= ? AND ann_date <= ?
+                    GROUP BY ann_date
+                    ORDER BY ann_date
+                    """,
+                    (code, start_date, end_date),
+                ).fetchall()
+                holder_trade_query_ok = True
+            except sqlite3.OperationalError:
+                holder_trade_rows = []
+                holder_trade_query_ok = False
+            if holder_trade_query_ok:
+                insider_series = pd.Series(0.0, index=df.index, dtype=float)
+                if holder_trade_rows:
+                    holder_trade_df = pd.DataFrame([dict(r) for r in holder_trade_rows])
+                    holder_trade_df["ann_date"] = pd.to_datetime(holder_trade_df["ann_date"], format="%Y%m%d")
+                    holder_trade_df = holder_trade_df.set_index("ann_date").sort_index()
+                    insider_series.update(holder_trade_df["insider_net_change_ratio"].fillna(0.0))
+                df["insider_net_change_ratio"] = insider_series
+
+            try:
+                top10_rows = local_conn.execute(
+                    """
+                    SELECT end_date, SUM(COALESCE(hold_float_ratio, 0)) AS ownership_concentration
+                    FROM top10_floatholders
+                    WHERE ts_code = ? AND end_date >= ? AND end_date <= ?
+                    GROUP BY end_date
+                    ORDER BY end_date
+                    """,
+                    (code, start_date, end_date),
+                ).fetchall()
+                top10_query_ok = True
+            except sqlite3.OperationalError:
+                top10_rows = []
+                top10_query_ok = False
+            if top10_query_ok:
+                ownership_series = pd.Series(0.0, index=df.index, dtype=float)
+                if top10_rows:
+                    top10_df = pd.DataFrame([dict(r) for r in top10_rows])
+                    top10_df["end_date"] = pd.to_datetime(top10_df["end_date"], format="%Y%m%d")
+                    top10_df = top10_df.set_index("end_date").sort_index()
+                    ownership_series = top10_df["ownership_concentration"].reindex(df.index, method="ffill").fillna(0.0)
+                df["ownership_concentration"] = ownership_series
+
             return code, df
         finally:
             local_conn.close()

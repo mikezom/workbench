@@ -252,6 +252,14 @@ def financing_buy_shock(df: pd.DataFrame) -> pd.Series:
 def short_pressure(df: pd.DataFrame) -> pd.Series:
     return _safe_ratio(_column_or_nan(df, "rqye"), _column_or_nan(df, "rzrqye"))
 
+
+def top_list_flag(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "top_list_flag")
+
+
+def top_list_net_buy_ratio(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "top_list_net_buy_ratio")
+
 # ---------------------------------------------------------------------------
 # Fundamental factors (uses merged fundamental data)
 # ---------------------------------------------------------------------------
@@ -335,6 +343,22 @@ def listing_age(df: pd.DataFrame) -> pd.Series:
     list_dates = _column_or_nan(df, "list_date")
     list_dates = pd.to_datetime(list_dates, errors="coerce")
     return (pd.Series(df.index, index=df.index) - list_dates).dt.days
+
+
+def northbound_holding_ratio(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "northbound_holding_ratio")
+
+
+def northbound_holding_change_20d(df: pd.DataFrame) -> pd.Series:
+    return northbound_holding_ratio(df).diff(20)
+
+
+def insider_accumulation(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "insider_net_change_ratio").rolling(180, min_periods=1).sum()
+
+
+def ownership_concentration(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "ownership_concentration")
 
 # ---------------------------------------------------------------------------
 # Technical factors
@@ -456,6 +480,8 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "margin_balance_to_float_mv": margin_balance_to_float_mv,
     "financing_buy_shock": financing_buy_shock,
     "short_pressure": short_pressure,
+    "top_list_flag": top_list_flag,
+    "top_list_net_buy_ratio": top_list_net_buy_ratio,
     # Fundamental
     "pe_ratio": pe_ratio,
     "pb_ratio": pb_ratio,
@@ -479,6 +505,10 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "quick_ratio": quick_ratio,
     "operating_revenue_yoy": operating_revenue_yoy,
     "listing_age": listing_age,
+    "northbound_holding_ratio": northbound_holding_ratio,
+    "northbound_holding_change_20d": northbound_holding_change_20d,
+    "insider_accumulation": insider_accumulation,
+    "ownership_concentration": ownership_concentration,
     # Technical
     "rsi_14": rsi_14,
     "macd_signal": macd_signal,
