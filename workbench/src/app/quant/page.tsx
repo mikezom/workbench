@@ -37,6 +37,7 @@ interface Strategy {
 interface BacktestRun {
   id: number;
   strategy_id: number;
+  strategy_snapshot: Strategy | null;
   status: string;
   start_date: string;
   end_date: string;
@@ -495,7 +496,7 @@ function ResultsTab({
   detail: BacktestDetail | null;
   onSelectRun: (id: number) => void;
 }) {
-  const completedRuns = runs.filter((r) => r.status === "completed");
+  const completedRuns = runs.filter((r) => r.status === "completed").sort(compareRunsForResults);
   const [view, setView] = useState<ResultViewTab>("overview");
 
   useEffect(() => {
@@ -503,21 +504,14 @@ function ResultsTab({
   }, [selectedRunId]);
 
   return (
-    <div>
-      <div className="flex items-center gap-4 mb-4">
-        <h2 className="text-lg font-semibold">Results</h2>
-        <select
-          value={selectedRunId ?? ""}
-          onChange={(e) => onSelectRun(Number(e.target.value))}
-          className="border border-neutral-300 dark:border-neutral-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-neutral-800"
-        >
-          <option value="">Select a backtest run...</option>
-          {completedRuns.map((r) => (
-            <option key={r.id} value={r.id}>
-              #{r.id} — {r.start_date} to {r.end_date}
-            </option>
-          ))}
-        </select>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Results</h2>
+          <p className="text-sm text-neutral-500 mt-1">
+            {completedRuns.length} completed runs. Select a run from the left to inspect it.
+          </p>
+        </div>
         {selectedRunId && (
           <a
             href={`/api/quant/backtest/${selectedRunId}/report`}
@@ -530,123 +524,162 @@ function ResultsTab({
         )}
       </div>
 
-      {!detail?.results && (
-        <div className="text-neutral-400 dark:text-neutral-500 text-center py-20 text-sm">
-          {completedRuns.length === 0
-            ? "No completed backtests yet. Run a backtest first."
-            : "Select a completed backtest run to view results."}
-        </div>
-      )}
-
-      {detail?.results && (
-        <div className="space-y-6">
-          <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4 space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-lg font-semibold">
-                  {detail.strategy?.name ?? `Backtest #${detail.run.id}`}
-                </div>
-                <div className="text-sm text-neutral-500 mt-1">
-                  {detail.run.start_date} – {detail.run.end_date}
-                </div>
-              </div>
-              <StatusBadge status={detail.run.status} />
+      <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+        <aside className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 h-fit xl:sticky xl:top-6">
+          {completedRuns.length === 0 ? (
+            <div className="text-neutral-400 dark:text-neutral-500 text-sm py-8 text-center">
+              No completed backtests yet.
             </div>
-
-            <div className="grid grid-cols-4 gap-3 portrait:grid-cols-2">
-              <MetadataItem label="Model" value={detail.strategy?.model_type ?? "—"} />
-              <MetadataItem label="Universe" value={detail.strategy?.universe ?? "—"} />
-              <MetadataItem label="Benchmark" value={detail.run.benchmark} />
-              <MetadataItem label="Rebalance" value={detail.run.rebalance_freq} />
-              <MetadataItem label="Top N" value={String(detail.run.top_n)} />
-              <MetadataItem label="Train Window" value={`${detail.run.config.train_window_days ?? 240} days`} />
-              <MetadataItem label="Horizon" value={`${detail.run.config.prediction_horizon_days ?? 20} days`} />
-              <MetadataItem label="Factors" value={String(detail.strategy?.factors.length ?? 0)} />
-            </div>
-          </div>
-
-          <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-700">
-            {RESULT_VIEW_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setView(tab.id)}
-                className={`px-3 py-2 text-sm rounded-t ${
-                  view === tab.id
-                    ? "bg-white dark:bg-neutral-800 border border-b-0 border-neutral-200 dark:border-neutral-700 font-medium"
-                    : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {view === "overview" && (
-            <div className="space-y-6">
-              <MetricsPanel
-                totalReturn={detail.results.total_return}
-                annualizedReturn={detail.results.annualized_return}
-                sharpeRatio={detail.results.sharpe_ratio}
-                maxDrawdown={detail.results.max_drawdown}
-                winRate={detail.results.win_rate}
-                profitFactor={detail.results.profit_factor}
-                totalTrades={detail.results.total_trades}
-                alpha={detail.results.alpha}
-                beta={detail.results.beta}
-              />
-
-              <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
-                <EquityChart
-                  data={detail.results.equity_curve}
-                  benchmarkCurve={detail.results.benchmark_curve}
-                  initialCapital={detail.run.initial_capital}
+          ) : (
+            <div className="space-y-2 max-h-[70vh] overflow-auto pr-1 custom-scrollbar">
+              {completedRuns.map((run) => (
+                <ResultRunCard
+                  key={run.id}
+                  run={run}
+                  selected={selectedRunId === run.id}
+                  onSelect={onSelectRun}
                 />
+              ))}
+            </div>
+          )}
+        </aside>
+
+        <div className="min-w-0">
+          {!detail?.results && (
+            <div className="text-neutral-400 dark:text-neutral-500 text-center py-20 text-sm border border-dashed border-neutral-300 dark:border-neutral-700 rounded-lg">
+              {completedRuns.length === 0
+                ? "Run a backtest first to populate this view."
+                : "Select a completed run from the left to inspect its result."}
+            </div>
+          )}
+
+          {detail?.results && (
+            <div className="space-y-4">
+              <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3.5 space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-lg font-semibold truncate">
+                      {detail.strategy?.name ?? `Backtest #${detail.run.id}`}
+                    </div>
+                    <div className="text-sm text-neutral-500 mt-1">
+                      Run #{detail.run.id} • {detail.run.start_date} – {detail.run.end_date}
+                    </div>
+                  </div>
+
+                  <StatusBadge status={detail.run.status} />
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                  <MetadataItem compact label="Model" value={detail.strategy?.model_type ?? "—"} />
+                  <MetadataItem compact label="Universe" value={detail.strategy?.universe ?? "—"} />
+                  <MetadataItem compact label="Benchmark" value={detail.run.benchmark} />
+                  <MetadataItem compact label="Rebalance" value={detail.run.rebalance_freq} />
+                  <MetadataItem compact label="Top N" value={String(detail.run.top_n)} />
+                  <MetadataItem compact label="Train Window" value={`${detail.run.config.train_window_days ?? 240}d`} />
+                  <MetadataItem compact label="Horizon" value={`${detail.run.config.prediction_horizon_days ?? 20}d`} />
+                  <MetadataItem compact label="Factors" value={String(detail.strategy?.factors.length ?? 0)} />
+                </div>
               </div>
 
-              <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
-                <MonthlyReturnsHeatmap data={detail.results.monthly_returns} />
+              <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-700 overflow-auto">
+                {RESULT_VIEW_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setView(tab.id)}
+                    className={`px-3 py-2 text-sm rounded-t whitespace-nowrap ${
+                      view === tab.id
+                        ? "bg-white dark:bg-neutral-800 border border-b-0 border-neutral-200 dark:border-neutral-700 font-medium"
+                        : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
+
+              {view === "overview" && (
+                <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)] items-start">
+                  <div className="space-y-4 min-w-0">
+                    <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3">
+                      <EquityChart
+                        data={detail.results.equity_curve}
+                        benchmarkCurve={detail.results.benchmark_curve}
+                        initialCapital={detail.run.initial_capital}
+                      />
+                    </div>
+
+                    <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3">
+                      <MonthlyReturnsHeatmap data={detail.results.monthly_returns} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 min-w-0">
+                    <MetricsPanel
+                      totalReturn={detail.results.total_return}
+                      annualizedReturn={detail.results.annualized_return}
+                      sharpeRatio={detail.results.sharpe_ratio}
+                      maxDrawdown={detail.results.max_drawdown}
+                      winRate={detail.results.win_rate}
+                      profitFactor={detail.results.profit_factor}
+                      totalTrades={detail.results.total_trades}
+                      alpha={detail.results.alpha}
+                      beta={detail.results.beta}
+                      compact
+                    />
+
+                    <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 space-y-2">
+                      <div className="text-sm font-semibold">Run Notes</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <MetadataItem compact label="Capital" value={detail.run.initial_capital.toLocaleString()} />
+                        <MetadataItem compact label="Commission" value={detail.run.commission.toFixed(4)} />
+                        <MetadataItem compact label="Created" value={detail.run.created_at} />
+                        <MetadataItem compact label="Completed" value={detail.run.completed_at ?? "—"} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {view === "yearly" && (
+                <YearlyPerformanceTable rows={detail.results.yearly_performance} />
+              )}
+
+              {view === "features" && (
+                <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3">
+                  <FactorAnalysis importance={detail.results.factor_importance} />
+                </div>
+              )}
+
+              {view === "trades" && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3">Trade Log ({detail.trades.length} trades)</h3>
+                  <TradeLogTable trades={detail.trades} />
+                </div>
+              )}
+
+              {view === "assets" && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3">Assets Ranked By Earnings</h3>
+                  <AssetEarningsTable trades={detail.trades} />
+                </div>
+              )}
+
+              {view === "diagnostics" && (
+                <DiagnosticsPanel diagnostics={detail.results.diagnostics} />
+              )}
             </div>
-          )}
-
-          {view === "yearly" && (
-            <YearlyPerformanceTable rows={detail.results.yearly_performance} />
-          )}
-
-          {view === "features" && (
-            <div className="border border-neutral-200 dark:border-neutral-700 rounded p-4">
-              <FactorAnalysis importance={detail.results.factor_importance} />
-            </div>
-          )}
-
-          {view === "trades" && (
-            <div>
-              <h3 className="text-sm font-semibold mb-3">Trade Log ({detail.trades.length} trades)</h3>
-              <TradeLogTable trades={detail.trades} />
-            </div>
-          )}
-
-          {view === "assets" && (
-            <div>
-              <h3 className="text-sm font-semibold mb-3">Assets Ranked By Earnings</h3>
-              <AssetEarningsTable trades={detail.trades} />
-            </div>
-          )}
-
-          {view === "diagnostics" && (
-            <DiagnosticsPanel diagnostics={detail.results.diagnostics} />
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-function MetadataItem({ label, value }: { label: string; value: string }) {
+function MetadataItem({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
   return (
-    <div className="border border-neutral-200 dark:border-neutral-700 rounded px-3 py-2">
+    <div className={`border border-neutral-200 dark:border-neutral-700 rounded ${compact ? "px-2.5 py-2" : "px-3 py-2"}`}>
       <div className="text-[11px] uppercase tracking-wide text-neutral-400">{label}</div>
-      <div className="text-sm mt-1">{value}</div>
+      <div className={`${compact ? "text-[13px]" : "text-sm"} mt-1 break-words`}>{value}</div>
     </div>
   );
 }
@@ -734,5 +767,47 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`px-2 py-0.5 rounded-full text-xs ${colors[status] ?? ""}`}>
       {status}
     </span>
+  );
+}
+
+function compareRunsForResults(a: BacktestRun, b: BacktestRun): number {
+  const aDate = a.completed_at ?? a.created_at;
+  const bDate = b.completed_at ?? b.created_at;
+  return bDate.localeCompare(aDate) || b.id - a.id;
+}
+
+function ResultRunCard({
+  run,
+  selected,
+  onSelect,
+}: {
+  run: BacktestRun;
+  selected: boolean;
+  onSelect: (id: number) => void;
+}) {
+  const title = run.strategy_snapshot?.name ?? `Backtest #${run.id}`;
+
+  return (
+    <div
+      className={`rounded-lg border p-2.5 transition-colors ${
+        selected
+          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-500/60"
+          : "border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <button type="button" onClick={() => onSelect(run.id)} className="min-w-0 flex-1 text-left">
+          <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+            <span className="font-mono">#{run.id}</span>
+            <span>•</span>
+            <span>{run.start_date}–{run.end_date}</span>
+          </div>
+          <div className="font-medium text-sm mt-1 truncate">{title}</div>
+          <div className="text-xs text-neutral-500 mt-1">
+            {run.strategy_snapshot?.universe ?? "—"} • {run.rebalance_freq}
+          </div>
+        </button>
+      </div>
+    </div>
   );
 }

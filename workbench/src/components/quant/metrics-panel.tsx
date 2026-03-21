@@ -10,19 +10,25 @@ interface MetricsPanelProps {
   totalTrades: number | null;
   alpha: number | null;
   beta: number | null;
+  compact?: boolean;
 }
 
-function MetricCard({ label, value, format, positiveGood = true }: {
+function MetricCard({ label, value, format, positiveGood = true, compact = false }: {
   label: string;
   value: number | null;
   format: "percent" | "number" | "ratio";
   positiveGood?: boolean;
+  compact?: boolean;
 }) {
+  const paddingClass = compact ? "p-2.5" : "p-3";
+  const labelClass = compact ? "text-[11px]" : "text-xs";
+  const valueClass = compact ? "text-base" : "text-lg";
+
   if (value === null || value === undefined) {
     return (
-      <div className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
-        <div className="text-xs text-neutral-400">{label}</div>
-        <div className="text-lg font-mono mt-1">—</div>
+      <div className={`border border-neutral-200 dark:border-neutral-700 rounded ${paddingClass}`}>
+        <div className={`${labelClass} text-neutral-400`}>{label}</div>
+        <div className={`${valueClass} font-mono mt-1`}>—</div>
       </div>
     );
   }
@@ -44,25 +50,25 @@ function MetricCard({ label, value, format, positiveGood = true }: {
     : "";
 
   return (
-    <div className="border border-neutral-200 dark:border-neutral-700 rounded p-3">
-      <div className="text-xs text-neutral-400">{label}</div>
-      <div className={`text-lg font-mono mt-1 ${colorClass}`}>{display}</div>
+    <div className={`border border-neutral-200 dark:border-neutral-700 rounded ${paddingClass}`}>
+      <div className={`${labelClass} text-neutral-400`}>{label}</div>
+      <div className={`${valueClass} font-mono mt-1 ${colorClass}`}>{display}</div>
     </div>
   );
 }
 
 export default function MetricsPanel(props: MetricsPanelProps) {
   return (
-    <div className="grid grid-cols-3 gap-3 portrait:grid-cols-2">
-      <MetricCard label="Total Return" value={props.totalReturn} format="percent" />
-      <MetricCard label="Annualized Return" value={props.annualizedReturn} format="percent" />
-      <MetricCard label="Sharpe Ratio" value={props.sharpeRatio} format="ratio" />
-      <MetricCard label="Max Drawdown" value={props.maxDrawdown} format="percent" positiveGood={false} />
-      <MetricCard label="Win Rate" value={props.winRate} format="percent" />
-      <MetricCard label="Profit Factor" value={props.profitFactor} format="ratio" />
-      <MetricCard label="Total Trades" value={props.totalTrades} format="number" positiveGood={false} />
-      <MetricCard label="Alpha" value={props.alpha} format="percent" />
-      <MetricCard label="Beta" value={props.beta} format="ratio" positiveGood={false} />
+    <div className={`grid gap-2.5 ${props.compact ? "grid-cols-2 xl:grid-cols-3" : "grid-cols-3 portrait:grid-cols-2"}`}>
+      <MetricCard label="Total Return" value={props.totalReturn} format="percent" compact={props.compact} />
+      <MetricCard label="Annualized Return" value={props.annualizedReturn} format="percent" compact={props.compact} />
+      <MetricCard label="Sharpe Ratio" value={props.sharpeRatio} format="ratio" compact={props.compact} />
+      <MetricCard label="Max Drawdown" value={props.maxDrawdown} format="percent" positiveGood={false} compact={props.compact} />
+      <MetricCard label="Win Rate" value={props.winRate} format="percent" compact={props.compact} />
+      <MetricCard label="Profit Factor" value={props.profitFactor} format="ratio" compact={props.compact} />
+      <MetricCard label="Total Trades" value={props.totalTrades} format="number" positiveGood={false} compact={props.compact} />
+      <MetricCard label="Alpha" value={props.alpha} format="percent" compact={props.compact} />
+      <MetricCard label="Beta" value={props.beta} format="ratio" positiveGood={false} compact={props.compact} />
     </div>
   );
 }
