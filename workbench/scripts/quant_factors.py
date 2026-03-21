@@ -197,6 +197,23 @@ def free_float_turnover(df: pd.DataFrame) -> pd.Series:
 def market_volume_ratio(df: pd.DataFrame) -> pd.Series:
     return _column_or_nan(df, "volume_ratio")
 
+
+def net_mf_amount_ratio(df: pd.DataFrame) -> pd.Series:
+    # moneyflow amounts are in 10k CNY; daily amount is in 1k CNY.
+    return _safe_ratio(_column_or_nan(df, "net_mf_amount") * 10, df["amount"])
+
+
+def large_order_net_ratio(df: pd.DataFrame) -> pd.Series:
+    buy = _column_or_nan(df, "buy_lg_amount")
+    sell = _column_or_nan(df, "sell_lg_amount")
+    return _safe_ratio(buy - sell, buy + sell)
+
+
+def extra_large_order_imbalance(df: pd.DataFrame) -> pd.Series:
+    buy = _column_or_nan(df, "buy_elg_amount")
+    sell = _column_or_nan(df, "sell_elg_amount")
+    return _safe_ratio(buy - sell, buy + sell)
+
 # ---------------------------------------------------------------------------
 # Fundamental factors (uses merged fundamental data)
 # ---------------------------------------------------------------------------
@@ -391,6 +408,9 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "vol_ratio": vol_ratio,
     "free_float_turnover": free_float_turnover,
     "market_volume_ratio": market_volume_ratio,
+    "net_mf_amount_ratio": net_mf_amount_ratio,
+    "large_order_net_ratio": large_order_net_ratio,
+    "extra_large_order_imbalance": extra_large_order_imbalance,
     # Fundamental
     "pe_ratio": pe_ratio,
     "pb_ratio": pb_ratio,

@@ -236,6 +236,9 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "vol_ratio", name: "Volume Ratio 5/20", category: "volume", description: "Volume ratio of 5-day average to 20-day average" },
   { id: "free_float_turnover", name: "Free Float Turnover", category: "volume", description: "Turnover rate based on free-float shares" },
   { id: "market_volume_ratio", name: "Market Volume Ratio", category: "volume", description: "Tushare daily volume ratio indicator" },
+  { id: "net_mf_amount_ratio", name: "Net Money Flow Ratio", category: "volume", description: "Net money flow scaled by traded amount" },
+  { id: "large_order_net_ratio", name: "Large Order Net Ratio", category: "volume", description: "Large-order buy/sell imbalance" },
+  { id: "extra_large_order_imbalance", name: "Extra Large Order Imbalance", category: "volume", description: "Extra-large-order buy/sell imbalance" },
   // Fundamental
   { id: "pe_ratio", name: "P/E Ratio", category: "fundamental", description: "Price-to-earnings ratio" },
   { id: "pb_ratio", name: "P/B Ratio", category: "fundamental", description: "Price-to-book ratio" },

@@ -6,7 +6,7 @@ describe("quant factor registry", () => {
     const factors = listFactors();
     const ids = factors.map((factor) => factor.id);
 
-    expect(factors).toHaveLength(65);
+    expect(factors).toHaveLength(68);
     expect(ids).toEqual(
       expect.arrayContaining([
         "earnings_yield_ttm",
@@ -29,11 +29,14 @@ describe("quant factor registry", () => {
         "residual_vol_60d",
         "relative_strength_vs_benchmark",
         "listing_age",
+        "net_mf_amount_ratio",
+        "large_order_net_ratio",
+        "extra_large_order_imbalance",
       ])
     );
 
     expect(listFactors("price")).toHaveLength(25);
-    expect(listFactors("volume")).toHaveLength(8);
+    expect(listFactors("volume")).toHaveLength(11);
     expect(listFactors("fundamental")).toHaveLength(22);
     expect(listFactors("technical")).toHaveLength(10);
   });

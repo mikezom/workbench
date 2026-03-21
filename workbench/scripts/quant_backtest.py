@@ -426,6 +426,34 @@ def load_stock_data(
                     if col in limit_df.columns:
                         df[col] = limit_df[col]
 
+            try:
+                moneyflow_rows = local_conn.execute(
+                    """
+                    SELECT
+                        trade_date, buy_lg_amount, sell_lg_amount,
+                        buy_elg_amount, sell_elg_amount, net_mf_amount
+                    FROM moneyflow
+                    WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+                    ORDER BY trade_date
+                    """,
+                    (code, start_date, end_date),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                moneyflow_rows = []
+            if moneyflow_rows:
+                moneyflow_df = pd.DataFrame([dict(r) for r in moneyflow_rows])
+                moneyflow_df["trade_date"] = pd.to_datetime(moneyflow_df["trade_date"], format="%Y%m%d")
+                moneyflow_df = moneyflow_df.set_index("trade_date").sort_index()
+                for col in [
+                    "buy_lg_amount",
+                    "sell_lg_amount",
+                    "buy_elg_amount",
+                    "sell_elg_amount",
+                    "net_mf_amount",
+                ]:
+                    if col in moneyflow_df.columns:
+                        df[col] = moneyflow_df[col]
+
             return code, df
         finally:
             local_conn.close()
