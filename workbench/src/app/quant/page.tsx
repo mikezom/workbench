@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { BookmarkIcon as BookmarkOutlineIcon } from "@heroicons/react/24/outline";
+import { BookmarkIcon as BookmarkOutlineIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { BookmarkIcon as BookmarkSolidIcon } from "@heroicons/react/24/solid";
 import StrategyList from "@/components/quant/strategy-list";
 import StrategyForm from "@/components/quant/strategy-form";
@@ -281,6 +281,33 @@ export default function QuantPage() {
     }
   };
 
+  const handleDeleteResult = async (runId: number) => {
+    if (!window.confirm(`Delete backtest result #${runId}? This will remove the run, result, and trade log.`)) {
+      return;
+    }
+
+    const remainingCompletedRuns = backtestRuns
+      .filter((run) => run.status === "completed" && run.id !== runId)
+      .sort(compareRunsForResults);
+    const nextRunId = selectedRunId === runId ? (remainingCompletedRuns[0]?.id ?? null) : selectedRunId;
+
+    setResultActionRunId(runId);
+    try {
+      await fetch(`/api/quant/backtest/${runId}`, { method: "DELETE" });
+      setSelectedRunId(nextRunId);
+      if (!nextRunId) {
+        setBacktestDetail(null);
+      }
+      await fetchBacktestRuns();
+      if (nextRunId) {
+        const res = await fetch(`/api/quant/backtest/${nextRunId}`);
+        setBacktestDetail(await res.json());
+      }
+    } finally {
+      setResultActionRunId(null);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden">
       <div className="border-b border-neutral-200 dark:border-neutral-800 px-6 pt-4">
@@ -332,6 +359,7 @@ export default function QuantPage() {
             onSelectRun={setSelectedRunId}
             actionRunId={resultActionRunId}
             onToggleBookmark={handleToggleBookmark}
+            onDeleteRun={handleDeleteResult}
           />
         )}
         {activeTab === "data" && (
@@ -513,7 +541,7 @@ const RESULT_VIEW_TABS: Array<{ id: ResultViewTab; label: string }> = [
 ];
 
 function ResultsTab({
-  runs, selectedRunId, detail, onSelectRun, actionRunId, onToggleBookmark,
+  runs, selectedRunId, detail, onSelectRun, actionRunId, onToggleBookmark, onDeleteRun,
 }: {
   runs: BacktestRun[];
   selectedRunId: number | null;
@@ -521,6 +549,7 @@ function ResultsTab({
   onSelectRun: (id: number) => void;
   actionRunId: number | null;
   onToggleBookmark: (id: number, bookmarked: boolean) => void;
+  onDeleteRun: (id: number) => void;
 }) {
   const completedRuns = runs.filter((r) => r.status === "completed").sort(compareRunsForResults);
   const [view, setView] = useState<ResultViewTab>("overview");
@@ -566,6 +595,7 @@ function ResultsTab({
                   busy={actionRunId === run.id}
                   onSelect={onSelectRun}
                   onToggleBookmark={onToggleBookmark}
+                  onDelete={onDeleteRun}
                 />
               ))}
             </div>
@@ -615,6 +645,15 @@ function ResultsTab({
                         <BookmarkOutlineIcon className="w-4 h-4" />
                       )}
                       {detail.run.bookmarked ? "Saved" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteRun(detail.run.id)}
+                      disabled={actionRunId === detail.run.id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
+                    >
+                      <TrashIcon className="w-4 h-4" />
+                      Delete
                     </button>
                   </div>
                 </div>
@@ -836,12 +875,14 @@ function ResultRunCard({
   busy,
   onSelect,
   onToggleBookmark,
+  onDelete,
 }: {
   run: BacktestRun;
   selected: boolean;
   busy: boolean;
   onSelect: (id: number) => void;
   onToggleBookmark: (id: number, bookmarked: boolean) => void;
+  onDelete: (id: number) => void;
 }) {
   const title = run.strategy_snapshot?.name ?? `Backtest #${run.id}`;
   const BookmarkIcon = run.bookmarked ? BookmarkSolidIcon : BookmarkOutlineIcon;
@@ -879,6 +920,18 @@ function ResultRunCard({
             className="rounded p-1 text-neutral-500 hover:text-amber-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
           >
             <BookmarkIcon className={`w-4 h-4 ${run.bookmarked ? "text-amber-500" : ""}`} />
+          </button>
+          <button
+            type="button"
+            aria-label="Delete result"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete(run.id);
+            }}
+            disabled={busy}
+            className="rounded p-1 text-neutral-500 hover:text-red-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+          >
+            <TrashIcon className="w-4 h-4" />
           </button>
         </div>
       </div>
