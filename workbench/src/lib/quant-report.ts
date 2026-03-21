@@ -85,12 +85,12 @@ export function getBacktestDetail(runId: number): QuantBacktestDetail | null {
 
   const results = getBacktestResults(run.id);
   const trades = getTradeLog(run.id);
-  const strategy = getStrategy(run.strategy_id);
+  const strategy = run.strategy_snapshot ?? getStrategy(run.strategy_id);
 
   const tsDb = getTushareDb();
   const nameMap: Record<string, string> = {};
   if (tsDb) {
-    const symbols = [...new Set(trades.map((trade) => trade.symbol))];
+    const symbols = Array.from(new Set(trades.map((trade) => trade.symbol)));
     for (const symbol of symbols) {
       const row = tsDb.prepare("SELECT name FROM stock_basic WHERE ts_code = ?").get(symbol) as { name: string } | undefined;
       if (row) nameMap[symbol] = row.name;

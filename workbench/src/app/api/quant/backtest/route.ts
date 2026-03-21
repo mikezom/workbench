@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
 
   const run = createBacktestRun({
     strategy_id: Number(strategy_id),
+    strategy_snapshot: strategy,
     start_date: start_date ?? defaultDateRange.startDate,
     end_date: end_date ?? defaultDateRange.endDate,
     initial_capital,
