@@ -1,7 +1,22 @@
-import { describe, expect, it } from "vitest";
-import { listFactors } from "./quant-db";
+import { beforeEach, describe, expect, it } from "vitest";
+import { getDb } from "./db";
+import {
+  createBacktestRun,
+  createStrategy,
+  getBacktestRun,
+  listFactors,
+  updateBacktestRun,
+} from "./quant-db";
 
 describe("quant factor registry", () => {
+  beforeEach(() => {
+    const db = getDb();
+    db.exec("DELETE FROM quant_trade_log");
+    db.exec("DELETE FROM quant_backtest_results");
+    db.exec("DELETE FROM quant_backtest_runs");
+    db.exec("DELETE FROM quant_strategies");
+  });
+
   it("seeds the expanded cached factor set", () => {
     const factors = listFactors();
     const ids = factors.map((factor) => factor.id);
@@ -52,5 +67,25 @@ describe("quant factor registry", () => {
     expect(listFactors("volume")).toHaveLength(16);
     expect(listFactors("fundamental")).toHaveLength(26);
     expect(listFactors("technical")).toHaveLength(10);
+  });
+
+  it("stores and updates bookmark state on backtest runs", () => {
+    const strategy = createStrategy({
+      name: "Bookmark Test",
+      factors: ["momentum_3m"],
+      model_type: "linear_regression",
+    });
+
+    const run = createBacktestRun({
+      strategy_id: strategy.id,
+      start_date: "20240101",
+      end_date: "20241231",
+    });
+
+    expect(run.bookmarked).toBe(false);
+
+    const updated = updateBacktestRun(run.id, { bookmarked: true });
+    expect(updated?.bookmarked).toBe(true);
+    expect(getBacktestRun(run.id)?.bookmarked).toBe(true);
   });
 });

@@ -36,6 +36,7 @@ export function initQuantSchema(db: Database.Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       strategy_id INTEGER NOT NULL REFERENCES quant_strategies(id) ON DELETE CASCADE,
       strategy_snapshot TEXT,
+      bookmarked INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'running', 'completed', 'failed')),
       start_date TEXT NOT NULL,
@@ -151,6 +152,7 @@ function migrateQuantSchema(db: Database.Database): void {
   const hasProgressPercent = runColumns.some((column) => column.name === "progress_percent");
   const hasProgressMessage = runColumns.some((column) => column.name === "progress_message");
   const hasStrategySnapshot = runColumns.some((column) => column.name === "strategy_snapshot");
+  const hasBookmarked = runColumns.some((column) => column.name === "bookmarked");
 
   if (!hasBenchmarkCurve) {
     db.exec("ALTER TABLE quant_backtest_results ADD COLUMN benchmark_curve TEXT");
@@ -169,6 +171,9 @@ function migrateQuantSchema(db: Database.Database): void {
   }
   if (!hasStrategySnapshot) {
     db.exec("ALTER TABLE quant_backtest_runs ADD COLUMN strategy_snapshot TEXT");
+  }
+  if (!hasBookmarked) {
+    db.exec("ALTER TABLE quant_backtest_runs ADD COLUMN bookmarked INTEGER NOT NULL DEFAULT 0");
   }
 }
 
@@ -328,6 +333,7 @@ export interface QuantBacktestRun {
   id: number;
   strategy_id: number;
   strategy_snapshot: QuantStrategy | null;
+  bookmarked: boolean;
   status: string;
   start_date: string;
   end_date: string;
@@ -447,6 +453,7 @@ function parseStrategySnapshot(value: unknown): QuantStrategy | null {
 function toBacktestRun(row: Record<string, unknown>): QuantBacktestRun {
   return {
     ...row,
+    bookmarked: Boolean(row.bookmarked),
     benchmark: normalizeBenchmarkCode(row.benchmark as string),
     config: JSON.parse(row.config as string),
     strategy_snapshot: parseStrategySnapshot(row.strategy_snapshot),
@@ -609,6 +616,7 @@ export function listBacktestRuns(strategyId?: number): QuantBacktestRun[] {
 }
 
 export function updateBacktestRun(id: number, data: {
+  bookmarked?: boolean;
   status?: string;
   error_message?: string;
   completed_at?: string;
@@ -619,9 +627,10 @@ export function updateBacktestRun(id: number, data: {
 
   db.prepare(`
     UPDATE quant_backtest_runs
-    SET status = ?, error_message = ?, completed_at = ?
+    SET bookmarked = ?, status = ?, error_message = ?, completed_at = ?
     WHERE id = ?
   `).run(
+    (data.bookmarked ?? existing.bookmarked) ? 1 : 0,
     data.status ?? existing.status,
     data.error_message ?? existing.error_message,
     data.completed_at ?? existing.completed_at,

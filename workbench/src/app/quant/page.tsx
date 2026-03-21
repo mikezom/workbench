@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { BookmarkIcon as BookmarkOutlineIcon } from "@heroicons/react/24/outline";
+import { BookmarkIcon as BookmarkSolidIcon } from "@heroicons/react/24/solid";
 import StrategyList from "@/components/quant/strategy-list";
 import StrategyForm from "@/components/quant/strategy-form";
 import BacktestConfig from "@/components/quant/backtest-config";
@@ -38,6 +40,7 @@ interface BacktestRun {
   id: number;
   strategy_id: number;
   strategy_snapshot: Strategy | null;
+  bookmarked: boolean;
   status: string;
   start_date: string;
   end_date: string;
@@ -137,6 +140,7 @@ export default function QuantPage() {
   const [backtestDetail, setBacktestDetail] = useState<BacktestDetail | null>(null);
   const [dataSummary, setDataSummary] = useState<DataSummary | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [resultActionRunId, setResultActionRunId] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchStrategies = useCallback(async () => {
@@ -259,6 +263,24 @@ export default function QuantPage() {
     }
   };
 
+  const handleToggleBookmark = async (runId: number, bookmarked: boolean) => {
+    setResultActionRunId(runId);
+    try {
+      await fetch(`/api/quant/backtest/${runId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookmarked }),
+      });
+      await fetchBacktestRuns();
+      if (selectedRunId === runId) {
+        const res = await fetch(`/api/quant/backtest/${runId}`);
+        setBacktestDetail(await res.json());
+      }
+    } finally {
+      setResultActionRunId(null);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden">
       <div className="border-b border-neutral-200 dark:border-neutral-800 px-6 pt-4">
@@ -308,6 +330,8 @@ export default function QuantPage() {
             selectedRunId={selectedRunId}
             detail={backtestDetail}
             onSelectRun={setSelectedRunId}
+            actionRunId={resultActionRunId}
+            onToggleBookmark={handleToggleBookmark}
           />
         )}
         {activeTab === "data" && (
@@ -489,12 +513,14 @@ const RESULT_VIEW_TABS: Array<{ id: ResultViewTab; label: string }> = [
 ];
 
 function ResultsTab({
-  runs, selectedRunId, detail, onSelectRun,
+  runs, selectedRunId, detail, onSelectRun, actionRunId, onToggleBookmark,
 }: {
   runs: BacktestRun[];
   selectedRunId: number | null;
   detail: BacktestDetail | null;
   onSelectRun: (id: number) => void;
+  actionRunId: number | null;
+  onToggleBookmark: (id: number, bookmarked: boolean) => void;
 }) {
   const completedRuns = runs.filter((r) => r.status === "completed").sort(compareRunsForResults);
   const [view, setView] = useState<ResultViewTab>("overview");
@@ -509,7 +535,7 @@ function ResultsTab({
         <div>
           <h2 className="text-lg font-semibold">Results</h2>
           <p className="text-sm text-neutral-500 mt-1">
-            {completedRuns.length} completed runs. Select a run from the left to inspect it.
+            {completedRuns.length} completed runs. Bookmarked runs stay pinned at the top.
           </p>
         </div>
         {selectedRunId && (
@@ -537,7 +563,9 @@ function ResultsTab({
                   key={run.id}
                   run={run}
                   selected={selectedRunId === run.id}
+                  busy={actionRunId === run.id}
                   onSelect={onSelectRun}
+                  onToggleBookmark={onToggleBookmark}
                 />
               ))}
             </div>
@@ -558,15 +586,37 @@ function ResultsTab({
               <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3.5 space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-lg font-semibold truncate">
-                      {detail.strategy?.name ?? `Backtest #${detail.run.id}`}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="text-lg font-semibold truncate">
+                        {detail.strategy?.name ?? `Backtest #${detail.run.id}`}
+                      </div>
+                      {detail.run.bookmarked && (
+                        <span className="rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px]">
+                          Bookmarked
+                        </span>
+                      )}
                     </div>
                     <div className="text-sm text-neutral-500 mt-1">
                       Run #{detail.run.id} • {detail.run.start_date} – {detail.run.end_date}
                     </div>
                   </div>
 
-                  <StatusBadge status={detail.run.status} />
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={detail.run.status} />
+                    <button
+                      type="button"
+                      onClick={() => onToggleBookmark(detail.run.id, !detail.run.bookmarked)}
+                      disabled={actionRunId === detail.run.id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                    >
+                      {detail.run.bookmarked ? (
+                        <BookmarkSolidIcon className="w-4 h-4" />
+                      ) : (
+                        <BookmarkOutlineIcon className="w-4 h-4" />
+                      )}
+                      {detail.run.bookmarked ? "Saved" : "Save"}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -771,6 +821,10 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function compareRunsForResults(a: BacktestRun, b: BacktestRun): number {
+  if (a.bookmarked !== b.bookmarked) {
+    return Number(b.bookmarked) - Number(a.bookmarked);
+  }
+
   const aDate = a.completed_at ?? a.created_at;
   const bDate = b.completed_at ?? b.created_at;
   return bDate.localeCompare(aDate) || b.id - a.id;
@@ -779,13 +833,18 @@ function compareRunsForResults(a: BacktestRun, b: BacktestRun): number {
 function ResultRunCard({
   run,
   selected,
+  busy,
   onSelect,
+  onToggleBookmark,
 }: {
   run: BacktestRun;
   selected: boolean;
+  busy: boolean;
   onSelect: (id: number) => void;
+  onToggleBookmark: (id: number, bookmarked: boolean) => void;
 }) {
   const title = run.strategy_snapshot?.name ?? `Backtest #${run.id}`;
+  const BookmarkIcon = run.bookmarked ? BookmarkSolidIcon : BookmarkOutlineIcon;
 
   return (
     <div
@@ -807,6 +866,21 @@ function ResultRunCard({
             {run.strategy_snapshot?.universe ?? "—"} • {run.rebalance_freq}
           </div>
         </button>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            aria-label={run.bookmarked ? "Remove bookmark" : "Bookmark result"}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleBookmark(run.id, !run.bookmarked);
+            }}
+            disabled={busy}
+            className="rounded p-1 text-neutral-500 hover:text-amber-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+          >
+            <BookmarkIcon className={`w-4 h-4 ${run.bookmarked ? "text-amber-500" : ""}`} />
+          </button>
+        </div>
       </div>
     </div>
   );
