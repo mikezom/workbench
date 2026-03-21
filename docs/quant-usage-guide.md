@@ -52,11 +52,11 @@ The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest c
 2. Fill in:
    - **Name** — e.g., "Momentum + Value"
    - **Description** (optional)
-   - **Factors** — select from 33 factors across 4 categories:
-     - *Price*: momentum, mean reversion, volatility, price/MA ratios
-     - *Volume*: volume ratios, OBV slope, VWAP deviation, turnover
-     - *Fundamental*: PE, PB, ROE, ROA, growth, dividend yield, etc.
-     - *Technical*: RSI, MACD, Bollinger, ATR, ADX, CCI, etc.
+   - **Factors** — select from 65 factors across 4 categories:
+     - *Price*: momentum, mean reversion, volatility, moving-average shape, limit-price distance/counts, beta, and benchmark-relative strength
+     - *Volume*: volume ratios, OBV slope, VWAP deviation, turnover, free-float turnover, and market volume ratio
+     - *Fundamental*: valuation, TTM yields, market-cap structure, profitability, liquidity, growth, and listing age
+     - *Technical*: RSI, MACD, Bollinger, ATR, ADX, CCI, Stochastic, and Williams %R
    - **Model Type** — Linear Regression, Ridge, Lasso, Random Forest, or XGBoost
    - **Hyperparameters** — appear based on model type (e.g., alpha for Ridge/Lasso, n_estimators for RF/XGBoost)
    - **Universe** — stock universe: HS300, ZZ500, or ZZ1000

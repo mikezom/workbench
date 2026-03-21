@@ -35,6 +35,7 @@ export function initQuantSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS quant_backtest_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       strategy_id INTEGER NOT NULL REFERENCES quant_strategies(id) ON DELETE CASCADE,
+      strategy_snapshot TEXT,
       status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'running', 'completed', 'failed')),
       start_date TEXT NOT NULL,
@@ -149,6 +150,7 @@ function migrateQuantSchema(db: Database.Database): void {
   const hasDiagnostics = resultColumns.some((column) => column.name === "diagnostics");
   const hasProgressPercent = runColumns.some((column) => column.name === "progress_percent");
   const hasProgressMessage = runColumns.some((column) => column.name === "progress_message");
+  const hasStrategySnapshot = runColumns.some((column) => column.name === "strategy_snapshot");
 
   if (!hasBenchmarkCurve) {
     db.exec("ALTER TABLE quant_backtest_results ADD COLUMN benchmark_curve TEXT");
@@ -164,6 +166,9 @@ function migrateQuantSchema(db: Database.Database): void {
   }
   if (!hasProgressMessage) {
     db.exec("ALTER TABLE quant_backtest_runs ADD COLUMN progress_message TEXT");
+  }
+  if (!hasStrategySnapshot) {
+    db.exec("ALTER TABLE quant_backtest_runs ADD COLUMN strategy_snapshot TEXT");
   }
 }
 
@@ -216,6 +221,12 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "ma20_slope", name: "MA20 Slope", category: "price", description: "20-day moving average slope" },
   { id: "ma60_slope", name: "MA60 Slope", category: "price", description: "60-day moving average slope" },
   { id: "position_20d", name: "Position 20D", category: "price", description: "Position within 20-day high-low range" },
+  { id: "limit_up_gap", name: "Limit-Up Gap", category: "price", description: "Distance to the daily upper price limit" },
+  { id: "limit_down_gap", name: "Limit-Down Gap", category: "price", description: "Distance to the daily lower price limit" },
+  { id: "limit_hit_20d", name: "Limit Hits 20D", category: "price", description: "Rolling 20-day count of limit-up or limit-down closes" },
+  { id: "beta_60d", name: "Beta 60D", category: "price", description: "60-day rolling beta versus the selected benchmark" },
+  { id: "residual_vol_60d", name: "Residual Volatility 60D", category: "price", description: "60-day idiosyncratic volatility versus the benchmark" },
+  { id: "relative_strength_vs_benchmark", name: "Relative Strength vs Benchmark", category: "price", description: "60-day return minus benchmark return" },
   // Volume
   { id: "volume_ratio_5d", name: "Volume Ratio 5D", category: "volume", description: "5-day volume ratio vs 20-day average" },
   { id: "volume_ratio_20d", name: "Volume Ratio 20D", category: "volume", description: "20-day volume ratio vs 60-day average" },
@@ -223,6 +234,8 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "vwap_deviation", name: "VWAP Deviation", category: "volume", description: "Deviation from volume-weighted average price" },
   { id: "turnover_rate", name: "Turnover Rate", category: "volume", description: "Daily turnover rate" },
   { id: "vol_ratio", name: "Volume Ratio 5/20", category: "volume", description: "Volume ratio of 5-day average to 20-day average" },
+  { id: "free_float_turnover", name: "Free Float Turnover", category: "volume", description: "Turnover rate based on free-float shares" },
+  { id: "market_volume_ratio", name: "Market Volume Ratio", category: "volume", description: "Tushare daily volume ratio indicator" },
   // Fundamental
   { id: "pe_ratio", name: "P/E Ratio", category: "fundamental", description: "Price-to-earnings ratio" },
   { id: "pb_ratio", name: "P/B Ratio", category: "fundamental", description: "Price-to-book ratio" },
@@ -234,6 +247,18 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "debt_to_equity", name: "Debt/Equity", category: "fundamental", description: "Debt-to-equity ratio" },
   { id: "dividend_yield", name: "Dividend Yield", category: "fundamental", description: "Annual dividend yield" },
   { id: "market_cap", name: "Market Cap", category: "fundamental", description: "Total market capitalization" },
+  { id: "earnings_yield_ttm", name: "Earnings Yield TTM", category: "fundamental", description: "Inverse of trailing-twelve-month PE" },
+  { id: "sales_yield_ttm", name: "Sales Yield TTM", category: "fundamental", description: "Inverse of trailing-twelve-month PS" },
+  { id: "dividend_yield_ttm", name: "Dividend Yield TTM", category: "fundamental", description: "Trailing-twelve-month dividend yield" },
+  { id: "float_market_cap", name: "Float Market Cap", category: "fundamental", description: "Circulating market capitalization" },
+  { id: "free_float_ratio", name: "Free Float Ratio", category: "fundamental", description: "Free-float shares divided by total shares" },
+  { id: "circulating_cap_ratio", name: "Circulating Cap Ratio", category: "fundamental", description: "Circulating market cap divided by total market cap" },
+  { id: "grossprofit_margin", name: "Gross Profit Margin", category: "fundamental", description: "Gross profit margin" },
+  { id: "netprofit_margin", name: "Net Profit Margin", category: "fundamental", description: "Net profit margin" },
+  { id: "current_ratio", name: "Current Ratio", category: "fundamental", description: "Current assets divided by current liabilities" },
+  { id: "quick_ratio", name: "Quick Ratio", category: "fundamental", description: "Quick ratio liquidity measure" },
+  { id: "operating_revenue_yoy", name: "Operating Revenue YoY", category: "fundamental", description: "Year-over-year operating revenue growth" },
+  { id: "listing_age", name: "Listing Age", category: "fundamental", description: "Days since listing" },
   // Technical
   { id: "rsi_14", name: "RSI 14", category: "technical", description: "14-day relative strength index" },
   { id: "macd_signal", name: "MACD Signal", category: "technical", description: "MACD signal line crossover" },
@@ -286,6 +311,7 @@ export interface QuantStrategy {
 export interface QuantBacktestRun {
   id: number;
   strategy_id: number;
+  strategy_snapshot: QuantStrategy | null;
   status: string;
   start_date: string;
   end_date: string;
@@ -377,11 +403,37 @@ function toStrategy(row: Record<string, unknown>): QuantStrategy {
   } as QuantStrategy;
 }
 
+function parseStrategySnapshot(value: unknown): QuantStrategy | null {
+  if (!value) return null;
+
+  const snapshot = JSON.parse(value as string) as Partial<QuantStrategy>;
+  if (typeof snapshot.id !== "number" || typeof snapshot.name !== "string") {
+    return null;
+  }
+
+  return {
+    id: snapshot.id,
+    name: snapshot.name,
+    description: snapshot.description ?? null,
+    factors: Array.isArray(snapshot.factors) ? snapshot.factors : [],
+    model_type: typeof snapshot.model_type === "string" ? snapshot.model_type : "linear_regression",
+    hyperparams:
+      snapshot.hyperparams && typeof snapshot.hyperparams === "object"
+        ? snapshot.hyperparams
+        : {},
+    universe: typeof snapshot.universe === "string" ? snapshot.universe : "HS300",
+    status: typeof snapshot.status === "string" ? snapshot.status : "ready",
+    created_at: typeof snapshot.created_at === "string" ? snapshot.created_at : "",
+    updated_at: typeof snapshot.updated_at === "string" ? snapshot.updated_at : "",
+  };
+}
+
 function toBacktestRun(row: Record<string, unknown>): QuantBacktestRun {
   return {
     ...row,
     benchmark: normalizeBenchmarkCode(row.benchmark as string),
     config: JSON.parse(row.config as string),
+    strategy_snapshot: parseStrategySnapshot(row.strategy_snapshot),
   } as QuantBacktestRun;
 }
 
@@ -492,6 +544,7 @@ export function deleteStrategy(id: number): boolean {
 
 export function createBacktestRun(data: {
   strategy_id: number;
+  strategy_snapshot?: QuantStrategy | null;
   start_date: string;
   end_date: string;
   initial_capital?: number;
@@ -504,10 +557,13 @@ export function createBacktestRun(data: {
   const db = getDb();
   const benchmark = normalizeBenchmarkCode(data.benchmark);
   const result = db.prepare(`
-    INSERT INTO quant_backtest_runs (strategy_id, start_date, end_date, initial_capital, benchmark, rebalance_freq, top_n, commission, config)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO quant_backtest_runs (
+      strategy_id, strategy_snapshot, start_date, end_date, initial_capital, benchmark, rebalance_freq, top_n, commission, config
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.strategy_id,
+    data.strategy_snapshot ? JSON.stringify(data.strategy_snapshot) : null,
     data.start_date,
     data.end_date,
     data.initial_capital ?? 1000000,

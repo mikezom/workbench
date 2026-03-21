@@ -37,7 +37,7 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 | `src/components/quant/trade-log-table.tsx` | Scrollable trade log table |
 | `scripts/mock_data.py` | Deterministic mock OHLCV + fundamental data generator |
 | `scripts/tushare_fetcher.py` | Data fetcher (mock or real Tushare API) |
-| `scripts/quant_factors.py` | Factor computation library (33 factors) |
+| `scripts/quant_factors.py` | Factor computation library (65 factors) |
 | `scripts/quant_models.py` | Model wrappers (Linear, Ridge, Lasso, RF, XGBoost) |
 | `scripts/quant_backtest.py` | Core backtesting engine (walk-forward) |
 
@@ -57,7 +57,7 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 
 ### In workbench.db
 
-- `quant_factors` — 33 seeded factors across 4 categories (price, volume, fundamental, technical)
+- `quant_factors` — 65 seeded factors across 4 categories (price, volume, fundamental, technical)
 - `quant_strategies` — Strategy config (name, factors JSON, model type, hyperparams, universe)
 - `quant_backtest_runs` — Run config + status tracking
 - `quant_backtest_results` — Computed metrics + equity curve + monthly returns + factor importance
@@ -66,15 +66,18 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 ### In tushare.db (separate, at shared-data/tushare/)
 
 - `daily_ohlcv` — Daily OHLCV price/volume data
-- `stock_basic` — Stock listing info
+- `daily_basic` — Daily valuation, turnover, share-capital, and market-cap data
 - `fina_indicator` — Quarterly fundamental indicators
+- `index_daily` — Benchmark index daily data
+- `stock_basic` — Stock listing info
+- `stk_limit` — Daily upper/lower limit prices
 
-## Factor Categories (33 total)
+## Factor Categories (65 total)
 
-- **Price (10):** Momentum (1/3/6/12M), mean reversion (5/20D), volatility (20/60D), price/MA ratios
-- **Volume (5):** Volume ratios, OBV slope, VWAP deviation, turnover rate
-- **Fundamental (10):** PE, PB, PS, ROE, ROA, revenue/profit growth, D/E, dividend yield, market cap
-- **Technical (8):** RSI, MACD, Bollinger, ATR, ADX, CCI, Stochastic, Williams %R
+- **Price (25):** Momentum, mean reversion, volatility, moving-average shape, limit-price distance/counts, beta, residual volatility, and benchmark-relative strength
+- **Volume (8):** Rolling volume ratios, OBV slope, VWAP deviation, turnover, free-float turnover, and Tushare market volume ratio
+- **Fundamental (22):** Valuation, TTM yield factors, capital-structure ratios, market-cap structure, growth, profitability, liquidity, and listing age
+- **Technical (10):** RSI, MACD, Bollinger, ATR, ADX, CCI, Stochastic, and Williams %R
 
 ## Design Decisions
 

@@ -10,6 +10,32 @@ from typing import Callable
 
 FactorFn = Callable[[pd.DataFrame], pd.Series]
 
+
+def _nan_series(df: pd.DataFrame) -> pd.Series:
+    return pd.Series(np.nan, index=df.index, dtype=float)
+
+
+def _column_or_nan(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return _nan_series(df)
+    return df[column]
+
+
+def _safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    return numerator / denominator.replace(0, np.nan)
+
+
+def _safe_reciprocal(series: pd.Series) -> pd.Series:
+    return 1 / series.replace(0, np.nan)
+
+
+def _benchmark_close(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "benchmark_close")
+
+
+def _benchmark_returns(df: pd.DataFrame) -> pd.Series:
+    return _benchmark_close(df).pct_change()
+
 # ---------------------------------------------------------------------------
 # Price factors
 # ---------------------------------------------------------------------------
@@ -98,6 +124,45 @@ def position_20d(df: pd.DataFrame) -> pd.Series:
     high20 = df["high"].rolling(20).max()
     return (df["close"] - low20) / (high20 - low20).replace(0, np.nan)
 
+
+def limit_up_gap(df: pd.DataFrame) -> pd.Series:
+    return _safe_ratio(_column_or_nan(df, "up_limit") - df["close"], df["close"])
+
+
+def limit_down_gap(df: pd.DataFrame) -> pd.Series:
+    return _safe_ratio(df["close"] - _column_or_nan(df, "down_limit"), df["close"])
+
+
+def limit_hit_20d(df: pd.DataFrame) -> pd.Series:
+    if "up_limit" not in df.columns and "down_limit" not in df.columns:
+        return _nan_series(df)
+    up_limit = _column_or_nan(df, "up_limit")
+    down_limit = _column_or_nan(df, "down_limit")
+    if up_limit.isna().all() and down_limit.isna().all():
+        return _nan_series(df)
+    hits = ((df["close"] >= up_limit - 0.01) | (df["close"] <= down_limit + 0.01)).astype(float)
+    return hits.rolling(20).sum()
+
+
+def beta_60d(df: pd.DataFrame) -> pd.Series:
+    stock_returns = df["close"].pct_change()
+    benchmark_returns = _benchmark_returns(df)
+    variance = benchmark_returns.rolling(60).var().replace(0, np.nan)
+    covariance = stock_returns.rolling(60).cov(benchmark_returns)
+    return covariance / variance
+
+
+def residual_vol_60d(df: pd.DataFrame) -> pd.Series:
+    stock_returns = df["close"].pct_change()
+    benchmark_returns = _benchmark_returns(df)
+    beta = beta_60d(df)
+    residual = stock_returns - beta * benchmark_returns
+    return residual.rolling(60).std() * np.sqrt(252)
+
+
+def relative_strength_vs_benchmark(df: pd.DataFrame) -> pd.Series:
+    return df["close"].pct_change(60) - _benchmark_close(df).pct_change(60)
+
 # ---------------------------------------------------------------------------
 # Volume factors
 # ---------------------------------------------------------------------------
@@ -123,6 +188,14 @@ def turnover_rate(df: pd.DataFrame) -> pd.Series:
 
 def vol_ratio(df: pd.DataFrame) -> pd.Series:
     return df["vol"].rolling(5).mean() / df["vol"].rolling(20).mean()
+
+
+def free_float_turnover(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "turnover_rate_f")
+
+
+def market_volume_ratio(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "volume_ratio")
 
 # ---------------------------------------------------------------------------
 # Fundamental factors (uses merged fundamental data)
@@ -157,6 +230,56 @@ def dividend_yield(df: pd.DataFrame) -> pd.Series:
 
 def market_cap(df: pd.DataFrame) -> pd.Series:
     return df.get("total_mv", pd.Series(dtype=float))
+
+
+def earnings_yield_ttm(df: pd.DataFrame) -> pd.Series:
+    return _safe_reciprocal(_column_or_nan(df, "pe_ttm"))
+
+
+def sales_yield_ttm(df: pd.DataFrame) -> pd.Series:
+    return _safe_reciprocal(_column_or_nan(df, "ps_ttm"))
+
+
+def dividend_yield_ttm(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "dv_ttm")
+
+
+def float_market_cap(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "circ_mv")
+
+
+def free_float_ratio(df: pd.DataFrame) -> pd.Series:
+    return _safe_ratio(_column_or_nan(df, "free_share"), _column_or_nan(df, "total_share"))
+
+
+def circulating_cap_ratio(df: pd.DataFrame) -> pd.Series:
+    return _safe_ratio(_column_or_nan(df, "circ_mv"), _column_or_nan(df, "total_mv"))
+
+
+def grossprofit_margin(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "grossprofit_margin")
+
+
+def netprofit_margin(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "netprofit_margin")
+
+
+def current_ratio(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "current_ratio")
+
+
+def quick_ratio(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "quick_ratio")
+
+
+def operating_revenue_yoy(df: pd.DataFrame) -> pd.Series:
+    return _column_or_nan(df, "operating_revenue_yoy")
+
+
+def listing_age(df: pd.DataFrame) -> pd.Series:
+    list_dates = _column_or_nan(df, "list_date")
+    list_dates = pd.to_datetime(list_dates, errors="coerce")
+    return (pd.Series(df.index, index=df.index) - list_dates).dt.days
 
 # ---------------------------------------------------------------------------
 # Technical factors
@@ -253,6 +376,12 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "ma20_slope": ma20_slope,
     "ma60_slope": ma60_slope,
     "position_20d": position_20d,
+    "limit_up_gap": limit_up_gap,
+    "limit_down_gap": limit_down_gap,
+    "limit_hit_20d": limit_hit_20d,
+    "beta_60d": beta_60d,
+    "residual_vol_60d": residual_vol_60d,
+    "relative_strength_vs_benchmark": relative_strength_vs_benchmark,
     # Volume
     "volume_ratio_5d": volume_ratio_5d,
     "volume_ratio_20d": volume_ratio_20d,
@@ -260,6 +389,8 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "vwap_deviation": vwap_deviation,
     "turnover_rate": turnover_rate,
     "vol_ratio": vol_ratio,
+    "free_float_turnover": free_float_turnover,
+    "market_volume_ratio": market_volume_ratio,
     # Fundamental
     "pe_ratio": pe_ratio,
     "pb_ratio": pb_ratio,
@@ -271,6 +402,18 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "debt_to_equity": debt_to_equity,
     "dividend_yield": dividend_yield,
     "market_cap": market_cap,
+    "earnings_yield_ttm": earnings_yield_ttm,
+    "sales_yield_ttm": sales_yield_ttm,
+    "dividend_yield_ttm": dividend_yield_ttm,
+    "float_market_cap": float_market_cap,
+    "free_float_ratio": free_float_ratio,
+    "circulating_cap_ratio": circulating_cap_ratio,
+    "grossprofit_margin": grossprofit_margin,
+    "netprofit_margin": netprofit_margin,
+    "current_ratio": current_ratio,
+    "quick_ratio": quick_ratio,
+    "operating_revenue_yoy": operating_revenue_yoy,
+    "listing_age": listing_age,
     # Technical
     "rsi_14": rsi_14,
     "macd_signal": macd_signal,

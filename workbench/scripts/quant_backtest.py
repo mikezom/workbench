@@ -147,11 +147,15 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
     if not run:
         raise ValueError(f"Backtest run {run_id} not found")
 
-    strategy = wb_conn.execute(
-        "SELECT * FROM quant_strategies WHERE id = ?", (run["strategy_id"],)
-    ).fetchone()
-    if not strategy:
-        raise ValueError(f"Strategy {run['strategy_id']} not found")
+    strategy_snapshot = json.loads(run["strategy_snapshot"]) if run["strategy_snapshot"] else None
+    if strategy_snapshot:
+        strategy = strategy_snapshot
+    else:
+        strategy = wb_conn.execute(
+            "SELECT * FROM quant_strategies WHERE id = ?", (run["strategy_id"],)
+        ).fetchone()
+        if not strategy:
+            raise ValueError(f"Strategy {run['strategy_id']} not found")
 
     run_config = json.loads(run["config"]) if run["config"] else {}
 
@@ -165,9 +169,9 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
         "rebalance_freq": run["rebalance_freq"],
         "top_n": run["top_n"],
         "commission": run["commission"],
-        "factors": json.loads(strategy["factors"]),
+        "factors": strategy["factors"] if strategy_snapshot else json.loads(strategy["factors"]),
         "model_type": strategy["model_type"],
-        "hyperparams": json.loads(strategy["hyperparams"]),
+        "hyperparams": strategy["hyperparams"] if strategy_snapshot else json.loads(strategy["hyperparams"]),
         "universe": strategy["universe"],
         "train_window_days": int(run_config.get("train_window_days", 240)),
         "prediction_horizon_days": int(run_config.get("prediction_horizon_days", 20)),
@@ -275,6 +279,7 @@ def load_stock_data(
     start_date: str,
     end_date: str,
     universe: str,
+    benchmark_code: str,
     custom_symbols: list[str] | None = None,
     max_workers: int = 0,
 ) -> dict[str, pd.DataFrame]:
@@ -285,6 +290,24 @@ def load_stock_data(
         codes = custom_symbols or []
     else:
         codes = load_universe_codes(ts_conn, universe, start_date)
+
+    benchmark_close: pd.Series | None = None
+    try:
+        benchmark_rows = ts_conn.execute(
+            """
+            SELECT trade_date, close
+            FROM index_daily
+            WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+            ORDER BY trade_date
+            """,
+            (benchmark_code, start_date, end_date),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        benchmark_rows = []
+    if benchmark_rows:
+        benchmark_df = pd.DataFrame([dict(r) for r in benchmark_rows])
+        benchmark_df["trade_date"] = pd.to_datetime(benchmark_df["trade_date"], format="%Y%m%d")
+        benchmark_close = benchmark_df.set_index("trade_date")["close"].sort_index()
     ts_conn.close()
 
     worker_count = resolve_max_workers(len(codes), max_workers)
@@ -305,7 +328,15 @@ def load_stock_data(
 
             try:
                 basic_rows = local_conn.execute(
-                    "SELECT trade_date, pe, pb, ps, total_mv, dv_ratio, turnover_rate FROM daily_basic WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? ORDER BY trade_date",
+                    """
+                    SELECT
+                        trade_date, pe, pb, ps, total_mv, dv_ratio, turnover_rate,
+                        pe_ttm, ps_ttm, dv_ttm, turnover_rate_f, volume_ratio,
+                        total_share, float_share, free_share, circ_mv
+                    FROM daily_basic
+                    WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+                    ORDER BY trade_date
+                    """,
                     (code, start_date, end_date),
                 ).fetchall()
             except sqlite3.OperationalError:
@@ -314,14 +345,24 @@ def load_stock_data(
                 basic_df = pd.DataFrame([dict(r) for r in basic_rows])
                 basic_df["trade_date"] = pd.to_datetime(basic_df["trade_date"], format="%Y%m%d")
                 basic_df = basic_df.set_index("trade_date").sort_index()
-                for col in ["pe", "pb", "ps", "total_mv", "turnover_rate"]:
+                for col in [
+                    "pe", "pb", "ps", "total_mv", "turnover_rate", "pe_ttm", "ps_ttm", "dv_ttm",
+                    "turnover_rate_f", "volume_ratio", "total_share", "float_share", "free_share", "circ_mv",
+                ]:
                     if col in basic_df.columns:
                         df[col] = basic_df[col]
                 if "dv_ratio" in basic_df.columns:
                     df["dividend_yield"] = basic_df["dv_ratio"]
 
             fina_rows = local_conn.execute(
-                "SELECT end_date, roe, roa, debt_to_eqt, tr_yoy, netprofit_yoy FROM fina_indicator WHERE ts_code = ? ORDER BY end_date",
+                """
+                SELECT
+                    end_date, roe, roa, debt_to_eqt, tr_yoy, netprofit_yoy,
+                    grossprofit_margin, netprofit_margin, current_ratio, quick_ratio, or_yoy
+                FROM fina_indicator
+                WHERE ts_code = ?
+                ORDER BY end_date
+                """,
                 (code,),
             ).fetchall()
             if fina_rows:
@@ -329,7 +370,7 @@ def load_stock_data(
                 fina_df["end_date"] = pd.to_datetime(fina_df["end_date"], format="%Y%m%d")
                 fina_df = fina_df.set_index("end_date").sort_index()
                 fina_daily = fina_df.reindex(df.index, method="ffill")
-                for col in ["roe", "roa"]:
+                for col in ["roe", "roa", "grossprofit_margin", "netprofit_margin", "current_ratio", "quick_ratio"]:
                     if col in fina_daily.columns:
                         df[col] = fina_daily[col]
                 for source, target in [
@@ -350,6 +391,40 @@ def load_stock_data(
                     df["revenue_yoy"] = fina_daily["tr_yoy"]
                 if "netprofit_yoy" in fina_daily.columns:
                     df["profit_yoy"] = fina_daily["netprofit_yoy"]
+                if "or_yoy" in fina_daily.columns:
+                    df["operating_revenue_yoy"] = fina_daily["or_yoy"]
+
+            meta_row = local_conn.execute(
+                "SELECT list_date FROM stock_basic WHERE ts_code = ?",
+                (code,),
+            ).fetchone()
+            if meta_row and meta_row["list_date"]:
+                df["list_date"] = pd.Timestamp(meta_row["list_date"])
+
+            if benchmark_close is not None:
+                aligned_benchmark = benchmark_close.reindex(df.index).ffill().bfill()
+                if aligned_benchmark.notna().any():
+                    df["benchmark_close"] = aligned_benchmark
+
+            try:
+                limit_rows = local_conn.execute(
+                    """
+                    SELECT trade_date, up_limit, down_limit
+                    FROM stk_limit
+                    WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+                    ORDER BY trade_date
+                    """,
+                    (code, start_date, end_date),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                limit_rows = []
+            if limit_rows:
+                limit_df = pd.DataFrame([dict(r) for r in limit_rows])
+                limit_df["trade_date"] = pd.to_datetime(limit_df["trade_date"], format="%Y%m%d")
+                limit_df = limit_df.set_index("trade_date").sort_index()
+                for col in ["up_limit", "down_limit"]:
+                    if col in limit_df.columns:
+                        df[col] = limit_df[col]
 
             return code, df
         finally:
@@ -657,6 +732,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         config["start_date"],
         config["end_date"],
         config["universe"],
+        config["benchmark"],
         custom_symbols,
         max_workers=config["max_workers"],
     )
