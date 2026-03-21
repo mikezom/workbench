@@ -14,6 +14,7 @@ import TradeLogTable from "@/components/quant/trade-log-table";
 import YearlyPerformanceTable from "@/components/quant/yearly-performance-table";
 import DiagnosticsPanel from "@/components/quant/diagnostics-panel";
 import AssetEarningsTable from "@/components/quant/asset-earnings-table";
+import FinalPortfolioPanel from "@/components/quant/final-portfolio-panel";
 
 type Tab = "strategies" | "backtest" | "results" | "data";
 
@@ -529,7 +530,7 @@ function BacktestTab({
 // Results Tab
 // ---------------------------------------------------------------------------
 
-type ResultViewTab = "overview" | "yearly" | "features" | "trades" | "assets" | "diagnostics";
+type ResultViewTab = "overview" | "yearly" | "features" | "trades" | "assets" | "finalPortfolio" | "diagnostics";
 
 const RESULT_VIEW_TABS: Array<{ id: ResultViewTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -537,6 +538,7 @@ const RESULT_VIEW_TABS: Array<{ id: ResultViewTab; label: string }> = [
   { id: "features", label: "Feature Importance" },
   { id: "trades", label: "Trades" },
   { id: "assets", label: "Asset Earnings" },
+  { id: "finalPortfolio", label: "Final Portfolio" },
   { id: "diagnostics", label: "Diagnostics" },
 ];
 
@@ -751,6 +753,13 @@ function ResultsTab({
                   <h3 className="text-sm font-semibold mb-3">Assets Ranked By Earnings</h3>
                   <AssetEarningsTable trades={detail.trades} />
                 </div>
+              )}
+
+              {view === "finalPortfolio" && (
+                <FinalPortfolioPanel
+                  trades={detail.trades}
+                  defaultCapital={detail.run.initial_capital}
+                />
               )}
 
               {view === "diagnostics" && (
