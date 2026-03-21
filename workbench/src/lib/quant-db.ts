@@ -227,6 +227,10 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "beta_60d", name: "Beta 60D", category: "price", description: "60-day rolling beta versus the selected benchmark" },
   { id: "residual_vol_60d", name: "Residual Volatility 60D", category: "price", description: "60-day idiosyncratic volatility versus the benchmark" },
   { id: "relative_strength_vs_benchmark", name: "Relative Strength vs Benchmark", category: "price", description: "60-day return minus benchmark return" },
+  { id: "adjusted_momentum_3m", name: "Adjusted Momentum 3M", category: "price", description: "3-month momentum using adjusted closes" },
+  { id: "adjusted_momentum_6m", name: "Adjusted Momentum 6M", category: "price", description: "6-month momentum using adjusted closes" },
+  { id: "adjusted_ret_20d", name: "Adjusted Return 20D", category: "price", description: "20-day return using adjusted closes" },
+  { id: "adjusted_mean_reversion_20d", name: "Adjusted Mean Reversion 20D", category: "price", description: "20-day mean-reversion signal using adjusted closes" },
   // Volume
   { id: "volume_ratio_5d", name: "Volume Ratio 5D", category: "volume", description: "5-day volume ratio vs 20-day average" },
   { id: "volume_ratio_20d", name: "Volume Ratio 20D", category: "volume", description: "20-day volume ratio vs 60-day average" },

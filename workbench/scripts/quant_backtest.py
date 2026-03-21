@@ -474,6 +474,25 @@ def load_stock_data(
                     if col in margin_df.columns:
                         df[col] = margin_df[col]
 
+            try:
+                adj_rows = local_conn.execute(
+                    """
+                    SELECT trade_date, adj_factor
+                    FROM adj_factor
+                    WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+                    ORDER BY trade_date
+                    """,
+                    (code, start_date, end_date),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                adj_rows = []
+            if adj_rows:
+                adj_df = pd.DataFrame([dict(r) for r in adj_rows])
+                adj_df["trade_date"] = pd.to_datetime(adj_df["trade_date"], format="%Y%m%d")
+                adj_df = adj_df.set_index("trade_date").sort_index()
+                if "adj_factor" in adj_df.columns:
+                    df["adj_factor"] = adj_df["adj_factor"]
+
             return code, df
         finally:
             local_conn.close()

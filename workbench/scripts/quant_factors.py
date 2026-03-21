@@ -36,6 +36,12 @@ def _benchmark_close(df: pd.DataFrame) -> pd.Series:
 def _benchmark_returns(df: pd.DataFrame) -> pd.Series:
     return _benchmark_close(df).pct_change()
 
+
+def _adjusted_close(df: pd.DataFrame) -> pd.Series:
+    if "adj_factor" not in df.columns:
+        return _nan_series(df)
+    return df["close"] * df["adj_factor"]
+
 # ---------------------------------------------------------------------------
 # Price factors
 # ---------------------------------------------------------------------------
@@ -162,6 +168,24 @@ def residual_vol_60d(df: pd.DataFrame) -> pd.Series:
 
 def relative_strength_vs_benchmark(df: pd.DataFrame) -> pd.Series:
     return df["close"].pct_change(60) - _benchmark_close(df).pct_change(60)
+
+
+def adjusted_momentum_3m(df: pd.DataFrame) -> pd.Series:
+    return _adjusted_close(df).pct_change(60)
+
+
+def adjusted_momentum_6m(df: pd.DataFrame) -> pd.Series:
+    return _adjusted_close(df).pct_change(120)
+
+
+def adjusted_ret_20d(df: pd.DataFrame) -> pd.Series:
+    return _adjusted_close(df).pct_change(20)
+
+
+def adjusted_mean_reversion_20d(df: pd.DataFrame) -> pd.Series:
+    adj_close = _adjusted_close(df)
+    ma = adj_close.rolling(20).mean()
+    return (adj_close - ma) / ma
 
 # ---------------------------------------------------------------------------
 # Volume factors
@@ -413,6 +437,10 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "beta_60d": beta_60d,
     "residual_vol_60d": residual_vol_60d,
     "relative_strength_vs_benchmark": relative_strength_vs_benchmark,
+    "adjusted_momentum_3m": adjusted_momentum_3m,
+    "adjusted_momentum_6m": adjusted_momentum_6m,
+    "adjusted_ret_20d": adjusted_ret_20d,
+    "adjusted_mean_reversion_20d": adjusted_mean_reversion_20d,
     # Volume
     "volume_ratio_5d": volume_ratio_5d,
     "volume_ratio_20d": volume_ratio_20d,

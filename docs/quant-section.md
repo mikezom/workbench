@@ -37,7 +37,7 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 | `src/components/quant/trade-log-table.tsx` | Scrollable trade log table |
 | `scripts/mock_data.py` | Deterministic mock OHLCV + fundamental data generator |
 | `scripts/tushare_fetcher.py` | Data fetcher (mock or real Tushare API) |
-| `scripts/quant_factors.py` | Factor computation library (71 factors) |
+| `scripts/quant_factors.py` | Factor computation library (75 factors) |
 | `scripts/quant_models.py` | Model wrappers (Linear, Ridge, Lasso, RF, XGBoost) |
 | `scripts/quant_backtest.py` | Core backtesting engine (walk-forward) |
 
@@ -57,7 +57,7 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 
 ### In workbench.db
 
-- `quant_factors` — 71 seeded factors across 4 categories (price, volume, fundamental, technical)
+- `quant_factors` — 75 seeded factors across 4 categories (price, volume, fundamental, technical)
 - `quant_strategies` — Strategy config (name, factors JSON, model type, hyperparams, universe)
 - `quant_backtest_runs` — Run config + status tracking
 - `quant_backtest_results` — Computed metrics + equity curve + monthly returns + factor importance
@@ -69,14 +69,15 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 - `daily_basic` — Daily valuation, turnover, share-capital, and market-cap data
 - `fina_indicator` — Quarterly fundamental indicators
 - `index_daily` — Benchmark index daily data
+- `adj_factor` — Daily adjustment factors for corporate actions
 - `margin_detail` — Daily margin-financing and securities-lending detail
 - `moneyflow` — Daily stock money-flow breakdown
 - `stock_basic` — Stock listing info
 - `stk_limit` — Daily upper/lower limit prices
 
-## Factor Categories (71 total)
+## Factor Categories (75 total)
 
-- **Price (25):** Momentum, mean reversion, volatility, moving-average shape, limit-price distance/counts, beta, residual volatility, and benchmark-relative strength
+- **Price (29):** Momentum, mean reversion, volatility, moving-average shape, limit-price distance/counts, beta, benchmark-relative strength, and adjusted-close price signals
 - **Volume (14):** Rolling volume ratios, OBV slope, VWAP deviation, turnover, free-float turnover, Tushare market volume ratio, money-flow imbalance signals, and margin-trading pressure signals
 - **Fundamental (22):** Valuation, TTM yield factors, capital-structure ratios, market-cap structure, growth, profitability, liquidity, and listing age
 - **Technical (10):** RSI, MACD, Bollinger, ATR, ADX, CCI, Stochastic, and Williams %R
