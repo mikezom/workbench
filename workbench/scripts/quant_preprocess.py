@@ -31,7 +31,7 @@ def neutralize(factor_values: pd.Series, industry: pd.Series, log_mcap: pd.Serie
     if valid.sum() < 10:
         return factor_values
 
-    y = factor_values[valid].values
+    y = factor_values[valid].astype(float).values
     ind = industry[valid]
     mcap = log_mcap[valid].values
 
@@ -49,7 +49,7 @@ def neutralize(factor_values: pd.Series, industry: pd.Series, log_mcap: pd.Serie
     except np.linalg.LinAlgError:
         return factor_values
 
-    result = factor_values.copy()
+    result = factor_values.astype(float).copy()
     result[valid] = residuals
     return result
 
@@ -122,7 +122,7 @@ def preprocess_factors_cross_sectional(
                     processed[code][date] = val
                 continue
 
-            cs = pd.Series(values)
+            cs = pd.Series(values, dtype=float)
             ind_s = pd.Series(industries)
             mcap_s = pd.Series(log_mcaps)
 
