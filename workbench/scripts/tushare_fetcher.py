@@ -9,6 +9,7 @@ Usage:
     python tushare_fetcher.py --mode backfill-daily   # Backfill pre_close/pct_chg by date
     python tushare_fetcher.py --mode stk-limit        # Fetch daily limit prices
     python tushare_fetcher.py --mode moneyflow        # Fetch daily money-flow data
+    python tushare_fetcher.py --mode margin-detail    # Fetch daily margin detail
     python tushare_fetcher.py --start 20210101 --end 20241231
 
 When TUSHARE_TOKEN env var is set, uses real tushare API.
@@ -149,6 +150,17 @@ def init_schema(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_moneyflow_date ON moneyflow(trade_date);
+
+        CREATE TABLE IF NOT EXISTS margin_detail (
+            ts_code TEXT NOT NULL,
+            trade_date TEXT NOT NULL,
+            rqye REAL,
+            rzmre REAL,
+            rzrqye REAL,
+            PRIMARY KEY (ts_code, trade_date)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_margin_detail_date ON margin_detail(trade_date);
     """)
     ensure_analytic_indexes(conn)
 
@@ -263,6 +275,22 @@ def upsert_moneyflow_rows(conn: sqlite3.Connection, df) -> None:
                 row.get("buy_elg_amount"),
                 row.get("sell_elg_amount"),
                 row.get("net_mf_amount"),
+            ),
+        )
+
+
+def upsert_margin_detail_rows(conn: sqlite3.Connection, df) -> None:
+    for _, row in df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO margin_detail "
+            "(ts_code, trade_date, rqye, rzmre, rzrqye) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                row["ts_code"],
+                row["trade_date"],
+                row.get("rqye"),
+                row.get("rzmre"),
+                row.get("rzrqye"),
             ),
         )
 
@@ -646,12 +674,20 @@ def fetch_incremental_update(
         moneyflow_rows = 0
         moneyflow_dates = 0
 
+    try:
+        margin_rows, margin_dates = fetch_margin_detail_by_trade_date(conn, pro, effective_start_date, end_date)
+    except Exception as e:
+        print(f"  Warning: failed to refresh margin_detail data: {e}")
+        margin_rows = 0
+        margin_dates = 0
+
     print(
         "Incremental update complete: "
         f"{daily_rows} daily rows across {daily_dates} trade dates, "
         f"{benchmark_rows} benchmark rows, "
         f"{stk_limit_rows} stk_limit rows across {stk_limit_dates} trade dates, "
-        f"{moneyflow_rows} moneyflow rows across {moneyflow_dates} trade dates"
+        f"{moneyflow_rows} moneyflow rows across {moneyflow_dates} trade dates, "
+        f"{margin_rows} margin_detail rows across {margin_dates} trade dates"
     )
 
 
@@ -889,10 +925,139 @@ def fetch_moneyflow(
     print(f"  moneyflow complete: {total_inserted} rows across {len(dates)} dates")
 
 
+def fetch_margin_detail_by_trade_date(
+    conn: sqlite3.Connection,
+    pro,
+    start_date: str,
+    end_date: str,
+) -> tuple[int, int]:
+    dates = iter_calendar_dates(start_date, end_date)
+    if not dates:
+        return 0, 0
+
+    print(f"  Refreshing margin_detail data for {len(dates)} calendar days")
+
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+    populated_dates = 0
+    batch_size = 200
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.margin_detail(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                conn.execute("DELETE FROM margin_detail WHERE trade_date = ?", (trade_date,))
+                upsert_margin_detail_rows(conn, df)
+                total_rows += len(df)
+                populated_dates += 1
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} margin_detail dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 20 == 0 or i == len(dates) - 1:
+                conn.commit()
+                print(f"  margin_detail by date: {i+1}/{len(dates)} dates done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch margin_detail for {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    return total_rows, populated_dates
+
+
+def fetch_margin_detail(
+    conn: sqlite3.Connection,
+    token: str,
+    start_date: str,
+    end_date: str,
+) -> None:
+    """Fetch daily margin-detail data from margin_detail API (requires 2000 score)."""
+    try:
+        import tushare as ts
+    except ImportError:
+        print("ERROR: tushare package not installed. Run: pip install tushare")
+        sys.exit(1)
+
+    pro = ts.pro_api(token)
+
+    rows = conn.execute(
+        "SELECT DISTINCT trade_date FROM daily_ohlcv "
+        "WHERE trade_date >= ? AND trade_date <= ? "
+        "ORDER BY trade_date",
+        (start_date, end_date),
+    ).fetchall()
+    all_dates = [r[0] for r in rows]
+
+    existing = conn.execute(
+        "SELECT DISTINCT trade_date FROM margin_detail "
+        "WHERE trade_date >= ? AND trade_date <= ?",
+        (start_date, end_date),
+    ).fetchall()
+    existing_dates = {r[0] for r in existing}
+    dates = [d for d in all_dates if d not in existing_dates]
+
+    if not dates:
+        print("  margin_detail data already up to date")
+        return
+
+    print(f"  Fetching margin_detail for {len(dates)} trade dates ({len(existing_dates)} already cached)")
+    print("  margin_detail API: max 6000 records/call, rate limited per minute")
+
+    batch_size = 200
+    batch_start_time = time.time()
+    batch_count = 0
+    total_inserted = 0
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.margin_detail(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                upsert_margin_detail_rows(conn, df)
+                total_inserted += len(df)
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 50 == 0:
+                conn.commit()
+                print(f"  margin_detail: {i+1}/{len(dates)} dates done ({total_inserted} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch margin_detail for {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    print(f"  margin_detail complete: {total_inserted} rows across {len(dates)} dates")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Tushare data fetcher")
     parser.add_argument("--dry-run", action="store_true", default=False, help="Use mock data instead of real API")
-    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "incremental", "benchmark-daily", "backfill-daily", "stk-limit", "moneyflow"], default="history", help="Fetch type")
+    parser.add_argument("--mode", choices=["daily", "history", "fundamental", "incremental", "benchmark-daily", "backfill-daily", "stk-limit", "moneyflow", "margin-detail"], default="history", help="Fetch type")
     parser.add_argument("--start", default="20210101", help="Start date (YYYYMMDD)")
     parser.add_argument("--end", default="20241231", help="End date (YYYYMMDD)")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of stocks to fetch (0 = default)")
@@ -905,7 +1070,7 @@ def main():
     init_schema(conn)
     migrate_schema(conn)
 
-    if args.mode in ("incremental", "benchmark-daily", "backfill-daily", "stk-limit", "moneyflow") and not token:
+    if args.mode in ("incremental", "benchmark-daily", "backfill-daily", "stk-limit", "moneyflow", "margin-detail") and not token:
         print(f"ERROR: TUSHARE_TOKEN required for {args.mode} mode")
         sys.exit(1)
 
@@ -925,6 +1090,9 @@ def main():
     elif args.mode == "moneyflow":
         print(f"Fetching moneyflow data ({args.start}–{args.end})")
         fetch_moneyflow(conn, token, args.start, args.end)
+    elif args.mode == "margin-detail":
+        print(f"Fetching margin_detail data ({args.start}–{args.end})")
+        fetch_margin_detail(conn, token, args.start, args.end)
     elif use_mock:
         print("Running in DRY-RUN mode (mock data)")
         populate_mock_data(conn, args.start, args.end, args.mode)

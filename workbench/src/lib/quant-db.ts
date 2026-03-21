@@ -239,6 +239,9 @@ const FACTOR_SEEDS: Array<{ id: string; name: string; category: string; descript
   { id: "net_mf_amount_ratio", name: "Net Money Flow Ratio", category: "volume", description: "Net money flow scaled by traded amount" },
   { id: "large_order_net_ratio", name: "Large Order Net Ratio", category: "volume", description: "Large-order buy/sell imbalance" },
   { id: "extra_large_order_imbalance", name: "Extra Large Order Imbalance", category: "volume", description: "Extra-large-order buy/sell imbalance" },
+  { id: "margin_balance_to_float_mv", name: "Margin Balance / Float MV", category: "volume", description: "Margin balance relative to circulating market cap" },
+  { id: "financing_buy_shock", name: "Financing Buy Shock", category: "volume", description: "Financing buy amount relative to its 20-day average" },
+  { id: "short_pressure", name: "Short Pressure", category: "volume", description: "Securities-lending balance as a share of total margin balance" },
   // Fundamental
   { id: "pe_ratio", name: "P/E Ratio", category: "fundamental", description: "Price-to-earnings ratio" },
   { id: "pb_ratio", name: "P/B Ratio", category: "fundamental", description: "Price-to-book ratio" },

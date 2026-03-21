@@ -44,7 +44,7 @@ Or install the daily 18:00 launchd job:
 ./scripts/install-tushare-update-launch-agent.sh 18 0
 ```
 
-The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest cached trade date through today, refreshes benchmark index rows, refreshes `stk_limit`, and refreshes `moneyflow` for the same window. Logs are written to `workbench/logs/tushare-update.out.log` and `workbench/logs/tushare-update.err.log`.
+The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest cached trade date through today, refreshes benchmark index rows, refreshes `stk_limit`, refreshes `moneyflow`, and refreshes `margin_detail` for the same window. Logs are written to `workbench/logs/tushare-update.out.log` and `workbench/logs/tushare-update.err.log`.
 
 ## 2. Create a Strategy (Strategies Tab)
 
@@ -52,9 +52,9 @@ The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest c
 2. Fill in:
    - **Name** — e.g., "Momentum + Value"
    - **Description** (optional)
-   - **Factors** — select from 68 factors across 4 categories:
+   - **Factors** — select from 71 factors across 4 categories:
      - *Price*: momentum, mean reversion, volatility, moving-average shape, limit-price distance/counts, beta, and benchmark-relative strength
-     - *Volume*: volume ratios, OBV slope, VWAP deviation, turnover, free-float turnover, market volume ratio, and money-flow imbalances
+     - *Volume*: volume ratios, OBV slope, VWAP deviation, turnover, free-float turnover, market volume ratio, money-flow imbalances, and margin-trading pressure
      - *Fundamental*: valuation, TTM yields, market-cap structure, profitability, liquidity, growth, and listing age
      - *Technical*: RSI, MACD, Bollinger, ATR, ADX, CCI, Stochastic, and Williams %R
    - **Model Type** — Linear Regression, Ridge, Lasso, Random Forest, or XGBoost

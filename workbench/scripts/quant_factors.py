@@ -214,6 +214,20 @@ def extra_large_order_imbalance(df: pd.DataFrame) -> pd.Series:
     sell = _column_or_nan(df, "sell_elg_amount")
     return _safe_ratio(buy - sell, buy + sell)
 
+
+def margin_balance_to_float_mv(df: pd.DataFrame) -> pd.Series:
+    float_mv = _column_or_nan(df, "circ_mv") * 10000
+    return _safe_ratio(_column_or_nan(df, "rzrqye"), float_mv)
+
+
+def financing_buy_shock(df: pd.DataFrame) -> pd.Series:
+    financing_buy = _column_or_nan(df, "rzmre")
+    return _safe_ratio(financing_buy, financing_buy.rolling(20).mean())
+
+
+def short_pressure(df: pd.DataFrame) -> pd.Series:
+    return _safe_ratio(_column_or_nan(df, "rqye"), _column_or_nan(df, "rzrqye"))
+
 # ---------------------------------------------------------------------------
 # Fundamental factors (uses merged fundamental data)
 # ---------------------------------------------------------------------------
@@ -411,6 +425,9 @@ FACTOR_REGISTRY: dict[str, FactorFn] = {
     "net_mf_amount_ratio": net_mf_amount_ratio,
     "large_order_net_ratio": large_order_net_ratio,
     "extra_large_order_imbalance": extra_large_order_imbalance,
+    "margin_balance_to_float_mv": margin_balance_to_float_mv,
+    "financing_buy_shock": financing_buy_shock,
+    "short_pressure": short_pressure,
     # Fundamental
     "pe_ratio": pe_ratio,
     "pb_ratio": pb_ratio,

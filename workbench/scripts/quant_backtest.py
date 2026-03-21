@@ -454,6 +454,26 @@ def load_stock_data(
                     if col in moneyflow_df.columns:
                         df[col] = moneyflow_df[col]
 
+            try:
+                margin_rows = local_conn.execute(
+                    """
+                    SELECT trade_date, rqye, rzmre, rzrqye
+                    FROM margin_detail
+                    WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?
+                    ORDER BY trade_date
+                    """,
+                    (code, start_date, end_date),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                margin_rows = []
+            if margin_rows:
+                margin_df = pd.DataFrame([dict(r) for r in margin_rows])
+                margin_df["trade_date"] = pd.to_datetime(margin_df["trade_date"], format="%Y%m%d")
+                margin_df = margin_df.set_index("trade_date").sort_index()
+                for col in ["rqye", "rzmre", "rzrqye"]:
+                    if col in margin_df.columns:
+                        df[col] = margin_df[col]
+
             return code, df
         finally:
             local_conn.close()
