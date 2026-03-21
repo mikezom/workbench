@@ -37,6 +37,7 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 | `src/components/quant/trade-log-table.tsx` | Scrollable trade log table |
 | `scripts/mock_data.py` | Deterministic mock OHLCV + fundamental data generator |
 | `scripts/tushare_fetcher.py` | Data fetcher (mock or real Tushare API) |
+| `scripts/backfill-new-factors.sh` | One-time historical backfill for new Tushare factor source tables |
 | `scripts/quant_factors.py` | Factor computation library (81 factors) |
 | `scripts/quant_models.py` | Model wrappers (Linear, Ridge, Lasso, RF, XGBoost) |
 | `scripts/quant_backtest.py` | Core backtesting engine (walk-forward) |
@@ -75,7 +76,7 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 - `moneyflow` — Daily stock money-flow breakdown
 - `stock_basic` — Stock listing info
 - `stk_limit` — Daily upper/lower limit prices
-- `stk_holdertrade` — Insider and major-holder trading disclosures
+- `holder_trade` — Insider and major-holder trading disclosures
 - `top10_floatholders` — Top-10 float-holder composition
 - `top_list` — Dragon-tiger list trading detail
 
@@ -94,3 +95,9 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 - **Dry-run first** — All features work end-to-end with deterministic mock data
 - **Plotly via dynamic import** — `react-plotly.js` loaded with `ssr: false` to avoid SSR issues
 - **Factor seeding** — DB-based registry, extensible without code changes
+
+## Operational Notes
+
+- `scripts/update-tushare-data.sh` performs the recurring incremental refresh and includes all new daily-style tables except `top10_floatholders`.
+- `scripts/backfill-new-factors.sh` performs a one-time historical backfill for the new factor sources and defaults to `20210104` through today.
+- `top10_floatholders` is intentionally excluded from the daily incremental job because it is fetched stock-by-stock rather than date-by-date.

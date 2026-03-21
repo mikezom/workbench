@@ -44,7 +44,38 @@ Or install the daily 18:00 launchd job:
 ./scripts/install-tushare-update-launch-agent.sh 18 0
 ```
 
-The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest cached trade date through today, refreshes benchmark index rows, refreshes `stk_limit`, refreshes `moneyflow`, refreshes `margin_detail`, refreshes `adj_factor`, refreshes `hk_hold`, refreshes `top_list`, and refreshes `stk_holdertrade` for the same window. Logs are written to `workbench/logs/tushare-update.out.log` and `workbench/logs/tushare-update.err.log`.
+The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest cached trade date through today, refreshes benchmark index rows, refreshes `stk_limit`, refreshes `moneyflow`, refreshes `margin_detail`, refreshes `adj_factor`, refreshes `hk_hold`, refreshes `top_list`, and refreshes the `holder_trade` table for the same window. Logs are written to `workbench/logs/tushare-update.out.log` and `workbench/logs/tushare-update.err.log`.
+
+### One-Time New-Factor Backfill
+
+To populate the newly added factor source tables from the historical start of the local market cache, run:
+
+```bash
+./scripts/backfill-new-factors.sh
+```
+
+By default this backfills from `20210104` through today and runs:
+
+- `moneyflow`
+- `margin-detail`
+- `adj-factor`
+- `hk-hold`
+- `top-list`
+- `holder-trade`
+- `top10-floatholders`
+
+Optional environment variables:
+
+```bash
+TUSHARE_BACKFILL_START=20210104
+TUSHARE_BACKFILL_END=20260321
+TUSHARE_TOP10_LIMIT=500
+```
+
+Notes:
+
+- The daily incremental updater does **not** refresh `top10-floatholders`; that endpoint is heavier and is intended for explicit backfills.
+- `hk_hold` daily behavior changes after `2024-08-20`, when northbound holdings moved away from the earlier daily publication pattern.
 
 ## 2. Create a Strategy (Strategies Tab)
 
@@ -59,7 +90,7 @@ The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest c
      - *Technical*: RSI, MACD, Bollinger, ATR, ADX, CCI, Stochastic, and Williams %R
    - **Model Type** — Linear Regression, Ridge, Lasso, Random Forest, or XGBoost
    - **Hyperparameters** — appear based on model type (e.g., alpha for Ridge/Lasso, n_estimators for RF/XGBoost)
-   - **Universe** — stock universe: HS300, ZZ500, or ZZ1000
+   - **Universe** — stock universe: HS300, ZZ500, ZZ1000, ALL, or CUSTOM
 3. Click **Save**.
 
 ## 3. Run a Backtest (Backtest Tab)
