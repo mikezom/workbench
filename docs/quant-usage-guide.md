@@ -44,7 +44,7 @@ Or install the daily 18:00 launchd job:
 ./scripts/install-tushare-update-launch-agent.sh 18 0
 ```
 
-The scheduled job refreshes `stock_basic`, reloads daily OHLCV from the latest cached trade date through today, refreshes benchmark index rows, refreshes `stk_limit`, refreshes `moneyflow`, refreshes `margin_detail`, refreshes `adj_factor`, refreshes `hk_hold`, refreshes `top_list`, and refreshes the `holder_trade` table for the same window. Logs are written to `workbench/logs/tushare-update.out.log` and `workbench/logs/tushare-update.err.log`.
+The scheduled job refreshes `stock_basic`, reloads daily OHLCV and `daily_basic` from the earliest stale cached trade date through today, refreshes benchmark index rows, refreshes `stk_limit`, refreshes `moneyflow`, refreshes `margin_detail`, refreshes `adj_factor`, refreshes `hk_hold`, refreshes `top_list`, and refreshes the `holder_trade` table for the same window. Logs are written to `workbench/logs/tushare-update.out.log` and `workbench/logs/tushare-update.err.log`.
 
 ### One-Time New-Factor Backfill
 

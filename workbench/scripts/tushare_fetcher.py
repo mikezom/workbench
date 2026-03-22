@@ -116,6 +116,27 @@ def init_schema(conn: sqlite3.Connection) -> None:
             list_date TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS daily_basic (
+            ts_code TEXT NOT NULL,
+            trade_date TEXT NOT NULL,
+            pe REAL,
+            pe_ttm REAL,
+            pb REAL,
+            ps REAL,
+            ps_ttm REAL,
+            dv_ratio REAL,
+            dv_ttm REAL,
+            total_share REAL,
+            float_share REAL,
+            free_share REAL,
+            total_mv REAL,
+            circ_mv REAL,
+            turnover_rate REAL,
+            turnover_rate_f REAL,
+            volume_ratio REAL,
+            PRIMARY KEY (ts_code, trade_date)
+        );
+
         CREATE TABLE IF NOT EXISTS fina_indicator (
             ts_code TEXT NOT NULL,
             end_date TEXT NOT NULL,
@@ -296,6 +317,38 @@ def upsert_daily_ohlcv_rows(conn: sqlite3.Connection, df) -> None:
                 row.get("pct_chg"),
                 int(row["vol"]),
                 row["amount"],
+            ),
+        )
+
+
+def upsert_daily_basic_rows(conn: sqlite3.Connection, df) -> None:
+    for _, row in df.iterrows():
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_basic "
+            "("
+            "ts_code, trade_date, pe, pe_ttm, pb, ps, ps_ttm, dv_ratio, dv_ttm, "
+            "total_share, float_share, free_share, total_mv, circ_mv, "
+            "turnover_rate, turnover_rate_f, volume_ratio"
+            ") "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                row["ts_code"],
+                row["trade_date"],
+                row.get("pe"),
+                row.get("pe_ttm"),
+                row.get("pb"),
+                row.get("ps"),
+                row.get("ps_ttm"),
+                row.get("dv_ratio"),
+                row.get("dv_ttm"),
+                row.get("total_share"),
+                row.get("float_share"),
+                row.get("free_share"),
+                row.get("total_mv"),
+                row.get("circ_mv"),
+                row.get("turnover_rate"),
+                row.get("turnover_rate_f"),
+                row.get("volume_ratio"),
             ),
         )
 
@@ -574,8 +627,24 @@ def fetch_real_data(
         except Exception as e:
             print(f"  Warning: failed to fetch benchmark indexes: {e}")
             benchmark_rows = 0
+        try:
+            if limit > 0:
+                daily_basic_rows, daily_basic_dates = fetch_daily_basic_for_codes(conn, pro, codes, start_date, end_date)
+                daily_basic_scope = "stocks"
+            else:
+                daily_basic_rows, daily_basic_dates = fetch_daily_basic_by_trade_date(conn, pro, start_date, end_date)
+                daily_basic_scope = "trade dates"
+        except Exception as e:
+            print(f"  Warning: failed to fetch daily_basic data: {e}")
+            daily_basic_rows = 0
+            daily_basic_dates = 0
+            daily_basic_scope = "trade dates"
         conn.commit()
-        print(f"  Daily OHLCV complete: {total} stocks + {benchmark_rows} benchmark index rows")
+        print(
+            "  Daily OHLCV complete: "
+            f"{total} stocks + {benchmark_rows} benchmark index rows + "
+            f"{daily_basic_rows} daily_basic rows across {daily_basic_dates} {daily_basic_scope}"
+        )
 
     elif mode == "benchmark-daily":
         benchmark_rows = fetch_benchmark_data(conn, pro, start_date, end_date)
@@ -642,11 +711,127 @@ def fetch_daily_by_trade_date(
 
 
 def resolve_incremental_start_date(conn: sqlite3.Connection, end_date: str) -> str:
-    row = conn.execute("SELECT MAX(trade_date) FROM daily_ohlcv").fetchone()
-    max_trade_date = row[0] if row and row[0] else None
-    if not max_trade_date:
+    max_dates: list[str] = []
+
+    for table_name in ("daily_ohlcv", "daily_basic"):
+        if not table_exists(conn, table_name):
+            continue
+        row = conn.execute(f"SELECT MAX(trade_date) FROM {table_name}").fetchone()
+        max_trade_date = row[0] if row and row[0] else None
+        if max_trade_date:
+            max_dates.append(max_trade_date)
+
+    if not max_dates:
         return end_date
-    return min(max_trade_date, end_date)
+
+    return min(min(max_dates), end_date)
+
+
+def fetch_daily_basic_by_trade_date(
+    conn: sqlite3.Connection,
+    pro,
+    start_date: str,
+    end_date: str,
+) -> tuple[int, int]:
+    dates = iter_calendar_dates(start_date, end_date)
+    if not dates:
+        return 0, 0
+
+    print(f"  Refreshing daily_basic data for {len(dates)} calendar days")
+
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+    populated_dates = 0
+    batch_size = 200
+
+    for i, trade_date in enumerate(dates):
+        try:
+            df = pro.daily_basic(trade_date=trade_date)
+            if df is not None and len(df) > 0:
+                conn.execute("DELETE FROM daily_basic WHERE trade_date = ?", (trade_date,))
+                upsert_daily_basic_rows(conn, df)
+                total_rows += len(df)
+                populated_dates += 1
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(dates)} daily_basic dates done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 20 == 0 or i == len(dates) - 1:
+                conn.commit()
+                print(f"  daily_basic by date: {i+1}/{len(dates)} dates done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch daily_basic for {trade_date}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    return total_rows, populated_dates
+
+
+def fetch_daily_basic_for_codes(
+    conn: sqlite3.Connection,
+    pro,
+    codes: list[str],
+    start_date: str,
+    end_date: str,
+) -> tuple[int, int]:
+    if not codes:
+        return 0, 0
+
+    print(f"  Refreshing daily_basic data for {len(codes)} selected stocks")
+
+    batch_start_time = time.time()
+    batch_count = 0
+    total_rows = 0
+    batch_size = 480
+
+    for i, code in enumerate(codes):
+        try:
+            df = pro.daily_basic(ts_code=code, start_date=start_date, end_date=end_date)
+            conn.execute(
+                "DELETE FROM daily_basic WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ?",
+                (code, start_date, end_date),
+            )
+            if df is not None and len(df) > 0:
+                upsert_daily_basic_rows(conn, df)
+                total_rows += len(df)
+            batch_count += 1
+
+            if batch_count >= batch_size:
+                conn.commit()
+                elapsed = time.time() - batch_start_time
+                if elapsed < 62:
+                    wait = 62 - elapsed
+                    print(f"  Rate limit: {i+1}/{len(codes)} daily_basic stocks done, waiting {wait:.0f}s...")
+                    time.sleep(wait)
+                batch_start_time = time.time()
+                batch_count = 0
+
+            if (i + 1) % 100 == 0 or i == len(codes) - 1:
+                conn.commit()
+                print(f"  daily_basic by code: {i+1}/{len(codes)} stocks done ({total_rows} rows)")
+        except Exception as e:
+            print(f"  Warning: failed to fetch daily_basic for {code}: {e}")
+            if "每分钟" in str(e) or "too many" in str(e).lower() or "权限" in str(e):
+                print("  Rate limited, waiting 65s...")
+                time.sleep(65)
+                batch_start_time = time.time()
+                batch_count = 0
+
+    conn.commit()
+    return total_rows, len(codes)
 
 
 def fetch_stk_limit_by_trade_date(
@@ -779,6 +964,12 @@ def fetch_incremental_update(
 
     refresh_stock_basic(conn, pro)
     daily_rows, daily_dates = fetch_daily_by_trade_date(conn, pro, effective_start_date, end_date)
+    try:
+        daily_basic_rows, daily_basic_dates = fetch_daily_basic_by_trade_date(conn, pro, effective_start_date, end_date)
+    except Exception as e:
+        print(f"  Warning: failed to refresh daily_basic data: {e}")
+        daily_basic_rows = 0
+        daily_basic_dates = 0
 
     try:
         benchmark_rows = fetch_benchmark_data(conn, pro, effective_start_date, end_date)
@@ -838,6 +1029,7 @@ def fetch_incremental_update(
     print(
         "Incremental update complete: "
         f"{daily_rows} daily rows across {daily_dates} trade dates, "
+        f"{daily_basic_rows} daily_basic rows across {daily_basic_dates} trade dates, "
         f"{benchmark_rows} benchmark rows, "
         f"{stk_limit_rows} stk_limit rows across {stk_limit_dates} trade dates, "
         f"{moneyflow_rows} moneyflow rows across {moneyflow_dates} trade dates, "

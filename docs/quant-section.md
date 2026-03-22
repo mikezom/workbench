@@ -98,6 +98,6 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 
 ## Operational Notes
 
-- `scripts/update-tushare-data.sh` performs the recurring incremental refresh and includes all new daily-style tables except `top10_floatholders`.
+- `scripts/update-tushare-data.sh` performs the recurring incremental refresh, including `daily_basic`, and includes all new daily-style tables except `top10_floatholders`.
 - `scripts/backfill-new-factors.sh` performs a one-time historical backfill for the new factor sources and defaults to `20210104` through today.
 - `top10_floatholders` is intentionally excluded from the daily incremental job because it is fetched stock-by-stock rather than date-by-date.
