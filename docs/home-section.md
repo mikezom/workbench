@@ -61,6 +61,10 @@ Images are stored in `/Users/ccnas/DEVELOPMENT/shared-data/images/` (outside the
 3. Returns file with proper content-type header
 4. Browser displays image
 
+**Retention behavior**:
+- Updating a post image or deleting a post does not delete the underlying image file.
+- Uploaded images are retained in `shared-data/images/` until manually cleaned up.
+
 ## Database Module
 
 **File**: `src/lib/home-db.ts`

@@ -1,7 +1,5 @@
 import Database from "better-sqlite3";
 import { getDb } from "./db";
-import fs from "fs";
-import path from "path";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -104,21 +102,6 @@ export function updateHomePost(
   if (updates.image_url !== undefined) {
     sets.push("image_url = ?");
     values.push(updates.image_url);
-
-    // If replacing or removing an image, delete the old image file
-    if (existing.image_url && existing.image_url !== updates.image_url) {
-      try {
-        const filename = existing.image_url.split("/").pop();
-        if (filename) {
-          const imagePath = path.join(process.cwd(), "data", "images", filename);
-          if (fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath);
-          }
-        }
-      } catch (error) {
-        console.error(`Failed to delete old image file for post ${id}:`, error);
-      }
-    }
   }
 
   if (sets.length === 0) return toHomePostJson(existing);
@@ -134,29 +117,5 @@ export function updateHomePost(
 
 export function deleteHomePost(id: string): boolean {
   const db = getDb();
-
-  // Get the post to check if it has an associated image
-  const post = getHomePost(id);
-
-  // Delete the database record
-  const result = db.prepare("DELETE FROM home_posts WHERE id = ?").run(id);
-
-  // If deletion was successful and post had an image, delete the image file
-  if (result.changes > 0 && post?.image_url) {
-    try {
-      // Extract filename from URL (e.g., "/api/home/images/filename.jpg" -> "filename.jpg")
-      const filename = post.image_url.split("/").pop();
-      if (filename) {
-        const imagePath = path.join(process.cwd(), "data", "images", filename);
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-        }
-      }
-    } catch (error) {
-      // Log error but don't fail the deletion if image cleanup fails
-      console.error(`Failed to delete image file for post ${id}:`, error);
-    }
-  }
-
-  return result.changes > 0;
+  return db.prepare("DELETE FROM home_posts WHERE id = ?").run(id).changes > 0;
 }
