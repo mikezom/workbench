@@ -65,7 +65,7 @@ interface ClipboardItemJson {
   - Card-based snippet list with infinite scroll
   - Inline editing mode for each snippet
   - Copy to clipboard functionality
-  - Delete with confirmation
+  - Two-step inline delete confirmation
 
 ### Tests
 
@@ -141,8 +141,9 @@ interface ClipboardItemJson {
 - Only one snippet can be edited at a time
 
 ### 5. Delete Snippet
-- "Delete" button with confirmation dialog
-- Removes snippet from database
+- First click enters a temporary confirm state for that card
+- Second click within 3 seconds performs the deletion
+- No browser confirmation dialog is used
 - List refreshes after deletion
 
 ### 6. Infinite Scroll
@@ -170,7 +171,7 @@ User clicks Edit → Inline form appears → User edits → Save
 
 ### Delete Flow
 ```
-User clicks Delete → Confirmation dialog → Confirm
+User clicks Delete → card enters confirm state → second click confirms
   → DELETE /api/clipboard/[id] → deleteClipboardItem()
   → DELETE FROM clipboard_items → 204 response
   → Refresh list
@@ -190,11 +191,13 @@ User clicks Copy → navigator.clipboard.writeText(content)
 
 3. **Infinite scroll observer cleanup**: The IntersectionObserver must be disconnected in the useEffect cleanup to prevent memory leaks.
 
-4. **Edit mode state**: Only one snippet can be in edit mode at a time. Starting edit on a new snippet automatically cancels any existing edit.
+4. **Edit mode state**: Only one snippet can be in edit mode at a time. Starting edit on a new snippet replaces the previous edit state.
 
-5. **Copy feedback timing**: The "Copied!" feedback uses setTimeout and must be cleaned up if the component unmounts.
+5. **Copy behavior**: The page prefers `navigator.clipboard.writeText()` and falls back to a hidden textarea + `document.execCommand("copy")` path for older environments.
 
-6. **Whitespace preservation**: Content is displayed in a `<pre>` tag with `whitespace-pre-wrap` to preserve formatting while allowing wrapping.
+6. **Delete confirmation timeout**: The confirm-delete state auto-resets after 3 seconds and is cleared on unmount.
+
+7. **Whitespace preservation**: Content is displayed in a `<pre>` tag with `whitespace-pre-wrap` to preserve formatting while allowing wrapping.
 
 ## Future Enhancements (Not Implemented)
 

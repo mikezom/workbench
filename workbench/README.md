@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Workbench
 
-## Getting Started
+Workbench is a personal Next.js application that combines several tools behind one shell:
 
-First, run the development server:
+- Home dashboard with text posts and uploaded images
+- Agent definitions and agentic task execution
+- Monitor views for active tasks, queue state, and investigation reports
+- Study and Tutor interfaces
+- Crawl panels for external content sources
+- Quant strategy and backtest tooling
+- Clipboard snippets
+- Forest embedding for the external `forester-repo`
+
+## Repo Layout
+
+The git repository root is `../`, not this folder.
+
+```text
+workbench/
+  docs/                 section documentation and implementation plans
+  logs/                 daemon / automation logs
+  skills/               local skill sources
+  .worktrees/           task worktrees created by the agent system
+  workbench/            this Next.js app
+```
+
+The application code lives here:
+
+- `src/app` — pages and API routes
+- `src/components` — UI components
+- `src/lib` — SQLite access, parsers, filesystem helpers, and domain logic
+- `scripts` — Python and shell helpers for daemon, quant, backup, and data refresh jobs
+- `data/workbench.db` — primary SQLite database
+
+## Data and Integrations
+
+- Main app state is stored in `data/workbench.db`.
+- Home images are stored in `../../shared-data/images/`.
+- Agent files live in `../../shared-data/agent/`.
+- Tutor avatars live in `../../shared-data/avatars/`.
+- Quant market data is read from a separate Tushare database under shared data.
+- Forest content is not authored in this repo. The `/forest` route serves prebuilt output from `/Users/ccnas/DEVELOPMENT/forester-repo/output/forest/`.
+
+## Running Locally
+
+From this directory:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The dev server listens on `http://localhost:5090`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+From `/Users/ccnas/DEVELOPMENT`, you can also use:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+./start-workbench.sh
+```
 
-## Learn More
+That script starts the Next.js dev server, runs an initial Forester build in `forester-repo`, and watches tree files for rebuilds.
 
-To learn more about Next.js, take a look at the following resources:
+## Section Docs
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Current section docs live in `../docs/`:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `home-section.md`
+- `agent-section.md`
+- `agentic-tasks-section.md`
+- `monitor-section.md`
+- `study-section.md`
+- `interactive-study-section.md`
+- `crawl-section.md`
+- `quant-section.md`
+- `clipboard-section.md`
+- `forest-section.md`
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Historical design and implementation notes remain under `../docs/plans/`.

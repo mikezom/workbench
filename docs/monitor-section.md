@@ -21,7 +21,7 @@ The Monitor section is a tabbed interface with three tabs:
 
 ### Tab 1: Active Agents
 
-Displays all currently executing tasks with real-time updates every 3 seconds.
+Displays all currently executing tasks with real-time updates every 3 seconds. In practice this includes any task whose status is `developing`, `decompose_understanding`, `decompose_breaking_down`, or `decompose_reflecting`.
 
 **Features:**
 - Task ID, title, and type badge (Dev/Inv/Dec)
@@ -97,7 +97,7 @@ Investigation reports interface with creation form and report viewer.
 - List of all investigation reports
 - "New Investigation" button to create new investigation tasks
 - Investigation creation form (title + prompt)
-- Report viewer with markdown rendering
+- Report viewer that currently shows raw markdown inside a `<pre>` block
 
 **API Endpoints:**
 - `GET /api/investigation/reports` — List all reports
@@ -149,7 +149,7 @@ Form for creating new investigation tasks:
 Displays full investigation report:
 - Back button to return to list
 - Report title and metadata
-- Markdown-formatted report content in scrollable container
+- Raw markdown content in a scrollable `<pre>` container
 
 ## Database Schema
 

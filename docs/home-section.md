@@ -30,7 +30,7 @@ CREATE TABLE home_posts (
 - `PUT /api/home/[id]` - Update post
 - `DELETE /api/home/[id]` - Delete post
 - `POST /api/home/upload` - Upload image (returns URL)
-- `GET /api/home/images/[filename]` - Serve image from data/images
+- `GET /api/home/images/[filename]` - Serve image from `shared-data/images`
 
 ### Frontend
 

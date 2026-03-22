@@ -2,217 +2,135 @@
 
 ## Overview
 
-The Crawl section is a multi-source content aggregator dashboard. It displays panels for various technical content sources (arXiv, Jin10, Hacker News, Lobsters, nLab, Planet Haskell, Reddit) in a grid layout. Currently, the arXiv and Jin10 panels are fully functional with API integration and caching — the remaining five panels are placeholder stubs showing "Coming soon."
+The Crawl section is a mixed-source dashboard for external content. The current implementation has:
 
-The arXiv and Jin10 panels have backend support via API proxy routes and database caching. Other sources are not yet implemented.
+- 3 functional panels: arXiv, JIN10, SOLIDOT
+- 3 source placeholders: nLab, Planet Haskell, Reddit
+- 1 extra placeholder panel: Dummy Panel
+
+The page uses a responsive split:
+
+- desktop / landscape: a 3-column grid showing all 7 panels
+- portrait mode: a bottom sub-navigation that switches between the 3 functional panels only
+
+The active portrait tab is persisted in `localStorage` under `crawl-active-panel`.
 
 ## Architecture
 
-```
-UI (crawl/page.tsx — single client component)
+```text
+UI (src/app/crawl/page.tsx)
+  ↓ fetch
+API routes
+  /api/crawl/arxiv
+  /api/crawl/jin10
+  /api/crawl/solidot
   ↓
-API Routes (arXiv proxy implemented)
+SQLite caches in data/workbench.db
+  arxiv_cache / jin10_cache / solidot_cache
   ↓
-Database Cache (arxiv_cache table in SQLite)
-  ↓
-External APIs (arXiv API implemented, others pending)
+External sources
+  arXiv API / JIN10 site / SOLIDOT RSS
 ```
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/app/crawl/page.tsx` | Entire Crawl UI — all panel sub-components in one file |
-| `src/app/crawl/page.test.tsx` | Static tests verifying 6 panels exist with correct titles |
-| `src/app/api/crawl/arxiv/route.ts` | arXiv API proxy — fetches and parses search results |
-| `src/app/api/crawl/jin10/route.ts` | Jin10 API proxy — scrapes and caches financial news |
-| `src/app/api/crawl/solidot/route.ts` | SOLIDOT API proxy — fetches and caches RSS news |
-| `src/lib/crawl-db.ts` | Database operations for arXiv cache |
-| `src/lib/crawl-db.test.ts` | Tests for arXiv cache CRUD operations |
-| `src/lib/jin10-parser.ts` | HTML parser for Jin10 news content |
-| `src/lib/solidot-parser.ts` | RSS parser for SOLIDOT news content |
-| `data/crawls.json` | Empty JSON array — unused placeholder for future persistence |
+| `src/app/crawl/page.tsx` | Entire Crawl UI, including all panel components and portrait sub-navigation |
+| `src/app/crawl/page.test.tsx` | Static source tests for panel count, portrait nav, and active-panel state |
+| `src/app/api/crawl/arxiv/route.ts` | arXiv search proxy + caching |
+| `src/app/api/crawl/jin10/route.ts` | JIN10 latest-news fetch + caching |
+| `src/app/api/crawl/solidot/route.ts` | SOLIDOT RSS fetch + caching |
+| `src/lib/crawl-db.ts` | Cache schema and CRUD for the three sources |
+| `src/lib/arxiv-parser.ts` | arXiv Atom/XML parsing |
+| `src/lib/jin10-parser.ts` | JIN10 HTML parsing |
+| `src/lib/solidot-parser.ts` | SOLIDOT RSS parsing |
 
-## Content Sources (Panels)
+## Current Panels
 
-| Panel | Color Indicator | Status | External Source |
-|-------|----------------|--------|----------------|
-| ArxivPanel | Blue | Functional with API + caching | arXiv API (`export.arxiv.org/api/query`) |
-| Jin10Panel | Yellow | Functional with scraping + caching | Jin10 (`www.jin10.com`) |
-| HackerNewsPanel | Orange | Stub ("Coming soon") | HN API (`hacker-news.firebaseio.com`) |
-| SolidotPanel | Dark Teal (RGB 0,77,77) | Functional with RSS + caching | SOLIDOT (`www.solidot.org/index.rss`) |
-| NLabPanel | Green | Stub ("Coming soon") | nLab (`ncatlab.org`) |
-| PlanetHaskellPanel | Purple | Stub ("Coming soon") | Planet Haskell (`planet.haskell.org`) |
-| RedditPanel | Light Blue | Stub ("Coming soon") | Reddit API |
+| Panel | Status | Notes |
+|------|--------|-------|
+| arXiv | Functional | Search-driven panel, defaults to `cat:cs.*` |
+| JIN10 | Functional | Latest financial news with refresh button |
+| SOLIDOT | Functional | Latest RSS news with refresh button |
+| nLab | Placeholder | UI only |
+| Planet Haskell | Placeholder | UI only |
+| Reddit | Placeholder | UI only |
+| Dummy Panel | Placeholder | UI only |
 
-## UI Layout (`crawl/page.tsx`)
+## UI Layout
 
-Single client component file containing all sub-components:
+### Desktop / Landscape
 
-```
-+----------------------------------------------+
-| Crawl (header, h1)                           |
-+----------------------------------------------+
-| [ArxivPanel]                                 |
-|   - Header: blue dot + "arXiv" + count       |
-|   - Search bar: text input + Search button   |
-|   - Papers list: title, authors, summary,    |
-|     date, link                               |
-+----------------------------------------------+
-| [HackerNewsPanel]  "Coming soon"             |
-+----------------------------------------------+
-| [LobstersPanel]    "Coming soon"             |
-+----------------------------------------------+
-| [NLabPanel]        "Coming soon"             |
-+----------------------------------------------+
-| [PlanetHaskellPanel] "Coming soon"           |
-+----------------------------------------------+
-| [RedditPanel]      "Coming soon"             |
-+----------------------------------------------+
-```
+- The page renders a 3-column grid.
+- Each grid cell is fixed to roughly half the viewport height.
+- All 7 panels are visible at once.
 
-- **Layout**: Single-column grid (`grid-cols-1`) with `gap-3`, full height with overflow hidden
-- **Panel pattern**: Each panel follows the same structure — colored dot header, panel title, content area
-- **No sidebar**: Unlike Study, the Crawl section has no sidebar or tab navigation
+### Portrait Mode
 
-## ArxivPanel (Only Functional Panel)
+- A secondary bottom nav appears above the main app nav.
+- Only `arxiv`, `jin10`, and `solidot` are switchable in portrait.
+- Placeholder panels are hidden in portrait mode.
+- The selected panel is restored from `localStorage`.
 
-### Types
+## Functional Panels
 
-```typescript
-interface ArxivPaper {
-  id: string;       // e.g., "2403.12345"
-  title: string;
-  authors: string[];
-  summary: string;
-  published: string; // ISO date string
-  link: string;      // arXiv URL
-}
-```
+### arXiv
 
-### State
+- Query input + search button
+- Auto-fetch on mount
+- Result cards show title, authors, summary, publish date, and external link
+- Uses `/api/crawl/arxiv?q=...`
+- Cache key is the full search query
 
-- `papers: ArxivPaper[]` — search results
-- `loading: boolean` — fetch in progress
-- `query: string` — search query, defaults to `"cat:cs.AI"`
-
-### Behavior
-
-1. User enters a query (default: `cat:cs.AI`)
-2. Clicks "Search" button
-3. `fetchPapers()` fetches from `/api/crawl/arxiv?q=...`
-4. API route checks SQLite cache (5-minute TTL)
-5. If no fresh cache: proxies to arXiv API, parses XML response, caches results
-6. Papers render as cards with title, authors, summary (3-line clamp), date, and "View on arXiv" link
-7. On error: shows stale cached results if available (206 status), otherwise alerts user
-
-Caching reduces API calls and provides fallback on network errors. The arXiv API is called directly from the server to avoid CORS issues.
-
-## Jin10 News Panel
-
-Displays latest financial and economic news from [JIN10](https://www.jin10.com/).
-
-### Features
+### JIN10
 
 - Auto-fetch on mount
-- Manual refresh button
-- 5-minute cache with stale fallback
-- Flexible layout (shows summary when available)
-- Minimal link indicators
+- Manual refresh with `?refresh=true`
+- Cards show title, optional summary, GMT+8 timestamp, and optional link
+- Uses `/api/crawl/jin10`
+- Cache key is always `latest`
 
-### Architecture
-
-- **Parser**: `src/lib/jin10-parser.ts` - HTML scraping with regex
-- **API Route**: `src/app/api/crawl/jin10/route.ts` - Caching proxy
-- **Database**: `jin10_cache` table in SQLite
-- **UI**: `Jin10Panel` component in `src/app/crawl/page.tsx`
-
-### Cache Strategy
-
-- TTL: 5 minutes
-- Stale fallback: Returns old cache if fetch fails
-- Query key: Always "latest" (no search functionality)
-
-### Error Handling
-
-- Network timeout: 10 seconds
-- Fetch failure with cache: Returns 206 with stale data
-- Fetch failure without cache: Returns 500 error
-- Parse failure: Returns empty array
-
-## SOLIDOT Panel
-
-Displays latest tech news from [SOLIDOT](https://www.solidot.org/), a Chinese technology news site.
-
-### Features
+### SOLIDOT
 
 - Auto-fetch on mount
-- Manual refresh button
-- 5-minute cache with stale fallback
-- RSS feed parsing
-- Dark teal color indicator (RGB 0,77,77)
+- Manual refresh with `?refresh=true`
+- Cards show title, optional summary, timestamp, and link
+- Uses `/api/crawl/solidot`
+- Cache key is always `latest`
 
-### Architecture
+## Cache Layer
 
-- **Parser**: `src/lib/solidot-parser.ts` - RSS XML parsing
-- **API Route**: `src/app/api/crawl/solidot/route.ts` - Caching proxy
-- **Database**: `solidot_cache` table in SQLite
-- **UI**: `SolidotPanel` component in `src/app/crawl/page.tsx`
+`src/lib/crawl-db.ts` initializes three SQLite tables:
 
-### Cache Strategy
+- `arxiv_cache`
+- `jin10_cache`
+- `solidot_cache`
 
-- TTL: 5 minutes
-- Stale fallback: Returns old cache if fetch fails
-- Query key: Always "latest" (RSS feed has no search)
+Each table stores:
 
-### Error Handling
+- `id`
+- `query`
+- `results` as JSON text
+- `result_count`
+- `timestamp`
+- `created_at`
 
-- Network timeout: 10 seconds
-- Fetch failure with cache: Returns 206 with stale data
-- Fetch failure without cache: Returns 500 error
-- Parse failure: Returns empty array
+The current routes use short-lived caching with stale fallback behavior when remote fetches fail.
 
-## Cache Management
+## Tests
 
-The arXiv API results are cached in the `arxiv_cache` table with:
+`src/app/crawl/page.test.tsx` currently verifies:
 
-- **TTL**: 5 minutes per query
-- **Eviction**: `deleteExpiredArxivCache()` can be called to remove old entries
-- **Fallback**: Stale cache is returned (with 206 status) if API fetch fails
+- 7 panel components are defined
+- 7 panel usages appear in the grid
+- source titles exist in the page source
+- portrait `SubNavigation` exists
+- `activePanel` state and `crawl-active-panel` persistence exist
 
-Cache format:
-```typescript
-{
-  id: string;           // UUID
-  query: string;        // Search query (e.g., "cat:cs.AI")
-  results: ArxivPaper[]; // Up to 10 papers
-  result_count: number;
-  timestamp: number;   // Cache creation time (ms)
-  created_at: string;  // ISO date string
-}
-```
+## Current Limitations
 
-## Tests (`page.test.tsx`)
-
-Static source-code tests (not rendering tests):
-
-1. **6 panel components defined** — regex matches `function XxxPanel()` declarations
-2. **6 panels in grid** — regex matches `<XxxPanel />` usages inside the grid div
-3. **6 panel titles present** — checks source contains "arXiv", "Hacker News", "Lobsters", "nLab", "Planet Haskell", "Reddit"
-
-These are file-content tests using `readFileSync`, not React rendering/DOM tests.
-
-## Future Implementation Notes
-
-To make this section functional, each panel would need:
-
-1. **API route** (`src/app/api/crawl/{source}/route.ts`) — server-side proxy to the external API to avoid CORS and rate-limit issues
-2. **Polling/caching** — periodic fetch with local caching to avoid hammering external APIs
-3. **Persistence** — `crawls.json` or a SQLite table for saved/bookmarked items
-4. **Unified item type** — normalize items across sources (title, url, date, source, summary)
-
-## Common Pitfalls
-
-- **Limited functionality** — Only arXiv panel is fully implemented; other panels are stubs
-- **Single-column layout** — panels stack vertically in one column; switching to multi-column grid would need responsive breakpoints
-- **Cache-only fallback** — When arXiv API fails, only cached results are shown (with 206 status), no retry mechanism
+- Only 3 panels have backend integration.
+- Error handling is still alert-based in the page component.
+- There is no unified source abstraction; each functional panel owns its own fetch and rendering path.
+- Placeholder panels do not have API routes or persistence yet.
