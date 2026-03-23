@@ -1,6 +1,10 @@
 import type Database from "better-sqlite3";
 import { getDb } from "./db";
 import { normalizeBenchmarkCode } from "./quant-benchmark";
+import {
+  normalizeQuantBacktestConfig,
+  type QuantBacktestConfig,
+} from "./quant-backtest-config";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -342,7 +346,7 @@ export interface QuantBacktestRun {
   rebalance_freq: string;
   top_n: number;
   commission: number;
-  config: Record<string, unknown>;
+  config: QuantBacktestConfig;
   progress_percent: number;
   progress_message: string | null;
   error_message: string | null;
@@ -455,7 +459,7 @@ function toBacktestRun(row: Record<string, unknown>): QuantBacktestRun {
     ...row,
     bookmarked: Boolean(row.bookmarked),
     benchmark: normalizeBenchmarkCode(row.benchmark as string),
-    config: JSON.parse(row.config as string),
+    config: normalizeQuantBacktestConfig(JSON.parse(row.config as string)),
     strategy_snapshot: parseStrategySnapshot(row.strategy_snapshot),
   } as QuantBacktestRun;
 }
@@ -579,6 +583,7 @@ export function createBacktestRun(data: {
 }): QuantBacktestRun {
   const db = getDb();
   const benchmark = normalizeBenchmarkCode(data.benchmark);
+  const normalizedConfig = normalizeQuantBacktestConfig(data.config);
   const result = db.prepare(`
     INSERT INTO quant_backtest_runs (
       strategy_id, strategy_snapshot, start_date, end_date, initial_capital, benchmark, rebalance_freq, top_n, commission, config
@@ -594,7 +599,7 @@ export function createBacktestRun(data: {
     data.rebalance_freq ?? "weekly",
     data.top_n ?? 10,
     data.commission ?? 0.001,
-    JSON.stringify(data.config ?? {})
+    JSON.stringify(normalizedConfig)
   );
   return getBacktestRun(Number(result.lastInsertRowid))!;
 }

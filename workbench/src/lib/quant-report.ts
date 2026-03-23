@@ -8,6 +8,7 @@ import {
   type QuantStrategy,
   type QuantTradeLogEntry,
 } from "@/lib/quant-db";
+import { getPositionControlLabel, getTrailingStopLabel } from "@/lib/quant-backtest-config";
 import { getTushareDb } from "@/lib/tushare-db";
 
 type TradeLot = {
@@ -249,6 +250,8 @@ export function buildBacktestReportHtml(detail: QuantBacktestDetail): string {
         <div><div class="eyebrow">Rebalance</div><div>${escapeHtml(detail.run.rebalance_freq)}</div></div>
         <div><div class="eyebrow">Train Window</div><div>${escapeHtml(String(detail.run.config.train_window_days ?? 240))} days</div></div>
         <div><div class="eyebrow">Prediction Horizon</div><div>${escapeHtml(String(detail.run.config.prediction_horizon_days ?? 20))} days</div></div>
+        <div><div class="eyebrow">Position Control</div><div>${escapeHtml(getPositionControlLabel(detail.run.config.position_control))}</div></div>
+        <div><div class="eyebrow">Trailing Stop</div><div>${escapeHtml(getTrailingStopLabel(detail.run.config.trailing_stop))}</div></div>
         <div><div class="eyebrow">Top N</div><div>${escapeHtml(String(detail.run.top_n))}</div></div>
         <div><div class="eyebrow">Factors</div><div>${escapeHtml(String(factors.length))}</div></div>
       </div>

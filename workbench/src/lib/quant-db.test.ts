@@ -88,4 +88,42 @@ describe("quant factor registry", () => {
     expect(updated?.bookmarked).toBe(true);
     expect(getBacktestRun(run.id)?.bookmarked).toBe(true);
   });
+
+  it("normalizes nested backtest config for position sizing defaults and overrides", () => {
+    const strategy = createStrategy({
+      name: "Position Control Test",
+      factors: ["momentum_3m"],
+      model_type: "linear_regression",
+    });
+
+    const run = createBacktestRun({
+      strategy_id: strategy.id,
+      start_date: "20240101",
+      end_date: "20241231",
+      config: {
+        train_window_days: 180,
+        position_control: {
+          mode: "atr_risk_budget",
+          atr_period: 20,
+          risk_per_trade: 0.015,
+          stop_atr_multiple: 2.5,
+        },
+      },
+    });
+
+    expect(run.config.train_window_days).toBe(180);
+    expect(run.config.prediction_horizon_days).toBe(20);
+    expect(run.config.position_control).toEqual({
+      mode: "atr_risk_budget",
+      atr_period: 20,
+      risk_per_trade: 0.015,
+      stop_atr_multiple: 2.5,
+    });
+    expect(run.config.trailing_stop).toEqual({
+      enabled: false,
+      atr_period: 14,
+      atr_multiple: 3,
+      slippage: 0,
+    });
+  });
 });

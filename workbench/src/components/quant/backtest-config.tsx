@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { getDefaultBacktestDateRange } from "@/lib/quant-defaults";
+import {
+  DEFAULT_POSITION_CONTROL_CONFIG,
+  type PositionControlConfig,
+} from "@/lib/quant-backtest-config";
 
 interface Strategy {
   id: number;
@@ -23,6 +27,7 @@ interface BacktestConfigProps {
     commission: number;
     train_window_days: number;
     prediction_horizon_days: number;
+    position_control: PositionControlConfig;
   }) => void;
 }
 
@@ -38,6 +43,13 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
   const [commission, setCommission] = useState("0.001");
   const [trainWindowDays, setTrainWindowDays] = useState("240");
   const [predictionHorizonDays, setPredictionHorizonDays] = useState("20");
+  const [positionControlMode, setPositionControlMode] =
+    useState<PositionControlConfig["mode"]>(DEFAULT_POSITION_CONTROL_CONFIG.mode);
+  const [positionAtrPeriod, setPositionAtrPeriod] = useState(String(DEFAULT_POSITION_CONTROL_CONFIG.atr_period));
+  const [positionRiskPerTrade, setPositionRiskPerTrade] = useState(String(DEFAULT_POSITION_CONTROL_CONFIG.risk_per_trade));
+  const [positionStopAtrMultiple, setPositionStopAtrMultiple] = useState(
+    String(DEFAULT_POSITION_CONTROL_CONFIG.stop_atr_multiple)
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -55,6 +67,12 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
       commission: parseFloat(commission),
       train_window_days: parseInt(trainWindowDays),
       prediction_horizon_days: parseInt(predictionHorizonDays),
+      position_control: {
+        mode: positionControlMode,
+        atr_period: parseInt(positionAtrPeriod),
+        risk_per_trade: parseFloat(positionRiskPerTrade),
+        stop_atr_multiple: parseFloat(positionStopAtrMultiple),
+      },
     });
     setTimeout(() => setSubmitting(false), 1000);
   };
@@ -185,6 +203,75 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
             className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
           />
         </div>
+      </div>
+
+      <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-4 space-y-4">
+        <div>
+          <div className="text-sm font-medium">Position Control</div>
+          <p className="text-xs text-neutral-500 mt-1">
+            Choose how capital is distributed across selected names at each rebalance.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Sizing Rule</label>
+          <select
+            value={positionControlMode}
+            onChange={(e) => setPositionControlMode(e.target.value as PositionControlConfig["mode"])}
+            className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+          >
+            <option value="equal_weight">Evenly Distributed</option>
+            <option value="atr_inverse_volatility">ATR Inverse Volatility</option>
+            <option value="atr_risk_budget">ATR Risk Budget</option>
+          </select>
+        </div>
+
+        {positionControlMode !== "equal_weight" && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">ATR Period</label>
+              <input
+                type="number"
+                min="2"
+                step="1"
+                value={positionAtrPeriod}
+                onChange={(e) => setPositionAtrPeriod(e.target.value)}
+                className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+              />
+            </div>
+
+            {positionControlMode === "atr_risk_budget" ? (
+              <>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Risk Per Trade</label>
+                  <input
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    value={positionRiskPerTrade}
+                    onChange={(e) => setPositionRiskPerTrade(e.target.value)}
+                    className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1">Risk Stop Distance (ATR Multiple)</label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={positionStopAtrMultiple}
+                    onChange={(e) => setPositionStopAtrMultiple(e.target.value)}
+                    className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="col-span-1 text-xs text-neutral-500 self-end">
+                Capital is weighted by the inverse of ATR percentage so lower-volatility names receive larger allocations.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <button

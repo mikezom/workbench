@@ -15,6 +15,12 @@ import YearlyPerformanceTable from "@/components/quant/yearly-performance-table"
 import DiagnosticsPanel from "@/components/quant/diagnostics-panel";
 import AssetEarningsTable from "@/components/quant/asset-earnings-table";
 import FinalPortfolioPanel from "@/components/quant/final-portfolio-panel";
+import {
+  getPositionControlLabel,
+  getTrailingStopLabel,
+  type PositionControlConfig,
+  type QuantBacktestConfig,
+} from "@/lib/quant-backtest-config";
 
 type Tab = "strategies" | "backtest" | "results" | "data";
 
@@ -50,7 +56,7 @@ interface BacktestRun {
   rebalance_freq: string;
   top_n: number;
   commission: number;
-  config: Record<string, unknown>;
+  config: QuantBacktestConfig;
   progress_percent: number;
   progress_message: string | null;
   created_at: string;
@@ -240,6 +246,7 @@ export default function QuantPage() {
     commission: number;
     train_window_days: number;
     prediction_horizon_days: number;
+    position_control: PositionControlConfig;
   }) => {
     await fetch("/api/quant/backtest", {
       method: "POST",
@@ -458,6 +465,7 @@ function BacktestTab({
     commission: number;
     train_window_days: number;
     prediction_horizon_days: number;
+    position_control: PositionControlConfig;
   }) => void;
   onSelectRun: (id: number) => void;
 }) {
@@ -668,6 +676,7 @@ function ResultsTab({
                   <MetadataItem compact label="Top N" value={String(detail.run.top_n)} />
                   <MetadataItem compact label="Train Window" value={`${detail.run.config.train_window_days ?? 240}d`} />
                   <MetadataItem compact label="Horizon" value={`${detail.run.config.prediction_horizon_days ?? 20}d`} />
+                  <MetadataItem compact label="Position Control" value={getPositionControlLabel(detail.run.config.position_control)} />
                   <MetadataItem compact label="Factors" value={String(detail.strategy?.factors.length ?? 0)} />
                 </div>
               </div>
@@ -723,6 +732,7 @@ function ResultsTab({
                       <div className="grid grid-cols-2 gap-2">
                         <MetadataItem compact label="Capital" value={detail.run.initial_capital.toLocaleString()} />
                         <MetadataItem compact label="Commission" value={detail.run.commission.toFixed(4)} />
+                        <MetadataItem compact label="Trailing Stop" value={getTrailingStopLabel(detail.run.config.trailing_stop)} />
                         <MetadataItem compact label="Created" value={detail.run.created_at} />
                         <MetadataItem compact label="Completed" value={detail.run.completed_at ?? "—"} />
                       </div>

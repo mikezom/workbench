@@ -42,6 +42,18 @@ BENCHMARK_ALIASES = {
     "000852": "000852.SH",
 }
 DEFAULT_MAX_WORKERS = min(8, max(1, os.cpu_count() or 1))
+DEFAULT_POSITION_CONTROL = {
+    "mode": "equal_weight",
+    "atr_period": 14,
+    "risk_per_trade": 0.01,
+    "stop_atr_multiple": 2.0,
+}
+DEFAULT_TRAILING_STOP = {
+    "enabled": False,
+    "atr_period": 14,
+    "atr_multiple": 3.0,
+    "slippage": 0.0,
+}
 
 
 def get_workbench_conn() -> sqlite3.Connection:
@@ -142,6 +154,39 @@ def normalize_benchmark_code(value: str | None) -> str:
     return normalized
 
 
+def normalize_position_control_config(value: dict | None) -> dict:
+    config = value if isinstance(value, dict) else {}
+    mode = config.get("mode", DEFAULT_POSITION_CONTROL["mode"])
+    if mode not in {"equal_weight", "atr_inverse_volatility", "atr_risk_budget"}:
+        mode = DEFAULT_POSITION_CONTROL["mode"]
+
+    atr_period = max(2, int(config.get("atr_period", DEFAULT_POSITION_CONTROL["atr_period"]) or 14))
+    risk_per_trade = max(0.0, float(config.get("risk_per_trade", DEFAULT_POSITION_CONTROL["risk_per_trade"]) or 0.01))
+    stop_atr_multiple = max(
+        0.1,
+        float(config.get("stop_atr_multiple", DEFAULT_POSITION_CONTROL["stop_atr_multiple"]) or 2.0),
+    )
+    return {
+        "mode": mode,
+        "atr_period": atr_period,
+        "risk_per_trade": risk_per_trade,
+        "stop_atr_multiple": stop_atr_multiple,
+    }
+
+
+def normalize_trailing_stop_config(value: dict | None) -> dict:
+    config = value if isinstance(value, dict) else {}
+    atr_period = max(2, int(config.get("atr_period", DEFAULT_TRAILING_STOP["atr_period"]) or 14))
+    atr_multiple = max(0.1, float(config.get("atr_multiple", DEFAULT_TRAILING_STOP["atr_multiple"]) or 3.0))
+    slippage = max(0.0, float(config.get("slippage", DEFAULT_TRAILING_STOP["slippage"]) or 0.0))
+    return {
+        "enabled": bool(config.get("enabled", DEFAULT_TRAILING_STOP["enabled"])),
+        "atr_period": atr_period,
+        "atr_multiple": atr_multiple,
+        "slippage": slippage,
+    }
+
+
 def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
     run = wb_conn.execute("SELECT * FROM quant_backtest_runs WHERE id = ?", (run_id,)).fetchone()
     if not run:
@@ -158,6 +203,8 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
             raise ValueError(f"Strategy {run['strategy_id']} not found")
 
     run_config = json.loads(run["config"]) if run["config"] else {}
+    position_control = normalize_position_control_config(run_config.get("position_control"))
+    trailing_stop = normalize_trailing_stop_config(run_config.get("trailing_stop"))
 
     return {
         "run_id": run_id,
@@ -176,6 +223,8 @@ def load_run_config(wb_conn: sqlite3.Connection, run_id: int) -> dict:
         "train_window_days": int(run_config.get("train_window_days", 240)),
         "prediction_horizon_days": int(run_config.get("prediction_horizon_days", 20)),
         "max_workers": int(run_config.get("max_workers", 0) or 0),
+        "position_control": position_control,
+        "trailing_stop": trailing_stop,
     }
 
 
@@ -854,6 +903,148 @@ def round_value(value: float | None, digits: int = 4) -> float | None:
     return round(float(value), digits)
 
 
+def compute_atr_ratio_series(df: pd.DataFrame, period: int) -> pd.Series:
+    high_low = df["high"] - df["low"]
+    high_close = (df["high"] - df["close"].shift()).abs()
+    low_close = (df["low"] - df["close"].shift()).abs()
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    return tr.rolling(period).mean() / df["close"].replace(0, np.nan)
+
+
+def get_atr_ratio_on_date(df: pd.DataFrame, signal_date: pd.Timestamp, period: int) -> float | None:
+    column = f"_atr_ratio_{period}"
+    if column not in df.columns:
+        df[column] = compute_atr_ratio_series(df, period)
+    if signal_date not in df.index:
+        return None
+    value = df.loc[signal_date, column]
+    if value is None or not np.isfinite(value) or value <= 0:
+        return None
+    return float(value)
+
+
+def get_execution_price(df: pd.DataFrame, execution_date: pd.Timestamp) -> float | None:
+    if execution_date not in df.index:
+        return None
+    row = df.loc[execution_date]
+    price = row.get("open", np.nan)
+    if price is None or not np.isfinite(price) or price <= 0:
+        return None
+    return float(price)
+
+
+def compute_portfolio_value(
+    cash: float,
+    positions: dict[str, int],
+    stocks: dict[str, pd.DataFrame],
+    execution_date: pd.Timestamp,
+) -> float:
+    total_value = cash
+    for code, shares in positions.items():
+        df = stocks.get(code)
+        if df is None:
+            continue
+        price = get_execution_price(df, execution_date)
+        if price is None:
+            continue
+        total_value += shares * price
+    return total_value
+
+
+def calculate_target_position_sizes(
+    target_codes: list[str],
+    stocks: dict[str, pd.DataFrame],
+    signal_date: pd.Timestamp,
+    execution_date: pd.Timestamp,
+    total_equity: float,
+    position_control: dict,
+) -> dict[str, int]:
+    candidates: list[dict[str, float | str]] = []
+    atr_period = int(position_control["atr_period"])
+
+    for code in target_codes:
+        df = stocks.get(code)
+        if df is None:
+            continue
+        price = get_execution_price(df, execution_date)
+        if price is None:
+            continue
+        atr_ratio = get_atr_ratio_on_date(df, signal_date, atr_period)
+        candidates.append({
+            "code": code,
+            "price": price,
+            "atr_ratio": atr_ratio if atr_ratio is not None else np.nan,
+        })
+
+    if not candidates or total_equity <= 0:
+        return {}
+
+    mode = position_control["mode"]
+    target_values: dict[str, float] = {}
+
+    if mode == "equal_weight":
+        allocation = total_equity / len(candidates)
+        for item in candidates:
+            target_values[str(item["code"])] = allocation
+    elif mode == "atr_inverse_volatility":
+        weighted_candidates = [
+            item for item in candidates if np.isfinite(float(item["atr_ratio"])) and float(item["atr_ratio"]) > 0
+        ]
+        if not weighted_candidates:
+            allocation = total_equity / len(candidates)
+            for item in candidates:
+                target_values[str(item["code"])] = allocation
+        else:
+            inverse_vols = {
+                str(item["code"]): 1.0 / float(item["atr_ratio"])
+                for item in weighted_candidates
+            }
+            total_inverse_vol = sum(inverse_vols.values())
+            if total_inverse_vol <= 0:
+                allocation = total_equity / len(candidates)
+                for item in candidates:
+                    target_values[str(item["code"])] = allocation
+            else:
+                for code, inverse_vol in inverse_vols.items():
+                    target_values[code] = total_equity * inverse_vol / total_inverse_vol
+    else:
+        risk_budget = total_equity * float(position_control["risk_per_trade"])
+        stop_multiple = float(position_control["stop_atr_multiple"])
+        raw_target_values: dict[str, float] = {}
+        for item in candidates:
+            atr_ratio = float(item["atr_ratio"])
+            price = float(item["price"])
+            if not np.isfinite(atr_ratio) or atr_ratio <= 0:
+                continue
+            stop_distance = price * atr_ratio * stop_multiple
+            if stop_distance <= 0:
+                continue
+            shares = int(risk_budget / stop_distance / 100) * 100
+            if shares <= 0:
+                continue
+            raw_target_values[str(item["code"])] = shares * price
+
+        if not raw_target_values:
+            allocation = total_equity / len(candidates)
+            for item in candidates:
+                target_values[str(item["code"])] = allocation
+        else:
+            total_required = sum(raw_target_values.values())
+            scale = min(1.0, total_equity / total_required) if total_required > 0 else 1.0
+            for code, value in raw_target_values.items():
+                target_values[code] = value * scale
+
+    target_shares: dict[str, int] = {}
+    for item in candidates:
+        code = str(item["code"])
+        price = float(item["price"])
+        target_value = target_values.get(code, 0.0)
+        shares = int(target_value / price / 100) * 100
+        if shares > 0:
+            target_shares[code] = shares
+    return target_shares
+
+
 def make_progress_updater(wb_conn: sqlite3.Connection, run_id: int):
     last_percent = -1.0
     last_message = None
@@ -1002,6 +1193,18 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
 
     print(f"Rolling training window: {train_window_days} calendar days")
     print(f"Prediction horizon: {prediction_horizon_days} trading days")
+    position_control = config["position_control"]
+    print(
+        "Position control: "
+        f"{position_control['mode']} "
+        f"(ATR {position_control['atr_period']}d"
+        + (
+            f", risk {position_control['risk_per_trade']:.2%}, stop {position_control['stop_atr_multiple']:.1f}x"
+            if position_control["mode"] == "atr_risk_budget"
+            else ""
+        )
+        + ")"
+    )
     print(
         f"Signal period: {execution_schedule[0][0].strftime('%Y-%m-%d')} "
         f"to {execution_schedule[-1][0].strftime('%Y-%m-%d')}"
@@ -1132,75 +1335,93 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         target_codes = [code for code, _ in ranked[:top_n]]
 
-        # Calculate portfolio value
-        portfolio_value = cash
-        for code, shares in positions.items():
-            if execution_date in stocks[code].index:
-                portfolio_value += shares * stocks[code].loc[execution_date, "close"]
+        # Calculate target positions from the selected sizing rule.
+        portfolio_value = compute_portfolio_value(cash, positions, stocks, execution_date)
+        target_shares = calculate_target_position_sizes(
+            target_codes,
+            stocks,
+            signal_date,
+            execution_date,
+            portfolio_value,
+            position_control,
+        )
 
-        # Sell positions not in target (skip if limit-down: no buyers)
+        # Sell or trim positions first (skip if limit-down: no buyers).
         execution_date_str = execution_date.strftime("%Y%m%d")
         for code in list(positions.keys()):
-            if code not in target_codes and code in stocks and execution_date in stocks[code].index:
-                row_data = stocks[code].loc[execution_date]
-                price = row_data["open"]
-                pre_cl = row_data.get("pre_close", np.nan)
-                limit_key = (code, execution_date_str)
-                exact_limits = stk_limit_data.get(limit_key)
-                exact_down = exact_limits[1] if exact_limits else None
-                if pd.notna(pre_cl) and check_limit_down(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_down):
-                    continue  # Cannot sell at limit-down
-                shares = positions.pop(code)
-                amount = shares * price
-                comm = amount * commission_rate
-                cash += amount - comm
-                trade_log.append({
-                    "date": execution_date.strftime("%Y-%m-%d"),
-                    "symbol": code,
-                    "direction": "sell",
-                    "quantity": shares,
-                    "price": round(price, 2),
-                    "amount": round(amount, 2),
-                    "commission": round(comm, 2),
-                    "reason": "rebalance",
-                })
+            if code not in stocks or execution_date not in stocks[code].index:
+                continue
 
-        # Buy target positions (skip if limit-up: no sellers)
-        if target_codes:
-            # Count buyable targets first for even allocation
-            buyable = []
-            for code in target_codes:
-                if code not in positions and code in stocks and execution_date in stocks[code].index:
-                    row_data = stocks[code].loc[execution_date]
-                    price = row_data["open"]
-                    pre_cl = row_data.get("pre_close", np.nan)
-                    limit_key = (code, execution_date_str)
-                    exact_limits = stk_limit_data.get(limit_key)
-                    exact_up = exact_limits[0] if exact_limits else None
-                    if pd.notna(pre_cl) and check_limit_up(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_up):
-                        continue  # Cannot buy at limit-up
-                    buyable.append((code, price))
+            current_shares = positions.get(code, 0)
+            desired_shares = target_shares.get(code, 0)
+            shares_to_sell = current_shares - desired_shares
+            if shares_to_sell <= 0:
+                continue
 
-            if buyable:
-                allocation = cash / len(buyable)
-                for code, price in buyable:
-                    shares = int(allocation / price / 100) * 100  # Round to lots of 100
-                    if shares > 0:
-                        amount = shares * price
-                        comm = amount * commission_rate
-                        if amount + comm <= cash:
-                            positions[code] = positions.get(code, 0) + shares
-                            cash -= amount + comm
-                            trade_log.append({
-                                "date": execution_date.strftime("%Y-%m-%d"),
-                                "symbol": code,
-                                "direction": "buy",
-                                "quantity": shares,
-                                "price": round(price, 2),
-                                "amount": round(amount, 2),
-                                "commission": round(comm, 2),
-                                "reason": "rebalance",
-                            })
+            row_data = stocks[code].loc[execution_date]
+            price = row_data["open"]
+            pre_cl = row_data.get("pre_close", np.nan)
+            limit_key = (code, execution_date_str)
+            exact_limits = stk_limit_data.get(limit_key)
+            exact_down = exact_limits[1] if exact_limits else None
+            if pd.notna(pre_cl) and check_limit_down(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_down):
+                continue
+
+            amount = shares_to_sell * price
+            comm = amount * commission_rate
+            remaining_shares = current_shares - shares_to_sell
+            if remaining_shares > 0:
+                positions[code] = remaining_shares
+            else:
+                positions.pop(code, None)
+            cash += amount - comm
+            trade_log.append({
+                "date": execution_date.strftime("%Y-%m-%d"),
+                "symbol": code,
+                "direction": "sell",
+                "quantity": shares_to_sell,
+                "price": round(price, 2),
+                "amount": round(amount, 2),
+                "commission": round(comm, 2),
+                "reason": "rebalance",
+            })
+
+        # Buy or top up target positions (skip if limit-up: no sellers).
+        for code in target_codes:
+            desired_shares = target_shares.get(code, 0)
+            current_shares = positions.get(code, 0)
+            shares_to_buy = desired_shares - current_shares
+            if shares_to_buy <= 0 or code not in stocks or execution_date not in stocks[code].index:
+                continue
+
+            row_data = stocks[code].loc[execution_date]
+            price = row_data["open"]
+            pre_cl = row_data.get("pre_close", np.nan)
+            limit_key = (code, execution_date_str)
+            exact_limits = stk_limit_data.get(limit_key)
+            exact_up = exact_limits[0] if exact_limits else None
+            if pd.notna(pre_cl) and check_limit_up(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_up):
+                continue
+
+            max_affordable = int(cash / (price * (1 + commission_rate)) / 100) * 100
+            actual_shares = min(shares_to_buy, max_affordable)
+            if actual_shares <= 0:
+                continue
+
+            amount = actual_shares * price
+            comm = amount * commission_rate
+            positions[code] = current_shares + actual_shares
+            cash -= amount + comm
+            trade_log.append({
+                "date": execution_date.strftime("%Y-%m-%d"),
+                "symbol": code,
+                "direction": "buy",
+                "quantity": actual_shares,
+                "price": round(price, 2),
+                "amount": round(amount, 2),
+                "commission": round(comm, 2),
+                "reason": "rebalance",
+            })
 
         # Record equity
         total_value = cash

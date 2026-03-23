@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createBacktestRun, listBacktestRuns, getStrategy, updateStrategy } from "@/lib/quant-db";
 import { getDefaultBacktestDateRange } from "@/lib/quant-defaults";
+import { normalizeQuantBacktestConfig } from "@/lib/quant-backtest-config";
 import { spawn } from "child_process";
 import path from "path";
 
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
     commission,
     train_window_days,
     prediction_horizon_days,
+    position_control,
+    trailing_stop,
   } = body;
 
   if (!strategy_id) {
@@ -36,6 +39,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Strategy not found" }, { status: 404 });
   }
 
+  const normalizedConfig = normalizeQuantBacktestConfig({
+    train_window_days,
+    prediction_horizon_days,
+    position_control,
+    trailing_stop,
+  });
+
   const run = createBacktestRun({
     strategy_id: Number(strategy_id),
     strategy_snapshot: strategy,
@@ -46,10 +56,7 @@ export async function POST(req: NextRequest) {
     rebalance_freq,
     top_n,
     commission,
-    config: {
-      train_window_days,
-      prediction_horizon_days,
-    },
+    config: normalizedConfig,
   });
 
   // Update strategy status
