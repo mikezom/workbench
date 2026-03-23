@@ -935,18 +935,19 @@ def get_execution_price(df: pd.DataFrame, execution_date: pd.Timestamp) -> float
 
 def compute_portfolio_value(
     cash: float,
-    positions: dict[str, int],
+    positions: dict[str, dict[str, float | int | bool]],
     stocks: dict[str, pd.DataFrame],
     execution_date: pd.Timestamp,
 ) -> float:
     total_value = cash
-    for code, shares in positions.items():
+    for code, position in positions.items():
         df = stocks.get(code)
         if df is None:
             continue
         price = get_execution_price(df, execution_date)
         if price is None:
             continue
+        shares = int(position.get("shares", 0))
         total_value += shares * price
     return total_value
 
@@ -1043,6 +1044,66 @@ def calculate_target_position_sizes(
         if shares > 0:
             target_shares[code] = shares
     return target_shares
+
+
+def create_position_state(shares: int) -> dict[str, float | int | bool]:
+    return {
+        "shares": shares,
+        "highest_high": None,
+        "stop_price": None,
+        "stop_active": False,
+    }
+
+
+def update_trailing_stop_state(
+    position: dict[str, float | int | bool],
+    df: pd.DataFrame,
+    trade_date: pd.Timestamp,
+    trailing_stop: dict,
+) -> None:
+    if trade_date not in df.index:
+        return
+
+    row = df.loc[trade_date]
+    day_high = row.get("high", np.nan)
+    close_price = row.get("close", np.nan)
+    if not np.isfinite(day_high) or not np.isfinite(close_price) or close_price <= 0:
+        return
+
+    prior_high = position.get("highest_high")
+    highest_high = float(day_high) if prior_high is None else max(float(prior_high), float(day_high))
+    position["highest_high"] = highest_high
+
+    atr_ratio = get_atr_ratio_on_date(df, trade_date, int(trailing_stop["atr_period"]))
+    if atr_ratio is None or atr_ratio <= 0:
+        return
+
+    stop_candidate = highest_high - float(trailing_stop["atr_multiple"]) * (atr_ratio * float(close_price))
+    if not np.isfinite(stop_candidate) or stop_candidate <= 0:
+        return
+
+    prior_stop = position.get("stop_price")
+    if prior_stop is None:
+        position["stop_price"] = stop_candidate
+    else:
+        position["stop_price"] = max(float(prior_stop), float(stop_candidate))
+    position["stop_active"] = True
+
+
+def get_trailing_stop_exit_price(
+    row: pd.Series,
+    stop_price: float,
+    slippage: float,
+) -> float | None:
+    open_price = row.get("open", np.nan)
+    if not np.isfinite(open_price) or open_price <= 0:
+        return None
+
+    base_price = min(float(open_price), float(stop_price))
+    exit_price = base_price * (1 - slippage)
+    if not np.isfinite(exit_price) or exit_price <= 0:
+        return None
+    return float(exit_price)
 
 
 def make_progress_updater(wb_conn: sqlite3.Connection, run_id: int):
@@ -1194,6 +1255,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     print(f"Rolling training window: {train_window_days} calendar days")
     print(f"Prediction horizon: {prediction_horizon_days} trading days")
     position_control = config["position_control"]
+    trailing_stop = config["trailing_stop"]
     print(
         "Position control: "
         f"{position_control['mode']} "
@@ -1204,6 +1266,14 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
             else ""
         )
         + ")"
+    )
+    print(
+        "Trailing stop: "
+        + (
+            f"enabled (ATR {trailing_stop['atr_period']}d, {trailing_stop['atr_multiple']:.1f}x, slippage {trailing_stop['slippage']:.4f})"
+            if trailing_stop["enabled"]
+            else "disabled"
+        )
     )
     print(
         f"Signal period: {execution_schedule[0][0].strftime('%Y-%m-%d')} "
@@ -1218,7 +1288,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     # Simulate trading
     capital = config["initial_capital"]
     cash = capital
-    positions: dict[str, int] = {}  # code -> shares
+    positions: dict[str, dict[str, float | int | bool]] = {}
     equity_curve = []
     trade_log = []
     top_n = config["top_n"]
@@ -1234,6 +1304,7 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     overlap_audit_candidate_rows = 0
     overlap_audit_flagged_windows = 0
     overlap_audit_samples: list[dict[str, int | str]] = []
+    rebalance_plan_by_date: dict[pd.Timestamp, tuple[pd.Timestamp, list[str]]] = {}
 
     total_rebalances = max(len(execution_schedule), 1)
     for index, (signal_date, execution_date) in enumerate(execution_schedule, start=1):
@@ -1264,8 +1335,8 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         )
         if x_train is None or y_train is None or len(x_train) < max(len(factor_ids) * 5, 50):
             if index == 1 or index == total_rebalances or index % 5 == 0:
-                loop_progress = 55 + (index / total_rebalances) * 35
-                update_progress(loop_progress, f"Backtesting rebalance {index}/{total_rebalances}")
+                loop_progress = 55 + (index / total_rebalances) * 20
+                update_progress(loop_progress, f"Preparing rebalance {index}/{total_rebalances}")
             continue
 
         model = QuantModel(config["model_type"], config["hyperparams"])
@@ -1334,104 +1405,167 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
         # Rank and select top N
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         target_codes = [code for code, _ in ranked[:top_n]]
-
-        # Calculate target positions from the selected sizing rule.
-        portfolio_value = compute_portfolio_value(cash, positions, stocks, execution_date)
-        target_shares = calculate_target_position_sizes(
-            target_codes,
-            stocks,
-            signal_date,
-            execution_date,
-            portfolio_value,
-            position_control,
-        )
-
-        # Sell or trim positions first (skip if limit-down: no buyers).
-        execution_date_str = execution_date.strftime("%Y%m%d")
-        for code in list(positions.keys()):
-            if code not in stocks or execution_date not in stocks[code].index:
-                continue
-
-            current_shares = positions.get(code, 0)
-            desired_shares = target_shares.get(code, 0)
-            shares_to_sell = current_shares - desired_shares
-            if shares_to_sell <= 0:
-                continue
-
-            row_data = stocks[code].loc[execution_date]
-            price = row_data["open"]
-            pre_cl = row_data.get("pre_close", np.nan)
-            limit_key = (code, execution_date_str)
-            exact_limits = stk_limit_data.get(limit_key)
-            exact_down = exact_limits[1] if exact_limits else None
-            if pd.notna(pre_cl) and check_limit_down(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_down):
-                continue
-
-            amount = shares_to_sell * price
-            comm = amount * commission_rate
-            remaining_shares = current_shares - shares_to_sell
-            if remaining_shares > 0:
-                positions[code] = remaining_shares
-            else:
-                positions.pop(code, None)
-            cash += amount - comm
-            trade_log.append({
-                "date": execution_date.strftime("%Y-%m-%d"),
-                "symbol": code,
-                "direction": "sell",
-                "quantity": shares_to_sell,
-                "price": round(price, 2),
-                "amount": round(amount, 2),
-                "commission": round(comm, 2),
-                "reason": "rebalance",
-            })
-
-        # Buy or top up target positions (skip if limit-up: no sellers).
-        for code in target_codes:
-            desired_shares = target_shares.get(code, 0)
-            current_shares = positions.get(code, 0)
-            shares_to_buy = desired_shares - current_shares
-            if shares_to_buy <= 0 or code not in stocks or execution_date not in stocks[code].index:
-                continue
-
-            row_data = stocks[code].loc[execution_date]
-            price = row_data["open"]
-            pre_cl = row_data.get("pre_close", np.nan)
-            limit_key = (code, execution_date_str)
-            exact_limits = stk_limit_data.get(limit_key)
-            exact_up = exact_limits[0] if exact_limits else None
-            if pd.notna(pre_cl) and check_limit_up(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_up):
-                continue
-
-            max_affordable = int(cash / (price * (1 + commission_rate)) / 100) * 100
-            actual_shares = min(shares_to_buy, max_affordable)
-            if actual_shares <= 0:
-                continue
-
-            amount = actual_shares * price
-            comm = amount * commission_rate
-            positions[code] = current_shares + actual_shares
-            cash -= amount + comm
-            trade_log.append({
-                "date": execution_date.strftime("%Y-%m-%d"),
-                "symbol": code,
-                "direction": "buy",
-                "quantity": actual_shares,
-                "price": round(price, 2),
-                "amount": round(amount, 2),
-                "commission": round(comm, 2),
-                "reason": "rebalance",
-            })
-
-        # Record equity
-        total_value = cash
-        for code, shares in positions.items():
-            if execution_date in stocks[code].index:
-                total_value += shares * stocks[code].loc[execution_date, "close"]
-        equity_curve.append({"date": execution_date.strftime("%Y-%m-%d"), "value": round(total_value, 2)})
+        rebalance_plan_by_date[execution_date] = (signal_date, target_codes)
         if index == 1 or index == total_rebalances or index % 5 == 0:
-            loop_progress = 55 + (index / total_rebalances) * 35
-            update_progress(loop_progress, f"Backtesting rebalance {index}/{total_rebalances}")
+            loop_progress = 55 + (index / total_rebalances) * 20
+            update_progress(loop_progress, f"Preparing rebalance {index}/{total_rebalances}")
+
+    update_progress(80, "Simulating trading path")
+    simulation_dates = all_dates[all_dates >= execution_schedule[0][1]]
+    total_simulation_days = max(len(simulation_dates), 1)
+    for day_index, current_date in enumerate(simulation_dates, start=1):
+        execution_date_str = current_date.strftime("%Y%m%d")
+
+        if current_date in rebalance_plan_by_date:
+            signal_date, target_codes = rebalance_plan_by_date[current_date]
+            portfolio_value = compute_portfolio_value(cash, positions, stocks, current_date)
+            target_shares = calculate_target_position_sizes(
+                target_codes,
+                stocks,
+                signal_date,
+                current_date,
+                portfolio_value,
+                position_control,
+            )
+
+            for code in list(positions.keys()):
+                if code not in stocks or current_date not in stocks[code].index:
+                    continue
+
+                current_shares = int(positions[code].get("shares", 0))
+                desired_shares = target_shares.get(code, 0)
+                shares_to_sell = current_shares - desired_shares
+                if shares_to_sell <= 0:
+                    continue
+
+                row_data = stocks[code].loc[current_date]
+                price = row_data["open"]
+                pre_cl = row_data.get("pre_close", np.nan)
+                limit_key = (code, execution_date_str)
+                exact_limits = stk_limit_data.get(limit_key)
+                exact_down = exact_limits[1] if exact_limits else None
+                if pd.notna(pre_cl) and check_limit_down(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_down):
+                    continue
+
+                amount = shares_to_sell * price
+                comm = amount * commission_rate
+                remaining_shares = current_shares - shares_to_sell
+                if remaining_shares > 0:
+                    positions[code]["shares"] = remaining_shares
+                else:
+                    positions.pop(code, None)
+                cash += amount - comm
+                trade_log.append({
+                    "date": current_date.strftime("%Y-%m-%d"),
+                    "symbol": code,
+                    "direction": "sell",
+                    "quantity": shares_to_sell,
+                    "price": round(price, 2),
+                    "amount": round(amount, 2),
+                    "commission": round(comm, 2),
+                    "reason": "rebalance",
+                })
+
+            for code in target_codes:
+                desired_shares = target_shares.get(code, 0)
+                current_position = positions.get(code)
+                current_shares = int(current_position.get("shares", 0)) if current_position else 0
+                shares_to_buy = desired_shares - current_shares
+                if shares_to_buy <= 0 or code not in stocks or current_date not in stocks[code].index:
+                    continue
+
+                row_data = stocks[code].loc[current_date]
+                price = row_data["open"]
+                pre_cl = row_data.get("pre_close", np.nan)
+                limit_key = (code, execution_date_str)
+                exact_limits = stk_limit_data.get(limit_key)
+                exact_up = exact_limits[0] if exact_limits else None
+                if pd.notna(pre_cl) and check_limit_up(price, pre_cl, stock_limit_pcts.get(code, 0.10), exact_up):
+                    continue
+
+                max_affordable = int(cash / (price * (1 + commission_rate)) / 100) * 100
+                actual_shares = min(shares_to_buy, max_affordable)
+                if actual_shares <= 0:
+                    continue
+
+                amount = actual_shares * price
+                comm = amount * commission_rate
+                if current_position is None:
+                    positions[code] = create_position_state(actual_shares)
+                else:
+                    positions[code]["shares"] = current_shares + actual_shares
+                cash -= amount + comm
+                trade_log.append({
+                    "date": current_date.strftime("%Y-%m-%d"),
+                    "symbol": code,
+                    "direction": "buy",
+                    "quantity": actual_shares,
+                    "price": round(price, 2),
+                    "amount": round(amount, 2),
+                    "commission": round(comm, 2),
+                    "reason": "rebalance",
+                })
+
+        if trailing_stop["enabled"]:
+            for code in list(positions.keys()):
+                position = positions.get(code)
+                if (
+                    position is None
+                    or not position.get("stop_active")
+                    or code not in stocks
+                    or current_date not in stocks[code].index
+                ):
+                    continue
+
+                row_data = stocks[code].loc[current_date]
+                day_low = row_data.get("low", np.nan)
+                stop_price = position.get("stop_price")
+                if (
+                    stop_price is None
+                    or not np.isfinite(float(stop_price))
+                    or not np.isfinite(day_low)
+                    or float(day_low) > float(stop_price)
+                ):
+                    continue
+
+                exit_price = get_trailing_stop_exit_price(
+                    row_data,
+                    float(stop_price),
+                    float(trailing_stop["slippage"]),
+                )
+                if exit_price is None:
+                    continue
+
+                shares = int(position.get("shares", 0))
+                amount = shares * exit_price
+                comm = amount * commission_rate
+                cash += amount - comm
+                positions.pop(code, None)
+                trade_log.append({
+                    "date": current_date.strftime("%Y-%m-%d"),
+                    "symbol": code,
+                    "direction": "sell",
+                    "quantity": shares,
+                    "price": round(exit_price, 2),
+                    "amount": round(amount, 2),
+                    "commission": round(comm, 2),
+                    "reason": "trailing_stop",
+                })
+
+        total_value = cash
+        for code, position in positions.items():
+            shares = int(position.get("shares", 0))
+            if current_date in stocks[code].index:
+                total_value += shares * stocks[code].loc[current_date, "close"]
+        equity_curve.append({"date": current_date.strftime("%Y-%m-%d"), "value": round(total_value, 2)})
+
+        if trailing_stop["enabled"]:
+            for code, position in positions.items():
+                update_trailing_stop_state(position, stocks[code], current_date, trailing_stop)
+
+        if day_index == 1 or day_index == total_simulation_days or day_index % 10 == 0:
+            loop_progress = 80 + (day_index / total_simulation_days) * 12
+            update_progress(loop_progress, f"Simulating trading day {day_index}/{total_simulation_days}")
 
     print(f"Trained {trained_windows} rolling windows.")
 
@@ -1451,9 +1585,8 @@ def run_backtest(config: dict, progress_callback=None) -> dict:
     n_years = (eq_dates[-1] - eq_dates[0]).days / 365.25 if len(eq_dates) > 1 else 0
     annualized_return = (1 + total_return) ** (1 / max(n_years, 0.01)) - 1 if n_years > 0 else 0
 
-    # Sharpe: annualize based on actual rebalance frequency
-    freq = config["rebalance_freq"]
-    periods_per_year = {"daily": 252, "weekly": 52, "monthly": 12}.get(freq, 252)
+    # Sharpe/alpha/beta use the daily equity curve once trailing stops are enabled.
+    periods_per_year = 252
     sharpe = (returns_series.mean() / returns_series.std() * np.sqrt(periods_per_year)) if len(returns_series) > 1 and returns_series.std() > 0 else 0
 
     # Max drawdown

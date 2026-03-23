@@ -108,6 +108,12 @@ describe("quant factor registry", () => {
           risk_per_trade: 0.015,
           stop_atr_multiple: 2.5,
         },
+        trailing_stop: {
+          enabled: true,
+          atr_period: 10,
+          atr_multiple: 2.2,
+          slippage: 0.003,
+        },
       },
     });
 
@@ -120,10 +126,10 @@ describe("quant factor registry", () => {
       stop_atr_multiple: 2.5,
     });
     expect(run.config.trailing_stop).toEqual({
-      enabled: false,
-      atr_period: 14,
-      atr_multiple: 3,
-      slippage: 0,
+      enabled: true,
+      atr_period: 10,
+      atr_multiple: 2.2,
+      slippage: 0.003,
     });
   });
 });

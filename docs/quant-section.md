@@ -92,6 +92,8 @@ SQLite (data/workbench.db)     Tushare DB (shared-data/tushare/tushare.db)
 - **Separate tushare.db** — Market data is independent, survives project rebuilds
 - **On-demand subprocess** — Backtests run as spawned Python processes, not daemons
 - **Walk-forward training** — Prevents look-ahead bias in model evaluation
+- **Configurable position control** — Supports equal-weight, ATR inverse-volatility, and ATR fixed-risk sizing
+- **Daily stop management** — Optional ATR trailing stop-loss checks intraday lows and applies configurable slippage
 - **Dry-run first** — All features work end-to-end with deterministic mock data
 - **Plotly via dynamic import** — `react-plotly.js` loaded with `ssr: false` to avoid SSR issues
 - **Factor seeding** — DB-based registry, extensible without code changes

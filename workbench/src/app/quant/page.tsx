@@ -20,6 +20,7 @@ import {
   getTrailingStopLabel,
   type PositionControlConfig,
   type QuantBacktestConfig,
+  type TrailingStopConfig,
 } from "@/lib/quant-backtest-config";
 
 type Tab = "strategies" | "backtest" | "results" | "data";
@@ -247,6 +248,7 @@ export default function QuantPage() {
     train_window_days: number;
     prediction_horizon_days: number;
     position_control: PositionControlConfig;
+    trailing_stop: TrailingStopConfig;
   }) => {
     await fetch("/api/quant/backtest", {
       method: "POST",
@@ -466,6 +468,7 @@ function BacktestTab({
     train_window_days: number;
     prediction_horizon_days: number;
     position_control: PositionControlConfig;
+    trailing_stop: TrailingStopConfig;
   }) => void;
   onSelectRun: (id: number) => void;
 }) {

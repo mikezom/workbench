@@ -103,9 +103,14 @@ Notes:
    - **Rebalance frequency** — how often to rebalance (weekly, biweekly, monthly)
    - **Top N** — number of stocks to hold in the portfolio
    - **Commission** — trading cost per trade (default: 0.1%)
+   - **Position control** — choose one of:
+     - *Evenly Distributed*: equal target capital across selected names
+     - *ATR Inverse Volatility*: lower-ATR names receive larger weights
+     - *ATR Risk Budget*: position size is based on `risk_per_trade / (ATR * stop_multiple)`
+   - **Trailing stop-loss** (optional) — ATR-based stop checked against each day’s intraday low, with configurable ATR period, ATR multiple, and stop slippage
 3. Click **Run Backtest**.
 
-The backtest runs as a background Python process. The UI polls for status every 2 seconds. The engine uses **walk-forward training** (60/40 train/test split) to prevent look-ahead bias.
+The backtest runs as a background Python process. The UI polls for status every 2 seconds. The engine uses **walk-forward training** (60/40 train/test split) to prevent look-ahead bias. If trailing stops are enabled, the simulator tracks the portfolio on daily bars between rebalances so stop exits can happen before the next scheduled rebalance.
 
 ## 4. Analyze Results (Results Tab)
 

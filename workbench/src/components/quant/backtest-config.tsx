@@ -4,7 +4,9 @@ import { useState } from "react";
 import { getDefaultBacktestDateRange } from "@/lib/quant-defaults";
 import {
   DEFAULT_POSITION_CONTROL_CONFIG,
+  DEFAULT_TRAILING_STOP_CONFIG,
   type PositionControlConfig,
+  type TrailingStopConfig,
 } from "@/lib/quant-backtest-config";
 
 interface Strategy {
@@ -28,6 +30,7 @@ interface BacktestConfigProps {
     train_window_days: number;
     prediction_horizon_days: number;
     position_control: PositionControlConfig;
+    trailing_stop: TrailingStopConfig;
   }) => void;
 }
 
@@ -50,6 +53,12 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
   const [positionStopAtrMultiple, setPositionStopAtrMultiple] = useState(
     String(DEFAULT_POSITION_CONTROL_CONFIG.stop_atr_multiple)
   );
+  const [trailingStopEnabled, setTrailingStopEnabled] = useState(DEFAULT_TRAILING_STOP_CONFIG.enabled);
+  const [trailingStopAtrPeriod, setTrailingStopAtrPeriod] = useState(String(DEFAULT_TRAILING_STOP_CONFIG.atr_period));
+  const [trailingStopAtrMultiple, setTrailingStopAtrMultiple] = useState(
+    String(DEFAULT_TRAILING_STOP_CONFIG.atr_multiple)
+  );
+  const [trailingStopSlippage, setTrailingStopSlippage] = useState(String(DEFAULT_TRAILING_STOP_CONFIG.slippage));
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -72,6 +81,12 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
         atr_period: parseInt(positionAtrPeriod),
         risk_per_trade: parseFloat(positionRiskPerTrade),
         stop_atr_multiple: parseFloat(positionStopAtrMultiple),
+      },
+      trailing_stop: {
+        enabled: trailingStopEnabled,
+        atr_period: parseInt(trailingStopAtrPeriod),
+        atr_multiple: parseFloat(trailingStopAtrMultiple),
+        slippage: parseFloat(trailingStopSlippage),
       },
     });
     setTimeout(() => setSubmitting(false), 1000);
@@ -270,6 +285,64 @@ export default function BacktestConfig({ strategies, onSubmit }: BacktestConfigP
                 Capital is weighted by the inverse of ATR percentage so lower-volatility names receive larger allocations.
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-4 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium">Trailing Stop-Loss</div>
+            <p className="text-xs text-neutral-500 mt-1">
+              Checks each day&apos;s low against the trailing stop and exits intraday with configurable slippage.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={trailingStopEnabled}
+              onChange={(e) => setTrailingStopEnabled(e.target.checked)}
+              className="rounded border-neutral-300 dark:border-neutral-600"
+            />
+            Enable
+          </label>
+        </div>
+
+        {trailingStopEnabled && (
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">ATR Period</label>
+              <input
+                type="number"
+                min="2"
+                step="1"
+                value={trailingStopAtrPeriod}
+                onChange={(e) => setTrailingStopAtrPeriod(e.target.value)}
+                className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">ATR Multiple</label>
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={trailingStopAtrMultiple}
+                onChange={(e) => setTrailingStopAtrMultiple(e.target.value)}
+                className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Slippage</label>
+              <input
+                type="number"
+                min="0"
+                step="0.0005"
+                value={trailingStopSlippage}
+                onChange={(e) => setTrailingStopSlippage(e.target.value)}
+                className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm bg-white dark:bg-neutral-800"
+              />
+            </div>
           </div>
         )}
       </div>
