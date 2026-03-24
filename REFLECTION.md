@@ -467,3 +467,17 @@ return result;
 **Prevention**: Before running any API-dependent fetch script, always verify the token is actually reachable by the script (test with a small API call first, e.g. `pro.trade_cal()`), rather than assuming library import success means credentials are configured.
 
 **Commit**: N/A (runtime issue, no code fix needed)
+
+---
+
+## 2026-03-22 - remark-math v6 treats single-line $$...$$ as inline math
+
+**Problem**: Display math written as `$$content$$` on its own line was being emitted as `\p{#{content}}` (inline math wrapped in paragraph) instead of standalone `##{content}` (block display math) in the tree emitter.
+
+**Root Cause**: `remark-math` v6 only creates block-level `math` AST nodes when the `$$` delimiters are on separate lines (fenced style: `$$\ncontent\n$$`). When `$$content$$` appears on a single line — even in its own paragraph — it produces an `inlineMath` node inside a paragraph. This is a breaking change from earlier versions.
+
+**Solution**: Two fixes: (1) Updated the sample vault fixture to use fenced `$$` format. (2) Added a heuristic in the mdast-to-tree converter: if a paragraph contains only a single `inlineMath` node, emit it as display math `##{...}` instead of inline `#{...}`. This covers both the fenced and single-line cases.
+
+**Prevention**: When using `remark-math`, always test both `$$..$$` formats (single-line and fenced) to understand how the parser handles them. Document that the canonical way to write display math in the vault is the fenced format with `$$` on separate lines. The converter should handle both gracefully.
+
+**Commit**: `f52a6ab` (knowledge-build repo)

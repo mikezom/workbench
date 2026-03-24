@@ -415,6 +415,47 @@ Full spec: `docs/quant-section.md`
 - [x] Add incremental Tushare update mode for daily catch-up by trade date
 - [x] Add launchd-friendly Tushare update wrapper and 18:00 scheduler installer
 
+### Phase 14: Knowledge Database (separate repo)
+Repo: `/Users/ccnas/DEVELOPMENT/knowledge-build/`
+Spec: `/Users/ccnas/DEVELOPMENT/docs/knowledge-database-plan.md`
+
+#### 14a: Schema + Templates + Sample Vault
+- [x] Initialize git repo with TypeScript, vitest, unified/remark stack
+- [x] Zod frontmatter schema (id, title, type, aliases, tags, status, publish, taxon, author)
+- [x] NoteIR intermediate representation types
+- [x] Config loader for kb.config.yaml
+- [x] 6 note templates (concept, index, person, paper, book, note)
+- [x] Sample Obsidian vault with 4 category theory notes
+
+#### 14b: Remark Plugins + Parse Pipeline
+- [x] remark-wikilink plugin (parses [[target]], [[target|display]], ![[target]])
+- [x] remark-relation-block plugin (parses ```relation fenced blocks)
+- [x] Discover stage (glob + ignore patterns)
+- [x] Parse stage (gray-matter + unified chain)
+
+#### 14c: Resolve + Transform + Validate
+- [x] Resolve stage (ID/alias/filename indexes, wikilink resolution)
+- [x] Transform stage (headings, relations, assets, chunks)
+- [x] Validate stage (link integrity, orphan detection, relation targets)
+
+#### 14d: Tree Emitter
+- [x] mdast-to-Forester recursive converter
+- [x] Preamble generation (title, taxon, date, author, import, meta)
+- [x] Wikilink heuristic: block-level → transclude-unexpanded, inline → link
+- [x] Display math, tables, code blocks, blockquotes, lists
+- [x] Relation declarations appended at end
+
+#### 14e: JSON Emitters + Search
+- [x] notes.json emitter (metadata + links per note)
+- [x] graph.json emitter (nodes + deduplicated edges)
+- [x] chunks.jsonl emitter (heading-split chunks with token estimates)
+- [x] search-index.json emitter (searchable documents)
+
+#### 14f: CLI + Pipeline Orchestrator
+- [x] Pipeline orchestrator (6-stage: discover→parse→resolve→transform→emit→validate)
+- [x] 7 CLI commands: build, validate, export-tree, export-search, export-agent, rename-id, doctor
+- [x] Integration tests (full pipeline on fixture vault)
+
 ## Status
 
 | Phase | Status | Notes |
@@ -458,3 +499,4 @@ Full spec: `docs/quant-section.md`
 | 13f - Quant Bug Fixes | Complete | Fix equity curve loop artifact; commit `636969a` |
 | 13g - Backtest Limit-Up/Down | Complete | Trade filtering + stk_limit data; commits `d3bf50a`, `42830b5` |
 | 13i - Quant Data Automation | Complete | Incremental Tushare updater + daily 18:00 launchd installer |
+| 14 - Knowledge Database | Complete | Separate repo; 62 tests, 4 sample notes, 7 CLI commands; commits `7410f3c`-`f62752e` |

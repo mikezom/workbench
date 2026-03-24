@@ -1942,3 +1942,122 @@ SQLite database (`:memory:`), providing complete isolation between tests and pro
 - Backfilled `pre_close`/`pct_chg` for 6,382,565 rows across 1,357 trade dates via `daily` API.
 - Fetched 8,086,159 `stk_limit` rows across 1,357 trade dates via `stk_limit` API.
 - Confirmed 69,801 limit-up and 25,377 limit-down stock-days in backtest #12 period (2022–2026).
+
+---
+
+## 2026-03-22 — Knowledge Database Compiler (new repo)
+
+**Repo:** `/Users/ccnas/DEVELOPMENT/knowledge-build/` (separate git repo)
+
+### Task 1: Initial repo setup, schemas, templates, sample vault
+
+**Commit:** `7410f3c`
+
+**Problem:** Need a TypeScript compiler to convert an Obsidian Markdown vault into Forester .tree files and JSON artifacts (notes, graph, chunks, search index).
+
+**Changes:**
+- `package.json` — Initialized Node.js project with unified/remark/zod/commander deps.
+- `tsconfig.json` — TypeScript config targeting ES2022/Node16 modules.
+- `vitest.config.ts` — Vitest test runner config.
+- `src/schema/frontmatter.ts` — Zod schema for note YAML frontmatter (id, title, type, aliases, tags, etc.).
+- `src/schema/note.ts` — NoteIR intermediate representation, RawNote, ResolvedLink, Heading, Chunk types.
+- `src/schema/relation.ts` — Relation type (source, type, target, mentioned).
+- `src/schema/outputs.ts` — Output artifact types (NoteRecord, GraphOutput, ChunkRecord, SearchDocument).
+- `src/config.ts` — Config loader for kb.config.yaml.
+- `src/utils/diagnostics.ts` — DiagnosticCollector for errors/warnings/info.
+- `src/utils/slug.ts` — ID normalization and filename stem extraction.
+- `kb.config.yaml` — Config pointing vault to /Users/ccnas/SYNCING/Study/knowledge-vault.
+- `templates/*.md` — 6 note templates (concept, index, person, paper, book, note).
+- `test/fixtures/*.md` — 6 test fixture markdown files.
+- `test/schema/frontmatter.test.ts` — 7 tests for frontmatter validation.
+
+---
+
+### Task 2: Remark plugins, discover, and parse stages
+
+**Commit:** `4f027a6`
+
+**Problem:** Need custom remark plugins to parse Obsidian wikilinks and relation blocks, plus pipeline stages for file discovery and parsing.
+
+**Changes:**
+- `src/remark-plugins/remark-wikilink.ts` — Parses [[target]], [[target|display]], ![[target]] into WikilinkNode AST nodes.
+- `src/remark-plugins/remark-relation-block.ts` — Parses ```relation fenced blocks (pipe-delimited and YAML formats) into RelationBlockNode.
+- `src/pipeline/01-discover.ts` — Globs vault for .md files with ignore pattern support.
+- `src/pipeline/02-parse.ts` — Integrates gray-matter + unified/remark chain with all plugins.
+- `test/remark-plugins/remark-wikilink.test.ts` — 7 tests for wikilink parsing.
+- `test/remark-plugins/remark-relation-block.test.ts` — 4 tests for relation block parsing.
+- `test/pipeline/discover.test.ts` — 3 tests for file discovery.
+- `test/pipeline/parse.test.ts` — 5 tests for parse stage.
+
+---
+
+### Task 3: Resolve, transform, and validate stages
+
+**Commit:** `409f192`
+
+**Problem:** Need to resolve wikilinks to canonical IDs, extract structured data from AST, and validate the note graph.
+
+**Changes:**
+- `src/pipeline/03-resolve.ts` — Builds ID/alias/filename indexes; resolves wikilinks with 3-tier fallback.
+- `src/pipeline/04-transform.ts` — Extracts headings, relations, assets, computes chunks.
+- `src/pipeline/06-validate.ts` — Validates link targets, relation integrity, orphan detection.
+- `test/pipeline/resolve.test.ts` — 4 tests for index building and link resolution.
+- `test/pipeline/transform.test.ts` — 4 tests for heading/relation/chunk extraction.
+- `test/pipeline/validate.test.ts` — 3 tests for validation rules.
+
+---
+
+### Task 4: Tree emitter
+
+**Commit:** `f52a6ab`
+
+**Problem:** Need to convert NoteIR AST into valid Forester .tree files matching existing format.
+
+**Changes:**
+- `src/utils/mdast-to-tree.ts` — Recursive mdast→Forester converter handling all node types.
+- `src/emitters/tree-emitter.ts` — Generates preamble + body + relations, writes .tree files.
+- `test/emitters/tree-emitter.test.ts` — 13 tests for tree emission (math, tables, wikilinks, code, relations).
+- `test/fixtures/note-with-math.md` — Fixed display math format to use fenced $$ delimiters.
+
+---
+
+### Task 5: JSON emitters and search index
+
+**Commit:** `d7dca5d`
+
+**Problem:** Need structured JSON outputs for human search and agent consumption.
+
+**Changes:**
+- `src/emitters/notes-json-emitter.ts` — Emits notes.json with metadata and links.
+- `src/emitters/graph-json-emitter.ts` — Emits graph.json with deduplicated edges.
+- `src/emitters/chunks-jsonl-emitter.ts` — Emits chunks.jsonl with heading-split chunks.
+- `src/emitters/search-index-emitter.ts` — Emits search-index.json with body text.
+- `test/emitters/json-emitters.test.ts` — 7 tests for all JSON emitters.
+
+---
+
+### Task 6: CLI and pipeline orchestrator
+
+**Commit:** `f62752e`
+
+**Problem:** Need CLI entry point with 7 commands and full pipeline orchestration.
+
+**Changes:**
+- `src/pipeline/index.ts` — Pipeline orchestrator running all 6 stages.
+- `src/pipeline/05-emit.ts` — Emit dispatcher routing to enabled emitters.
+- `src/index.ts` — Commander CLI with build, validate, export-tree, export-search, export-agent, rename-id, doctor.
+- `src/commands/build.ts` — Full pipeline command.
+- `src/commands/validate.ts` — Validate-only command.
+- `src/commands/export-tree.ts` — Tree export command.
+- `src/commands/export-search.ts` — Search index export command.
+- `src/commands/export-agent.ts` — Agent artifacts export command.
+- `src/commands/rename-id.ts` — Vault-wide ID rename utility.
+- `src/commands/doctor.ts` — Health check and diagnostics command.
+- `src/utils/mdast-to-tree.ts` — Fixed multi-wikilink paragraph handling for consecutive embeds.
+- `test/pipeline/integration.test.ts` — 5 integration tests for full pipeline.
+
+### Sample Vault Created
+
+**Location:** `/Users/ccnas/SYNCING/Study/knowledge-vault/`
+
+4 category theory notes: index, Category, Functor, Natural Transformation — with wikilinks, embeds, math, tables, and relation blocks.
